@@ -1,0 +1,64 @@
+# Nexus Configuration
+# Copy this file to nexus.toml and customize
+
+[server]
+host = "0.0.0.0"
+port = 8000
+request_timeout_seconds = 300
+
+[discovery]
+# Auto-discover backends via mDNS
+enabled = true
+service_types = ["_ollama._tcp.local", "_llm._tcp.local"]
+
+[health_check]
+enabled = true
+interval_seconds = 30
+timeout_seconds = 5
+
+[routing]
+# Routing strategy: smart | round_robin | priority_only | random
+strategy = "smart"
+max_retries = 2
+
+[routing.weights]
+priority = 50
+load = 30
+latency = 20
+
+# Model aliases - map common names to your local models
+[routing.aliases]
+"gpt-4" = "llama3:70b"
+"gpt-4-turbo" = "llama3:70b"
+"gpt-3.5-turbo" = "mistral:7b"
+
+# Fallback chains - try alternatives if primary unavailable
+[routing.fallbacks]
+"llama3:70b" = ["qwen2:72b", "mixtral:8x7b"]
+
+# Static backend configuration
+# Backends can also be auto-discovered via mDNS
+
+[[backends]]
+name = "local-ollama"
+url = "http://localhost:11434"
+type = "ollama"
+priority = 1
+
+# [[backends]]
+# name = "gpu-server"
+# url = "http://192.168.1.100:8000"
+# type = "vllm"
+# priority = 2
+
+# [[backends]]
+# name = "cloud-fallback"
+# url = "https://api.openai.com"
+# type = "openai"
+# priority = 100
+# api_key_env = "OPENAI_API_KEY"
+
+[logging]
+level = "info"
+# format: pretty | json
+format = "pretty"
