@@ -83,7 +83,10 @@ Create a technical plan for the spec. Use Rust with Axum, Tokio, and reqwest.
 # 4. Generate implementation tasks
 Generate implementation tasks from the plan.
 
-# 5. Execute implementation (uses custom agent)
+# 5. Create GitHub issues from tasks (for collaborative development)
+Create GitHub issues from the tasks for tracking in an open-source workflow.
+
+# 6. Execute implementation (uses custom agent)
 Use speckit.implement to execute all tasks.
 ```
 
@@ -106,6 +109,10 @@ You: Generate tasks from the plan
 You: Analyze the spec, plan, and tasks for consistency
 
 [Copilot runs speckit.analyze agent]
+
+You: Create GitHub issues from the tasks
+
+[Copilot runs speckit.taskstoissues or uses gh CLI to create issues]
 
 You: Implement all the tasks
 
@@ -230,7 +237,69 @@ Generate implementation tasks from the plan. Each task should be:
 - Have clear acceptance criteria
 ```
 
-### Phase 5: Analyze (Optional but Recommended)
+### Phase 5: GitHub Issues (For Collaborative Development)
+
+Convert tasks to GitHub issues for open-source collaboration and progress tracking.
+
+**Prerequisites:**
+- GitHub CLI (`gh`) installed and authenticated: `gh auth login`
+- Repository pushed to GitHub
+
+**Prompt:**
+```
+Create GitHub issues from the tasks in specs/001-backend-registry/tasks.md.
+
+Each issue should:
+- Have a clear title prefixed with [Feature Name]
+- Include implementation steps and acceptance criteria
+- Be labeled appropriately (P0, enhancement, testing, etc.)
+- Reference dependencies on other issues
+- Link back to spec and plan files
+```
+
+**What Gets Created:**
+- One issue per task (T01, T02, etc.)
+- Labels: `P0`, `enhancement`, `backend-registry`, `testing`, `documentation`, `good first issue`
+- Each issue body includes:
+  - Overview and estimated time
+  - Dependencies on other issues
+  - Tests to write first (TDD)
+  - Implementation steps
+  - Acceptance criteria
+  - Links to spec/plan/tasks
+
+**Example Issue Structure:**
+```markdown
+## Overview
+[Task description]
+
+**Estimated Time**: X hours
+**Dependencies**: #N (previous task)
+
+## Tests to Write First
+[Test signatures]
+
+## Implementation Steps
+1. [Step 1]
+2. [Step 2]
+
+## Acceptance Criteria
+- [ ] [Criterion 1]
+- [ ] [Criterion 2]
+
+## References
+- [Spec](specs/NNN-feature/spec.md)
+- [Plan](specs/NNN-feature/plan.md)
+```
+
+**Viewing Issues:**
+```bash
+gh issue list                    # List all issues
+gh issue view N                  # View issue #N
+gh issue close N                 # Close issue after completion
+```
+
+### Phase 6: Analyze (Optional but Recommended)
 
 Run before implementation to catch inconsistencies.
 
@@ -244,7 +313,7 @@ Or use the task tool:
 Use the speckit.analyze agent to analyze the current feature.
 ```
 
-### Phase 6: Implement
+### Phase 7: Implement
 
 Execute all tasks to build the feature.
 
@@ -259,14 +328,14 @@ Use the speckit.implement agent to execute all tasks in tasks.md.
 
 | Phase | What to Say in Copilot CLI |
 |-------|---------------------------|
-| Constitution | "Create the project constitution for Nexus..." |
-| Specify | "Create a spec for: [feature description]" |
-| Plan | "Create a technical plan for the spec" |
-| Tasks | "Generate implementation tasks from the plan" |
-| Analyze | "Use speckit.analyze to check consistency" |
-| Implement | "Use speckit.implement to execute all tasks" |
+| 1. Constitution | "Create the project constitution for Nexus..." |
+| 2. Specify | "Create a spec for: [feature description]" |
+| 3. Plan | "Create a technical plan for the spec" |
+| 4. Tasks | "Generate implementation tasks from the plan" |
+| 5. Issues | "Create GitHub issues from the tasks" |
+| 6. Analyze | "Use speckit.analyze to check consistency" |
+| 7. Implement | "Use speckit.implement to execute all tasks" |
 | Checklist | "Use speckit.checklist to generate quality checklist" |
-| Issues | "Use speckit.taskstoissues to create GitHub issues" |
 
 ---
 
@@ -274,9 +343,11 @@ Use the speckit.implement agent to execute all tasks in tasks.md.
 
 1. **Work in feature branches**: Spec-kit uses branch names to organize features
 2. **Review generated artifacts**: Edit spec.md, plan.md, tasks.md before implementing
-3. **Run analyze before implement**: Catches issues early
-4. **Use the constitution**: Reference it in prompts for consistency
-5. **Iterate**: Re-run phases with refined prompts if needed
+3. **Create GitHub issues before implementing**: Enables progress tracking and collaboration
+4. **Run analyze before implement**: Catches issues early
+5. **Use the constitution**: Reference it in prompts for consistency
+6. **Iterate**: Re-run phases with refined prompts if needed
+7. **Close issues as you complete tasks**: Use `gh issue close N` after each task
 
 ---
 
