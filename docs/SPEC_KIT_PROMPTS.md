@@ -1,527 +1,603 @@
-# Nexus - Spec-Kit Prompts
+# Nexus - Spec-Kit Development Guide
 
-This document contains the prompts to use with [GitHub spec-kit](https://github.com/github/spec-kit) for developing the Nexus LLM Orchestrator.
-
----
-
-## How to Use This Document
-
-1. Install spec-kit: `npm install -g @github/spec-kit` (or use npx)
-2. Initialize a new project: `spec-kit init nexus`
-3. Run each phase in order using the prompts below
-4. The output from each phase feeds into the next
+This document explains how to use [GitHub Spec-Kit](https://github.com/github/spec-kit) for developing the Nexus LLM Orchestrator with **GitHub Copilot CLI**.
 
 ---
 
-## Phase 1: Constitution
+## Overview
 
-The constitution defines the project's core identity, principles, and constraints.
+Spec-Kit is a Spec-Driven Development toolkit that transforms how you build software with AI. Instead of "vibe coding," you create structured specifications that guide implementation.
 
-### Command
+**Key Concept:** Spec-Kit uses different interfaces depending on your editor:
+- **VS Code:** Slash commands like `/speckit.specify`
+- **Copilot CLI:** Custom agents via the task tool (already integrated!)
+
+---
+
+## Installation
+
+### Prerequisites
+
+- [uv](https://docs.astral.sh/uv/) - Python package manager
+- [Python 3.11+](https://www.python.org/downloads/)
+- [Git](https://git-scm.com/downloads)
+
+### Install Specify CLI
+
 ```bash
-spec-kit constitute
+# Persistent installation (recommended)
+uv tool install specify-cli --from git+https://github.com/github/spec-kit.git
+
+# Verify installation
+specify check
 ```
 
-### Prompt
+### Initialize in Existing Project
+
+This project is already initialized. To re-initialize or update:
+
+```bash
+# Initialize with Copilot CLI support
+specify init . --ai copilot --force
+
+# Or use --here flag
+specify init --here --ai copilot
+```
+
+### Upgrade Specify CLI
+
+```bash
+uv tool install specify-cli --force --from git+https://github.com/github/spec-kit.git
+```
+
+---
+
+## Using Spec-Kit with Copilot CLI
+
+In **Copilot CLI**, you use the **task tool** to invoke spec-kit agents. The agents are already configured for this project!
+
+### Available Custom Agents
+
+| Agent | Purpose |
+|-------|---------|
+| `speckit.analyze` | Cross-artifact consistency analysis (after tasks, before implement) |
+| `speckit.checklist` | Generate custom quality checklist for current feature |
+| `speckit.implement` | Execute all tasks from tasks.md |
+| `speckit.taskstoissues` | Convert tasks into GitHub issues |
+
+### Core Commands (Direct Prompts)
+
+For the core spec-kit workflow, use direct prompts in Copilot CLI:
 
 ```
-I want to build Nexus, a distributed LLM model serving orchestrator.
+# 1. Create project constitution (governing principles)
+Create the project constitution for Nexus following the spec-kit methodology.
+Focus on code quality, testing standards, and performance requirements.
+
+# 2. Create a feature specification
+Create a spec for: <your feature description>
+
+# 3. Create technical implementation plan  
+Create a technical plan for the spec. Use Rust with Axum, Tokio, and reqwest.
+
+# 4. Generate implementation tasks
+Generate implementation tasks from the plan.
+
+# 5. Execute implementation (uses custom agent)
+Use speckit.implement to execute all tasks.
+```
+
+### Example Workflow
+
+```
+You: Create a spec for: Add rate limiting to the API gateway with configurable 
+     limits per client IP and API key
+
+[Copilot creates spec in specs/<feature>/spec.md]
+
+You: Create a technical plan for this spec
+
+[Copilot creates plan in specs/<feature>/plan.md]
+
+You: Generate tasks from the plan
+
+[Copilot creates tasks in specs/<feature>/tasks.md]
+
+You: Analyze the spec, plan, and tasks for consistency
+
+[Copilot runs speckit.analyze agent]
+
+You: Implement all the tasks
+
+[Copilot runs speckit.implement agent]
+```
+
+---
+
+## Project Structure
+
+After initialization, spec-kit creates:
+
+```
+nexus/
+├── .specify/
+│   ├── memory/
+│   │   └── constitution.md    # Project principles
+│   ├── scripts/
+│   │   └── bash/              # Helper scripts
+│   └── templates/             # Artifact templates
+├── .github/
+│   └── prompts/               # VS Code prompt files (not used by CLI)
+├── specs/                     # Feature specifications
+│   └── 001-feature-name/
+│       ├── spec.md            # Feature specification
+│       ├── plan.md            # Technical implementation plan
+│       └── tasks.md           # Implementation tasks
+└── docs/
+    └── SPEC_KIT_PROMPTS.md    # This file
+```
+
+---
+
+## Development Phases
+
+### Phase 1: Constitution
+
+Create governing principles for the project. Run once at project start.
+
+**Prompt:**
+```
+Create the project constitution for Nexus. Include:
 
 ## What It Is
-A lightweight Rust service that acts as a unified API gateway for multiple LLM inference backends (Ollama, vLLM, llama.cpp, exo, etc.). It auto-discovers backends on the local network, tracks their available models and capabilities, and intelligently routes incoming requests to the best available model.
+A distributed LLM orchestrator that unifies heterogeneous inference backends 
+behind an OpenAI-compatible API gateway.
 
 ## Core Principles
-1. **Zero Configuration**: Should work out of the box with mDNS discovery. Just run it.
-2. **Single Binary**: Rust-based, no runtime dependencies, easy to deploy.
-3. **OpenAI-Compatible**: Exposes standard OpenAI Chat Completions API.
-4. **Backend Agnostic**: Works with any OpenAI-compatible backend.
-5. **Intelligent Routing**: Routes based on model capabilities (context length, vision, tools), not just load.
-6. **Resilient**: Automatic failover when backends go down.
-7. **Local-First**: Designed for home labs and small teams, not cloud.
+1. Zero Configuration - mDNS discovery, just run it
+2. Single Binary - Rust-based, no runtime dependencies
+3. OpenAI-Compatible - Standard Chat Completions API
+4. Backend Agnostic - Works with Ollama, vLLM, llama.cpp, exo
+5. Intelligent Routing - Routes by capabilities, not just load
+6. Resilient - Automatic failover
+7. Local-First - For home labs and small teams
 
 ## Technical Constraints
 - Language: Rust
-- HTTP Framework: Axum
-- Async Runtime: Tokio
+- Framework: Axum + Tokio
 - Discovery: mDNS (mdns-sd crate)
-- No database required (in-memory state)
-- Target platforms: Linux, macOS, Windows
-
-## What It Is NOT
-- Not an inference engine (doesn't run models)
-- Not a model manager (doesn't download/convert models)
-- Not multi-tenant (single user/team assumed)
-- Not a replacement for exo (complements it for routing)
-
-## Target Users
-- Home lab enthusiasts with multiple GPU machines
-- Small teams pooling GPU resources
-- Developers wanting unified access to local models
+- State: In-memory only
 
 ## Success Criteria
-- Install to first request: < 5 minutes
 - Routing overhead: < 5ms
 - Memory usage: < 50MB
-- Works with Claude Code and Continue.dev out of the box
+```
+
+### Phase 2: Specify (Per Feature)
+
+Create detailed specifications for each feature.
+
+**Example - Core API Gateway:**
+```
+Create a spec for: Core API Gateway
+
+Implement an OpenAI-compatible HTTP API with:
+- POST /v1/chat/completions (streaming and non-streaming)
+- GET /v1/models  
+- GET /health
+
+Handle 100+ concurrent requests, 5-minute timeouts, graceful shutdown.
+Return proper OpenAI error format for all failures.
+```
+
+**Example - Intelligent Router:**
+```
+Create a spec for: Intelligent Router
+
+Route requests to the best backend based on:
+- Model name (exact match or alias)
+- Required capabilities (vision, tools, context length)
+- Backend health and load
+- Configured priority
+
+Support strategies: smart, round_robin, random, priority_only
+Routing decision must be < 1ms with no external calls.
+```
+
+### Phase 3: Plan
+
+Create technical implementation plan with your tech stack choices.
+
+**Prompt:**
+```
+Create a technical plan for the spec. I am building with:
+- Rust (async with Tokio)
+- Axum for HTTP
+- reqwest for backend communication
+- DashMap for concurrent registry
+- tracing for logging
+```
+
+### Phase 4: Tasks
+
+Generate actionable implementation tasks.
+
+**Prompt:**
+```
+Generate implementation tasks from the plan. Each task should be:
+- Completable in 1-4 hours
+- Independently testable
+- Have clear acceptance criteria
+```
+
+### Phase 5: Analyze (Optional but Recommended)
+
+Run before implementation to catch inconsistencies.
+
+**Prompt:**
+```
+Analyze the spec, plan, and tasks for consistency and coverage issues.
+```
+
+Or use the task tool:
+```
+Use the speckit.analyze agent to analyze the current feature.
+```
+
+### Phase 6: Implement
+
+Execute all tasks to build the feature.
+
+**Prompt:**
+```
+Use the speckit.implement agent to execute all tasks in tasks.md.
 ```
 
 ---
 
-## Phase 2: Specify (Per Feature)
+## Quick Reference
 
-Run `spec-kit specify` for each major feature. Below are the prompts for each.
+| Phase | What to Say in Copilot CLI |
+|-------|---------------------------|
+| Constitution | "Create the project constitution for Nexus..." |
+| Specify | "Create a spec for: [feature description]" |
+| Plan | "Create a technical plan for the spec" |
+| Tasks | "Generate implementation tasks from the plan" |
+| Analyze | "Use speckit.analyze to check consistency" |
+| Implement | "Use speckit.implement to execute all tasks" |
+| Checklist | "Use speckit.checklist to generate quality checklist" |
+| Issues | "Use speckit.taskstoissues to create GitHub issues" |
 
 ---
 
-### Feature 2.1: Core API Gateway
+## Tips
 
+1. **Work in feature branches**: Spec-kit uses branch names to organize features
+2. **Review generated artifacts**: Edit spec.md, plan.md, tasks.md before implementing
+3. **Run analyze before implement**: Catches issues early
+4. **Use the constitution**: Reference it in prompts for consistency
+5. **Iterate**: Re-run phases with refined prompts if needed
+
+---
+
+## Troubleshooting
+
+### "Custom agents not showing"
+
+For Copilot CLI, custom agents are invoked via the task tool, not slash commands:
+```
+Use the speckit.implement agent to execute all tasks.
+```
+
+### "Where are my specs?"
+
+Check the `specs/` directory. Feature specs are organized by branch or feature number:
+```
+specs/001-core-api-gateway/
+specs/002-backend-registry/
+```
+
+### "Environment variable for non-git repos"
+
+Set `SPECIFY_FEATURE` to the feature directory name:
 ```bash
-spec-kit specify "Core API Gateway"
+export SPECIFY_FEATURE="001-core-api-gateway"
 ```
 
-#### Prompt
+---
 
+## Nexus Feature Prompts
+
+Below are ready-to-use prompts for all Nexus features, organized by priority.
+
+### Feature Index
+
+| ID | Feature | Priority | Prompt Section |
+|----|---------|----------|----------------|
+| F01 | Core API Gateway | P0 | [Link](#f01-core-api-gateway) |
+| F02 | Backend Registry | P0 | [Link](#f02-backend-registry) |
+| F03 | Health Checker | P0 | [Link](#f03-health-checker) |
+| F04 | CLI and Configuration | P0 | [Link](#f04-cli-and-configuration) |
+| F05 | mDNS Discovery | P1 | [Link](#f05-mdns-discovery) |
+| F06 | Intelligent Router | P1 | [Link](#f06-intelligent-router) |
+| F07 | Model Aliases | P1 | [Link](#f07-model-aliases) |
+| F08 | Fallback Chains | P1 | [Link](#f08-fallback-chains) |
+| F09 | Request Metrics | P2 | [Link](#f09-request-metrics) |
+| F10 | Web Dashboard | P2 | [Link](#f10-web-dashboard) |
+
+---
+
+## P0 Features (MVP)
+
+### F01: Core API Gateway
 ```
-Specify the Core API Gateway feature for Nexus.
+Create a spec for: Core API Gateway
 
 ## Feature Description
-Implement an OpenAI-compatible HTTP API that receives chat completion requests and forwards them to configured backends.
+HTTP server exposing OpenAI-compatible endpoints that proxy requests to backends.
+This is the primary interface for all clients (Claude Code, Continue.dev, etc.).
 
-## Requirements
+## Endpoints
 
-### Functional Requirements
-1. Expose POST /v1/chat/completions endpoint
-2. Accept standard OpenAI ChatCompletion request format
-3. Support both streaming (SSE) and non-streaming responses
-4. Forward requests to a configured backend
-5. Expose GET /v1/models to list available models
-6. Expose GET /health for health checks
+### POST /v1/chat/completions
+- Accept standard OpenAI ChatCompletionRequest format
+- Support both streaming (SSE) and non-streaming responses
+- Pass through Authorization headers to backends
+- Return proper usage stats (prompt_tokens, completion_tokens)
 
-### Non-Functional Requirements
-1. Handle concurrent requests (at least 100 simultaneous)
-2. Request timeout configurable (default 5 minutes)
-3. Graceful shutdown on SIGTERM
-4. Structured logging with tracing
+### GET /v1/models
+- List all available models from all healthy backends
+- Include Nexus-specific metadata (backends, context_length, capabilities)
+- Response matches OpenAI ModelsResponse format
 
-### API Contract
+### GET /health
+- Return system status (healthy/degraded/unhealthy)
+- Include backend counts (total, healthy, unhealthy)
+- Include model count and uptime
 
-POST /v1/chat/completions
-- Request: OpenAI ChatCompletionRequest
-- Response: OpenAI ChatCompletionResponse (or SSE stream)
-- Headers: Authorization (optional, passed through to backend)
+## Non-Functional Requirements
+- Handle 100+ concurrent requests
+- Request timeout: configurable (default 5 minutes)
+- Graceful shutdown on SIGTERM
+- Structured logging with tracing
 
-GET /v1/models
-- Response: OpenAI ModelsResponse listing all available models
+## Error Handling (OpenAI format)
+- Backend timeout: 504 Gateway Timeout
+- Backend unreachable: 502 Bad Gateway  
+- Invalid request: 400 Bad Request with details
+- Model not found: 404 with available models hint
+- No healthy backends: 503 Service Unavailable
 
-GET /health
-- Response: { "status": "ok", "backends": [...] }
+## Technical Stack
+- Axum for HTTP server
+- reqwest for backend HTTP client with connection pooling
+- async-stream for SSE forwarding
+- tokio for async runtime
 
-### Technical Approach
-- Use Axum for HTTP server
-- Use reqwest for backend HTTP client
-- Use async-stream for SSE forwarding
-- Configuration via TOML file or environment variables
-
-### Edge Cases
-1. Backend timeout → Return 504 Gateway Timeout
-2. Backend unreachable → Return 502 Bad Gateway
-3. Invalid request → Return 400 Bad Request with details
-4. Model not found → Return 404 with available models hint
-
-### Testing Strategy
-1. Unit tests for request/response parsing
-2. Integration tests with mock backend
-3. Load test with 100 concurrent requests
-
-### Dependencies
-- axum, tokio, reqwest, serde, serde_json, tracing, toml
+## Acceptance Criteria
+- [ ] POST /v1/chat/completions works with non-streaming
+- [ ] POST /v1/chat/completions works with streaming (SSE)
+- [ ] GET /v1/models lists all models from all backends
+- [ ] GET /health returns system status
+- [ ] Handles concurrent requests (100+)
+- [ ] Proper error responses in OpenAI format
 ```
 
 ---
 
-### Feature 2.2: Backend Registry
-
-```bash
-spec-kit specify "Backend Registry"
+### F02: Backend Registry
 ```
-
-#### Prompt
-
-```
-Specify the Backend Registry feature for Nexus.
+Create a spec for: Backend Registry
 
 ## Feature Description
-An in-memory registry that tracks all known backends, their available models, capabilities, and health status.
+In-memory data store tracking all known backends and their models.
+This is the source of truth for all backend state.
 
-## Requirements
+## Data Structures
 
-### Functional Requirements
-1. Store backend information (URL, type, models, status)
-2. Store model information (name, context_length, capabilities)
-3. Support adding/removing backends at runtime
-4. Track backend health status (healthy, unhealthy, unknown)
-5. Provide query methods:
-   - Get all backends
-   - Get backends by model name
-   - Get backends by capability (e.g., supports_vision)
-   - Get healthy backends only
+### Backend
+- id: String (UUID)
+- name: String (human-readable)
+- url: String (base URL, e.g., "http://localhost:11434")
+- backend_type: Enum (Ollama, VLLM, LlamaCpp, Exo, OpenAI, Generic)
+- status: Enum (Healthy, Unhealthy, Unknown, Draining)
+- last_health_check: DateTime<Utc>
+- last_error: Option<String>
+- models: Vec<Model>
+- priority: i32 (lower = prefer)
+- pending_requests: u32 (current in-flight)
+- total_requests: u64 (lifetime total)
+- avg_latency_ms: u32 (rolling average)
+- discovery_source: Enum (Static, MDNS, Manual)
+- metadata: HashMap<String, String>
 
-### Data Structures
+### Model
+- id: String (model identifier, e.g., "llama3:70b")
+- name: String (display name)
+- context_length: u32 (max context window)
+- supports_vision: bool
+- supports_tools: bool
+- supports_json_mode: bool
+- max_output_tokens: Option<u32>
 
-Backend {
-  id: String (UUID)
-  name: String
-  url: String
-  backend_type: Enum (Ollama, VLLM, LlamaCpp, Exo, OpenAI, Generic)
-  status: Enum (Healthy, Unhealthy, Unknown)
-  last_health_check: Timestamp
-  models: Vec<Model>
-  priority: i32 (lower = prefer)
-  metadata: HashMap<String, String>
-}
+## Operations
+| Operation | Description |
+|-----------|-------------|
+| add_backend(backend) | Add new backend to registry |
+| remove_backend(id) | Remove backend by ID |
+| get_backend(id) | Get single backend |
+| get_all_backends() | List all backends |
+| get_healthy_backends() | Filter to healthy only |
+| get_backends_for_model(model) | Find backends with model |
+| update_status(id, status) | Update health status |
+| update_models(id, models) | Update model list |
+| increment_pending(id) | Track in-flight request |
+| decrement_pending(id) | Request completed |
+| update_latency(id, ms) | Update rolling average |
 
-Model {
-  id: String
-  name: String
-  context_length: u32
-  supports_vision: bool
-  supports_tools: bool
-  supports_json_mode: bool
-  max_tokens: Option<u32>
-  backend_id: String
-}
-
-ModelCapabilities {
-  min_context_length: Option<u32>
-  requires_vision: bool
-  requires_tools: bool
-  requires_json_mode: bool
-}
-
-### Thread Safety
-- Registry must be thread-safe (Arc<RwLock<...>>)
+## Thread Safety
+- Use DashMap for concurrent access
 - Read-heavy workload expected (many reads, few writes)
-- Consider using dashmap for concurrent access
+- Maintain model-to-backend index for fast lookup
 
-### Technical Approach
-- Pure Rust data structures, no database
-- Serde serialization for config loading
-- Clone-on-read for safe iteration
-
-### Testing Strategy
-1. Unit tests for all query methods
-2. Concurrent access tests
-3. Property-based tests for data integrity
+## Acceptance Criteria
+- [ ] Thread-safe access with DashMap
+- [ ] Fast lookup by model name (indexed)
+- [ ] Survives concurrent read/write stress test
+- [ ] Serializable to JSON for debugging
+- [ ] Atomic updates for pending_requests and latency
 ```
 
 ---
 
-### Feature 2.3: Health Checker
-
-```bash
-spec-kit specify "Health Checker"
+### F03: Health Checker
 ```
-
-#### Prompt
-
-```
-Specify the Health Checker feature for Nexus.
+Create a spec for: Health Checker
 
 ## Feature Description
-A background service that periodically checks backend health and updates the registry.
+Background service that periodically checks backend health and updates the registry.
+Runs continuously without blocking request routing.
 
-## Requirements
+## Health Check Flow
+1. Every N seconds (default 30), for each backend:
+   a. Send health check request with 5s timeout
+   b. Parse response to extract model list
+   c. Update registry status and models
+   d. Log status transitions at INFO level
 
-### Functional Requirements
-1. Periodically ping each backend (configurable interval, default 30s)
-2. Update backend status in registry based on response
-3. Fetch available models from each backend
-4. Detect new models added to backends
-5. Support different health check methods per backend type:
-   - Ollama: GET /api/tags
-   - vLLM: GET /v1/models
+2. Backend-specific endpoints:
+   - Ollama: GET /api/tags (returns {"models": [...]})
+   - vLLM: GET /v1/models (OpenAI format)
    - llama.cpp: GET /health
-   - Generic: GET /v1/models or configurable
+   - Generic: GET /v1/models
 
-### Health Check Logic
-1. Send health request with 5s timeout
-2. If success:
-   - Mark backend Healthy
-   - Update model list
-   - Reset failure counter
-3. If failure:
-   - Increment failure counter
-   - If failures >= 3: Mark Unhealthy
-   - Keep last known models (don't remove immediately)
-4. If unhealthy backend recovers:
-   - Require 2 consecutive successes to mark Healthy
+3. Status transitions:
+   - Unknown → Healthy: 1 success
+   - Unknown → Unhealthy: 1 failure
+   - Healthy → Unhealthy: 3 consecutive failures
+   - Unhealthy → Healthy: 2 consecutive successes
 
-### Configuration
-health_check:
-  interval_seconds: 30
-  timeout_seconds: 5
-  failure_threshold: 3
-  recovery_threshold: 2
+## Configuration
+```toml
+[health_check]
+enabled = true
+interval_seconds = 30
+timeout_seconds = 5
+failure_threshold = 3
+recovery_threshold = 2
+```
 
-### Non-Functional Requirements
-1. Health checks should not block request routing
-2. Stagger checks to avoid thundering herd
-3. Log health transitions at INFO level
+## Model Parsing
+Parse different response formats:
+- Ollama: {"models": [{"name": "llama3:70b", "details": {...}}]}
+- OpenAI: {"data": [{"id": "llama3-70b", "object": "model"}]}
 
-### Edge Cases
-1. Backend returns 200 but invalid response → Treat as unhealthy
-2. Backend very slow but responds → Healthy but note latency
-3. DNS resolution fails → Unhealthy
-4. TLS certificate error → Unhealthy with specific error
+Extract capabilities where available (context_length, vision support).
 
-### Testing Strategy
-1. Unit tests with mock HTTP responses
-2. Integration test with actual Ollama instance
-3. Test failure/recovery state transitions
+## Edge Cases
+- Backend returns 200 but invalid response → Treat as unhealthy
+- Backend very slow but responds → Healthy, but record latency
+- DNS resolution fails → Unhealthy with specific error
+- TLS certificate error → Unhealthy with specific error
+
+## Non-Functional Requirements
+- Health checks must not block request routing
+- Stagger checks to avoid thundering herd
+- Graceful shutdown (finish current checks)
+
+## Acceptance Criteria
+- [ ] Checks all backends periodically
+- [ ] Updates registry on status change
+- [ ] Logs health transitions at INFO level
+- [ ] Parses model lists from Ollama and OpenAI formats
+- [ ] Handles timeouts gracefully
+- [ ] Staggered checks prevent thundering herd
 ```
 
 ---
 
-### Feature 2.4: mDNS Discovery
-
-```bash
-spec-kit specify "mDNS Discovery"
+### F04: CLI and Configuration
 ```
-
-#### Prompt
-
-```
-Specify the mDNS Discovery feature for Nexus.
+Create a spec for: CLI and Configuration
 
 ## Feature Description
-Automatically discover LLM backends on the local network using mDNS/Bonjour.
+Command-line interface and TOML configuration file support.
+Provides both interactive commands and daemon mode.
 
-## Requirements
+## CLI Commands
 
-### Functional Requirements
-1. Browse for services advertising LLM backends
-2. Support multiple service types:
-   - _ollama._tcp.local (Ollama)
-   - _llm._tcp.local (Generic LLM, proposed standard)
-3. Extract connection info from TXT records
-4. Auto-add discovered backends to registry
-5. Auto-remove backends when they disappear
-6. Support manual override (don't remove if manually configured)
-
-### mDNS Service Format
-
-Service: _ollama._tcp.local
-TXT Records:
-  - version=0.1.0
-  - models=llama3,mistral,qwen
-
-Service: _llm._tcp.local (proposed)
-TXT Records:
-  - type=vllm|llamacpp|exo|generic
-  - api_path=/v1
-  - version=1.0.0
-
-### Discovery Flow
-1. On startup, browse for known service types
-2. When service found:
-   - Parse address/port from SRV record
-   - Parse metadata from TXT records
-   - Add to registry if not exists
-   - Trigger immediate health check
-3. When service removed:
-   - Mark as Unhealthy
-   - Remove after grace period (60s) if not seen again
-4. Continuous browsing (not one-shot)
-
-### Configuration
-discovery:
-  enabled: true
-  service_types:
-    - "_ollama._tcp.local"
-    - "_llm._tcp.local"
-  grace_period_seconds: 60
-
-### Technical Approach
-- Use mdns-sd crate for cross-platform mDNS
-- Run discovery in background task
-- Send updates via channel to main registry
-
-### Edge Cases
-1. Multiple instances same IP different ports → Treat as separate
-2. Service disappears then reappears → Keep model cache
-3. mDNS not available (Docker, etc.) → Graceful fallback to static config
-4. Conflicting manual and discovered → Manual takes precedence
-
-### Testing Strategy
-1. Unit tests for TXT record parsing
-2. Integration tests require local mDNS (optional, skip in CI)
-3. Mock mDNS responses for deterministic tests
-```
-
----
-
-### Feature 2.5: Intelligent Router
-
-```bash
-spec-kit specify "Intelligent Router"
-```
-
-#### Prompt
-
-```
-Specify the Intelligent Router feature for Nexus.
-
-## Feature Description
-Route incoming requests to the best available backend based on model requirements, capabilities, and load.
-
-## Requirements
-
-### Functional Requirements
-1. Select backend for incoming request based on:
-   - Requested model name (exact match or alias)
-   - Required capabilities (derived from request)
-   - Backend health status
-   - Current load (pending requests)
-   - Configured priority
-2. Support model aliases (e.g., "gpt-4" → route to best local model)
-3. Support fallback chains (try X, then Y, then Z)
-4. Support request-based routing rules
-
-### Routing Algorithm
-
-```
-1. Parse request to extract:
-   - model_name
-   - required_capabilities (vision, tools, min_context)
-   
-2. Find candidate backends:
-   - Filter by model availability
-   - Filter by health (Healthy only, or include Unknown if configured)
-   - Filter by capabilities
-   
-3. If no candidates:
-   - Check model aliases for alternatives
-   - Check fallback chain
-   - If still none: return 404
-
-4. Score candidates:
-   score = priority_weight * (1 / priority)
-         + load_weight * (1 / (pending_requests + 1))
-         + latency_weight * (1 / avg_latency_ms)
-   
-5. Select highest scoring candidate
-
-6. If selected backend fails:
-   - Remove from candidates
-   - Retry with next best (up to max_retries)
-```
-
-### Capability Detection from Request
-- Vision: messages contain image_url content
-- Tools: tools array is present
-- JSON mode: response_format.type == "json_object"
-- Context: Estimate tokens from messages (rough: chars / 4)
-
-### Configuration
-routing:
-  strategy: "smart"  # or "round_robin", "random", "priority_only"
-  max_retries: 2
-  weights:
-    priority: 0.5
-    load: 0.3
-    latency: 0.2
-  aliases:
-    "gpt-4": "llama3:70b"
-    "gpt-3.5-turbo": "mistral:7b"
-  fallbacks:
-    "llama3:70b": ["qwen2:72b", "mixtral:8x7b"]
-
-### Non-Functional Requirements
-1. Routing decision: < 1ms
-2. No external calls during routing (use cached data)
-3. Thread-safe (multiple concurrent routing decisions)
-
-### Testing Strategy
-1. Unit tests for scoring algorithm
-2. Unit tests for capability detection
-3. Integration tests with multiple mock backends
-4. Chaos tests (backends failing mid-request)
-```
-
----
-
-### Feature 2.6: CLI and Configuration
-
-```bash
-spec-kit specify "CLI and Configuration"
-```
-
-#### Prompt
-
-```
-Specify the CLI and Configuration feature for Nexus.
-
-## Feature Description
-Command-line interface and configuration system for Nexus.
-
-## Requirements
-
-### CLI Commands
-
-nexus serve [OPTIONS]
-  Start the Nexus server
+### nexus serve [OPTIONS]
+Start the Nexus server.
   --config, -c <FILE>     Config file path (default: nexus.toml)
   --port, -p <PORT>       Listen port (default: 8000)
-  --host <HOST>           Listen host (default: 0.0.0.0)
-  --log-level <LEVEL>     Log level (default: info)
+  --host <HOST>           Listen address (default: 0.0.0.0)
+  --log-level <LEVEL>     Log level: trace, debug, info, warn, error
   --no-discovery          Disable mDNS discovery
 
-nexus backends
-  List configured and discovered backends
+### nexus backends [OPTIONS]
+List all backends.
+  --json                  Output as JSON
+  --status <STATUS>       Filter by status (healthy, unhealthy, unknown)
 
-nexus backends add <URL> [OPTIONS]
-  Add a backend manually
+### nexus backends add <URL> [OPTIONS]
+Add backend manually.
   --name <NAME>           Display name
-  --type <TYPE>           Backend type (ollama, vllm, llamacpp, generic)
+  --type <TYPE>           Backend type (ollama, vllm, llamacpp, exo, generic)
   --priority <N>          Routing priority (lower = prefer)
 
-nexus backends remove <ID|URL>
-  Remove a backend
+### nexus backends remove <ID>
+Remove a backend by ID or URL.
 
-nexus models
-  List all available models across backends
+### nexus models [OPTIONS]
+List all available models.
+  --json                  Output as JSON
+  --backend <ID>          Filter by backend
 
-nexus health
-  Show health status of all backends
+### nexus health [OPTIONS]
+Show health status.
+  --json                  Output as JSON
 
-nexus config init
-  Generate example config file
+### nexus config init [OPTIONS]
+Generate example config file.
+  --output, -o <FILE>     Output file (default: nexus.toml)
 
-nexus --version
-nexus --help
+### nexus --version / --help
 
-### Configuration File (nexus.toml)
-
+## Configuration File (nexus.toml)
+```toml
 [server]
 host = "0.0.0.0"
 port = 8000
 request_timeout_seconds = 300
+max_concurrent_requests = 1000
 
 [discovery]
 enabled = true
 service_types = ["_ollama._tcp.local", "_llm._tcp.local"]
+grace_period_seconds = 60
 
 [health_check]
+enabled = true
 interval_seconds = 30
 timeout_seconds = 5
+failure_threshold = 3
+recovery_threshold = 2
 
 [routing]
 strategy = "smart"
 max_retries = 2
 
+[routing.weights]
+priority = 50
+load = 30
+latency = 20
+
 [routing.aliases]
 "gpt-4" = "llama3:70b"
 "gpt-3.5-turbo" = "mistral:7b"
+
+[routing.fallbacks]
+"llama3:70b" = ["qwen2:72b", "mixtral:8x7b"]
 
 [[backends]]
 name = "local-ollama"
@@ -538,300 +614,495 @@ priority = 2
 [logging]
 level = "info"
 format = "pretty"  # or "json"
-
-### Environment Variables
-NEXUS_CONFIG          Config file path
-NEXUS_PORT            Listen port
-NEXUS_LOG_LEVEL       Log level
-NEXUS_DISCOVERY       Enable discovery (true/false)
-
-### Technical Approach
-- Use clap for CLI parsing
-- Use config crate for layered config (file + env + args)
-- Use toml for config serialization
-- Pretty-print tables with comfy-table
-
-### Testing Strategy
-1. Unit tests for config parsing
-2. CLI tests using assert_cmd
-3. Test config precedence (env > file > defaults)
 ```
 
----
+## Environment Variables
+- NEXUS_CONFIG: Config file path
+- NEXUS_PORT: Listen port
+- NEXUS_HOST: Listen address  
+- NEXUS_LOG_LEVEL: Log level
+- NEXUS_DISCOVERY: Enable discovery (true/false)
 
-## Phase 3: Plan
+## Config Precedence
+CLI args > Environment variables > Config file > Defaults
 
-Run after all features are specified.
-
+## CLI Output Examples
 ```bash
-spec-kit plan
+$ nexus backends
+┌──────────────┬────────────────────────────┬─────────┬──────────┬────────┐
+│ Name         │ URL                        │ Type    │ Status   │ Models │
+├──────────────┼────────────────────────────┼─────────┼──────────┼────────┤
+│ local-ollama │ http://localhost:11434     │ Ollama  │ Healthy  │ 3      │
+│ gpu-server   │ http://192.168.1.100:8000  │ vLLM    │ Healthy  │ 1      │
+└──────────────┴────────────────────────────┴─────────┴──────────┴────────┘
+
+$ nexus health
+Status: Healthy
+Uptime: 2h 34m
+Backends: 2/3 healthy
+Models: 4 available
 ```
 
-### Prompt
+## Technical Stack
+- clap for CLI parsing (derive feature)
+- config crate for layered configuration
+- toml for config serialization
+- comfy-table for pretty CLI output
 
-```
-Create an implementation plan for Nexus based on the specified features.
-
-## Constraints
-1. Solo developer
-2. Part-time work (10-15 hours/week)
-3. Rust experience: intermediate
-4. Must have working MVP within 3 weeks
-
-## Feature Priority
-P0 (Must Have for MVP):
-- Core API Gateway
-- Backend Registry
-- Health Checker
-- CLI and Configuration (basic)
-
-P1 (Required for v1.0):
-- mDNS Discovery
-- Intelligent Router
-
-P2 (Nice to Have):
-- Web dashboard
-- Prometheus metrics
-- Authentication
-
-## Suggested Phases
-
-### Phase 1: Foundation (Week 1)
-- Project setup (cargo, CI, linting)
-- Core data structures (Backend, Model, Registry)
-- Basic config loading
-- Health checker (minimal)
-
-### Phase 2: API Gateway (Week 2)
-- OpenAI-compatible endpoints
-- Request forwarding
-- Streaming support
-- Error handling
-
-### Phase 3: MVP Complete (Week 3)
-- CLI commands
-- Basic routing (round-robin)
-- Documentation
-- First release
-
-### Phase 4: Discovery (Week 4-5)
-- mDNS integration
-- Auto-registration
-- Service removal
-
-### Phase 5: Smart Routing (Week 6-7)
-- Capability detection
-- Scoring algorithm
-- Fallback chains
-
-### Phase 6: Polish (Week 8-9)
-- Performance optimization
-- Comprehensive tests
-- Documentation site
-- Community feedback
-
-## Risk Mitigation
-1. mDNS complexity → Fallback to static config
-2. Streaming edge cases → Test with real backends early
-3. Scope creep → Strict MVP definition
+## Acceptance Criteria
+- [ ] `nexus serve` starts server with all options
+- [ ] `nexus backends` lists backends with table/JSON output
+- [ ] `nexus models` lists models from all backends
+- [ ] `nexus health` shows system status
+- [ ] `nexus config init` generates valid example config
+- [ ] Config file loads correctly
+- [ ] Environment variables override config
+- [ ] CLI args override everything
 ```
 
 ---
 
-## Phase 4: Tasks
+## P1 Features (Post-MVP)
 
-Run after plan is created.
+### F05: mDNS Discovery
+```
+Create a spec for: mDNS Discovery
 
-```bash
-spec-kit tasks
+## Feature Description
+Automatically discover LLM backends on local network using mDNS/Bonjour.
+Zero-configuration for Ollama instances on the same network.
+
+## Supported Service Types
+| Service Type | Backend Type | Notes |
+|--------------|--------------|-------|
+| _ollama._tcp.local | Ollama | Ollama advertises this by default |
+| _llm._tcp.local | Generic | Proposed standard for LLM services |
+| _http._tcp.local | Generic | With TXT record hints |
+
+## Discovery Flow
+1. On startup:
+   - Start mDNS browser for each configured service type
+   - Register for service events (found/removed)
+
+2. On ServiceResolved:
+   - Extract IP address and port from SRV record
+   - Extract metadata from TXT records (type, version, api_path)
+   - Create Backend struct with DiscoverySource::MDNS
+   - Add to registry if not exists
+   - Trigger immediate health check
+
+3. On ServiceRemoved:
+   - Mark backend status as Unknown
+   - Start grace period timer (60s default)
+   - If not seen again within grace period, remove from registry
+
+4. Continuous operation:
+   - Keep browsing for changes
+   - Handle network interface changes gracefully
+
+## TXT Record Parsing
+```
+# Ollama default
+version=0.1.0
+
+# Proposed LLM standard
+type=vllm
+api_path=/v1
+version=1.0.0
+models=llama3:70b,mistral:7b
 ```
 
-### Prompt
-
+## Configuration
+```toml
+[discovery]
+enabled = true
+service_types = ["_ollama._tcp.local", "_llm._tcp.local"]
+grace_period_seconds = 60
 ```
-Generate implementation tasks for the Nexus plan.
 
-## Task Format
-Each task should be:
-- Small enough to complete in 1-4 hours
-- Independently testable
-- Clear acceptance criteria
+## Edge Cases
+- Multiple instances same IP, different ports → Treat as separate backends
+- Service disappears then reappears → Keep existing backend, update status
+- mDNS not available (Docker, WSL) → Graceful fallback to static config only
+- Conflicting manual and discovered config → Manual takes precedence
+- IPv6 addresses → Support both IPv4 and IPv6
 
-## Week 1 Tasks
+## Technical Stack
+- mdns-sd crate for cross-platform mDNS
+- Run discovery in background tokio task
+- Send updates via channel to main registry
 
-### Day 1-2: Project Setup
-- [ ] Initialize Cargo project with workspace structure
-- [ ] Set up GitHub repo with CI (cargo test, clippy, fmt)
-- [ ] Add core dependencies (axum, tokio, serde, reqwest, tracing)
-- [ ] Create basic project structure (src/lib.rs, src/main.rs, src/api/, src/registry/, etc.)
-- [ ] Add LICENSE and README
-
-### Day 3-4: Core Data Structures
-- [ ] Define Backend struct with all fields
-- [ ] Define Model struct with capabilities
-- [ ] Define Registry trait and in-memory implementation
-- [ ] Write unit tests for data structures
-- [ ] Implement serde serialization
-
-### Day 5-7: Config and Health
-- [ ] Define config structs matching TOML schema
-- [ ] Implement config loading (file + env)
-- [ ] Create health check task
-- [ ] Implement Ollama health check
-- [ ] Implement generic OpenAI-compatible health check
-- [ ] Write integration tests with mock HTTP
-
-## Week 2 Tasks
-
-### Day 1-2: HTTP Server
-- [ ] Create Axum router with basic routes
-- [ ] Implement GET /health
-- [ ] Implement GET /v1/models
-- [ ] Add request logging middleware
-
-### Day 3-5: Chat Completions
-- [ ] Define request/response types (OpenAI-compatible)
-- [ ] Implement POST /v1/chat/completions (non-streaming)
-- [ ] Add backend selection (simple: first healthy)
-- [ ] Implement streaming with SSE
-- [ ] Handle backend errors gracefully
-
-### Day 6-7: Error Handling
-- [ ] Define error types
-- [ ] Implement error responses (OpenAI format)
-- [ ] Add timeout handling
-- [ ] Add retry logic
-
-## Week 3 Tasks
-
-### Day 1-2: CLI
-- [ ] Add clap for CLI parsing
-- [ ] Implement `nexus serve` command
-- [ ] Implement `nexus backends` command
-- [ ] Implement `nexus models` command
-- [ ] Implement `nexus health` command
-
-### Day 3-4: Testing & Docs
-- [ ] Write integration tests with real Ollama
-- [ ] Write load test (100 concurrent requests)
-- [ ] Create README with quick start
-- [ ] Create example config file
-
-### Day 5-7: MVP Release
-- [ ] Build release binaries (Linux, macOS, Windows)
-- [ ] Create GitHub release
-- [ ] Write announcement post
-- [ ] Collect initial feedback
+## Acceptance Criteria
+- [ ] Discovers Ollama instances automatically
+- [ ] Handles service appearing/disappearing
+- [ ] Grace period prevents flapping
+- [ ] Works on macOS, Linux, Windows
+- [ ] Graceful fallback if mDNS unavailable
+- [ ] Manual config takes precedence over discovered
 ```
 
 ---
 
-## Phase 5: Implement
+### F06: Intelligent Router
+```
+Create a spec for: Intelligent Router
 
-Run for each task or group of tasks.
+## Feature Description
+Select the best backend for each request based on model requirements,
+capabilities, and current system load.
 
-```bash
-spec-kit implement "Task description"
+## Routing Algorithm
+```python
+def select_backend(request):
+    # 1. Extract requirements from request
+    requirements = extract_requirements(request)
+    # - model_name
+    # - estimated_tokens (chars / 4)
+    # - needs_vision (has image_url in messages)
+    # - needs_tools (has tools array)
+    # - needs_json_mode (response_format.type == "json_object")
+    
+    # 2. Find candidates with matching model
+    candidates = registry.get_backends_for_model(requirements.model)
+    
+    # 3. Filter by health status
+    candidates = [b for b in candidates if b.status == Healthy]
+    
+    # 4. Filter by capabilities
+    candidates = [b for b in candidates if meets_requirements(b, requirements)]
+    
+    # 5. Check aliases if no candidates found
+    if not candidates and requirements.model in aliases:
+        requirements.model = aliases[requirements.model]
+        return select_backend(request)  # Retry with alias
+    
+    # 6. Check fallback chain
+    if not candidates and requirements.model in fallbacks:
+        for fallback_model in fallbacks[requirements.model]:
+            # Try each fallback in order
+            ...
+    
+    # 7. Score and select best candidate
+    scores = [(score(b, requirements), b) for b in candidates]
+    return max(scores, key=lambda x: x[0])
 ```
 
-### Example Prompts
-
-#### Implement: Project Setup
+## Scoring Function
 ```
-Implement the initial project setup for Nexus.
-
-Create a new Rust project with:
-1. Cargo workspace with two crates:
-   - nexus-core (library)
-   - nexus-cli (binary)
-2. Dependencies:
-   - axum = "0.7"
-   - tokio = { version = "1", features = ["full"] }
-   - serde = { version = "1", features = ["derive"] }
-   - serde_json = "1"
-   - reqwest = { version = "0.11", features = ["json", "stream"] }
-   - tracing = "0.1"
-   - tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-   - clap = { version = "4", features = ["derive"] }
-   - toml = "0.8"
-   - thiserror = "1"
-   - async-stream = "0.3"
-3. Basic project structure:
-   - src/lib.rs (re-exports)
-   - src/api/mod.rs (HTTP handlers)
-   - src/registry/mod.rs (backend registry)
-   - src/health/mod.rs (health checker)
-   - src/routing/mod.rs (request router)
-   - src/config.rs (configuration)
-   - src/error.rs (error types)
-4. GitHub Actions workflow for CI
-5. rustfmt.toml and clippy.toml for consistent style
+score = (100 - priority) * priority_weight
+      + (100 - min(pending_requests, 100)) * load_weight  
+      + (100 - min(avg_latency_ms / 10, 100)) * latency_weight
 ```
 
-#### Implement: Backend Registry
+Default weights: priority=50, load=30, latency=20
+
+## Capability Detection from Request
+| Requirement | Detection Method |
+|-------------|------------------|
+| Vision | messages[*].content[*].type == "image_url" |
+| Tools | tools array present and non-empty |
+| JSON Mode | response_format.type == "json_object" |
+| Context Length | Estimate: sum(len(m.content) for m in messages) / 4 |
+
+## Routing Strategies
+| Strategy | Description | Use Case |
+|----------|-------------|----------|
+| smart | Score by priority + load + latency | Default, recommended |
+| round_robin | Rotate through healthy backends | Even distribution |
+| priority_only | Always use lowest priority number | Dedicated primary |
+| random | Random selection from healthy | Testing |
+
+## Configuration
+```toml
+[routing]
+strategy = "smart"
+max_retries = 2
+
+[routing.weights]
+priority = 50
+load = 30
+latency = 20
 ```
-Implement the Backend Registry for Nexus.
 
-Requirements:
-1. Thread-safe registry using Arc<RwLock<HashMap>>
-2. Backend struct with: id, name, url, backend_type, status, models, priority
-3. Model struct with: id, name, context_length, supports_vision, supports_tools
-4. Methods:
-   - add_backend(&self, backend: Backend) -> Result<()>
-   - remove_backend(&self, id: &str) -> Result<()>
-   - get_backend(&self, id: &str) -> Option<Backend>
-   - get_all_backends(&self) -> Vec<Backend>
-   - get_backends_for_model(&self, model: &str) -> Vec<Backend>
-   - get_healthy_backends(&self) -> Vec<Backend>
-   - update_status(&self, id: &str, status: BackendStatus) -> Result<()>
-   - update_models(&self, id: &str, models: Vec<Model>) -> Result<()>
-5. Unit tests for all methods
-6. Concurrent access tests
-```
+## Non-Functional Requirements
+- Routing decision: < 1ms
+- No external calls during routing (use cached data only)
+- Thread-safe (multiple concurrent routing decisions)
 
-#### Implement: OpenAI Chat Completions Endpoint
-```
-Implement the POST /v1/chat/completions endpoint for Nexus.
-
-Requirements:
-1. Accept OpenAI ChatCompletionRequest format
-2. Select a backend from registry (use get_healthy_backends, pick first)
-3. Forward request to backend with reqwest
-4. If stream=false: Return ChatCompletionResponse
-5. If stream=true: Return SSE stream, forwarding chunks from backend
-6. Handle errors:
-   - No healthy backends: 503 Service Unavailable
-   - Backend timeout: 504 Gateway Timeout
-   - Backend error: 502 Bad Gateway
-   - Invalid request: 400 Bad Request
-7. Log request/response at DEBUG level
-8. Log errors at ERROR level
-
-Use these types:
-- ChatCompletionRequest (match OpenAI schema)
-- ChatCompletionResponse (match OpenAI schema)
-- ChatCompletionChunk (for streaming)
-
-Include tests with mock backend.
+## Acceptance Criteria
+- [ ] Matches model by exact name
+- [ ] Filters by capabilities (vision, tools, json_mode)
+- [ ] Filters by context length requirement
+- [ ] Scores by priority, load, latency
+- [ ] Falls back to aliases when model not found
+- [ ] Returns appropriate error if no backend available
+- [ ] All routing strategies work correctly
 ```
 
 ---
 
-## Quick Reference
+### F07: Model Aliases
+```
+Create a spec for: Model Aliases
 
-| Phase | Command | Purpose |
-|-------|---------|---------|
-| Constitution | `spec-kit constitute` | Define project identity |
-| Specify | `spec-kit specify "Feature"` | Detail a feature |
-| Plan | `spec-kit plan` | Create implementation plan |
-| Tasks | `spec-kit tasks` | Generate task list |
-| Implement | `spec-kit implement "Task"` | Generate code for task |
+## Feature Description
+Map common model names (like "gpt-4") to available local models.
+Enables drop-in compatibility with tools configured for OpenAI.
+
+## Configuration
+```toml
+[routing.aliases]
+"gpt-4" = "llama3:70b"
+"gpt-4-turbo" = "llama3:70b"
+"gpt-4o" = "llama3:70b"
+"gpt-3.5-turbo" = "mistral:7b"
+"claude-3-opus" = "qwen2:72b"
+"claude-3-sonnet" = "llama3:70b"
+"claude-3-haiku" = "mistral:7b"
+```
+
+## Behavior
+1. Request comes in for model "gpt-4"
+2. Router checks if any backend has "gpt-4" directly
+3. If not found, check aliases: "gpt-4" → "llama3:70b"
+4. Route to backend with "llama3:70b"
+5. Response model field shows "gpt-4" (what client requested)
+
+## Alias Resolution Rules
+- Aliases are resolved at routing time, not registration
+- If both alias and target exist, prefer direct match
+- Aliases can chain: "gpt-4" → "llama-70b" → "llama3:70b" (max 3 levels)
+- Circular aliases are detected and rejected at config load
+
+## Logging
+- Log alias resolution at DEBUG level
+- Include both requested model and resolved model
+
+## Acceptance Criteria
+- [ ] Aliases configured in config file
+- [ ] Transparent to client (response shows requested model name)
+- [ ] Alias resolution logged at DEBUG level
+- [ ] Circular alias detection at config load
+- [ ] Max 3 levels of chaining
+- [ ] Direct matches preferred over aliases
+```
 
 ---
 
-## Notes
+### F08: Fallback Chains
+```
+Create a spec for: Fallback Chains
 
-- Run phases in order; each builds on the previous
-- Save outputs to `.spec-kit/` directory for reference
-- Review and edit generated specs before proceeding
-- Iterate: it's okay to re-run phases with refined prompts
+## Feature Description
+Automatic fallback to alternative models when primary model is unavailable.
+Maintains service availability when preferred models are down.
+
+## Configuration
+```toml
+[routing.fallbacks]
+"llama3:70b" = ["qwen2:72b", "mixtral:8x7b", "llama3:8b"]
+"gpt-4" = ["llama3:70b", "qwen2:72b", "mistral:7b"]
+"claude-3-opus" = ["llama3:70b", "mixtral:8x7b"]
+```
+
+## Fallback Behavior
+1. Request for "llama3:70b"
+2. All backends with "llama3:70b" are unhealthy or unavailable
+3. Check fallback chain: ["qwen2:72b", "mixtral:8x7b", "llama3:8b"]
+4. Try "qwen2:72b" → Check if available and healthy
+5. If available, route there. If not, try next in chain.
+6. If all fallbacks exhausted, return 503 Service Unavailable
+
+## Fallback vs Retry
+- Retry: Same model, different backend (automatic on failure)
+- Fallback: Different model when primary model completely unavailable
+
+## Logging
+- Log fallback usage at WARN level
+- Include original model, fallback model, and reason
+
+## Response Handling
+- Response model field shows original requested model (not fallback)
+- Add X-Nexus-Fallback-Model header with actual model used
+
+## Acceptance Criteria
+- [ ] Fallback chains configurable per model
+- [ ] Tries each fallback in order
+- [ ] Logs fallback usage at WARN level
+- [ ] Returns 503 if all fallbacks exhausted
+- [ ] X-Nexus-Fallback-Model header indicates actual model
+- [ ] Response model field shows requested model
+```
+
+---
+
+## P2 Features (Polish)
+
+### F09: Request Metrics
+```
+Create a spec for: Request Metrics
+
+## Feature Description
+Track request statistics for observability and debugging.
+Expose metrics in both Prometheus and JSON formats.
+
+## Metrics
+
+### Counters
+- nexus_requests_total{model, backend, status}
+  Labels: model name, backend name, HTTP status code
+- nexus_errors_total{type}
+  Labels: error type (timeout, backend_error, no_backend, etc.)
+- nexus_fallbacks_total{from_model, to_model}
+  Labels: original model, fallback model
+
+### Histograms
+- nexus_request_duration_seconds{model, backend}
+  Buckets: [0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300]
+- nexus_backend_latency_seconds{backend}
+  Health check latency per backend
+- nexus_tokens_total{model, backend, type}
+  Labels: prompt/completion token counts
+
+### Gauges
+- nexus_backends_healthy
+- nexus_backends_total
+- nexus_pending_requests{backend}
+- nexus_models_available
+
+## Endpoints
+
+### GET /metrics
+Prometheus-compatible text format.
+```
+# HELP nexus_requests_total Total number of requests
+# TYPE nexus_requests_total counter
+nexus_requests_total{model="llama3:70b",backend="local-ollama",status="200"} 1523
+nexus_requests_total{model="llama3:70b",backend="local-ollama",status="500"} 12
+```
+
+### GET /v1/stats
+JSON format for debugging.
+```json
+{
+  "uptime_seconds": 3600,
+  "requests": {
+    "total": 1535,
+    "success": 1523,
+    "errors": 12
+  },
+  "backends": {
+    "local-ollama": {
+      "requests": 1000,
+      "avg_latency_ms": 45,
+      "pending": 2
+    }
+  },
+  "models": {
+    "llama3:70b": {
+      "requests": 800,
+      "avg_duration_ms": 2500
+    }
+  }
+}
+```
+
+## Technical Stack
+- metrics crate for metric collection
+- metrics-exporter-prometheus for Prometheus format
+- In-memory counters with atomic operations
+
+## Acceptance Criteria
+- [ ] Prometheus-compatible /metrics endpoint
+- [ ] JSON stats at /v1/stats
+- [ ] Request duration tracking with histograms
+- [ ] Error rate tracking by type
+- [ ] Per-backend and per-model breakdowns
+- [ ] Minimal performance impact (< 0.1ms overhead)
+```
+
+---
+
+### F10: Web Dashboard
+```
+Create a spec for: Web Dashboard
+
+## Feature Description
+Simple web UI for monitoring Nexus status.
+Embedded in the binary, no external dependencies.
+
+## Features
+
+### Backend Status Overview
+- List of all backends with status indicators (green/red/yellow)
+- Last health check time
+- Pending requests count
+- Average latency
+
+### Model Availability Matrix
+- Grid showing which models are available on which backends
+- Capability indicators (vision, tools, json_mode)
+- Context length display
+
+### Request History
+- Last 100 requests (in-memory ring buffer)
+- Model, backend, duration, status
+- Expandable details for errors
+
+### Real-time Updates
+- WebSocket connection for live updates
+- Auto-refresh every 5 seconds as fallback
+- Status change notifications
+
+## Technology
+- Embedded static files using rust-embed
+- Vanilla HTML/CSS/JavaScript (no framework)
+- Tailwind CSS for styling (precompiled)
+- WebSocket via axum for real-time updates
+
+## Routes
+- GET / → Dashboard HTML
+- GET /assets/* → Static files (JS, CSS)
+- WS /ws → WebSocket for live updates
+- Existing API routes unchanged
+
+## Graceful Degradation
+- Works without JavaScript (static page with refresh button)
+- Mobile-responsive design
+- Dark mode support (prefers-color-scheme)
+
+## Acceptance Criteria
+- [ ] Shows backend status with health indicators
+- [ ] Shows model availability across backends
+- [ ] Request history with last 100 requests
+- [ ] Real-time updates via WebSocket
+- [ ] Works without JavaScript (basic functionality)
+- [ ] Mobile-responsive layout
+- [ ] Embedded in binary (no external files needed)
+- [ ] Dashboard accessible at GET /
+```
+
+---
+
+## Implementation Order
+
+Follow this order for a smooth development experience:
+
+### Phase 1: MVP (Weeks 1-3)
+1. **F02: Backend Registry** - Foundation for all other features
+2. **F03: Health Checker** - Keeps registry up to date
+3. **F01: Core API Gateway** - The main user-facing interface
+4. **F04: CLI and Configuration** (basic) - Start server, list backends
+
+### Phase 2: Discovery (Weeks 4-5)
+5. **F05: mDNS Discovery** - Zero-config experience
+
+### Phase 3: Intelligence (Weeks 6-7)
+6. **F06: Intelligent Router** - Smart backend selection
+7. **F07: Model Aliases** - OpenAI compatibility
+8. **F08: Fallback Chains** - Resilience
+
+### Phase 4: Polish (Weeks 8-9)
+9. **F04: CLI and Configuration** (complete) - All commands
+10. **F09: Request Metrics** - Observability
+11. **F10: Web Dashboard** - Visual monitoring
