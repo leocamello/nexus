@@ -3,4 +3,5 @@
 //! This library provides the core functionality for managing and routing requests
 //! to heterogeneous LLM inference backends.
 
+pub mod health;
 pub mod registry;
