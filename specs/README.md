@@ -11,7 +11,8 @@ specs/
 ├── 001-backend-registry/
 │   ├── spec.md           # Feature specification
 │   ├── plan.md           # Implementation plan
-│   └── tasks.md          # Implementation tasks
+│   ├── tasks.md          # Implementation tasks
+│   └── walkthrough.md    # Code walkthrough (for onboarding)
 ├── 002-health-checker/
 │   └── ...
 └── README.md
@@ -25,6 +26,7 @@ specs/
 4. **Issues** - Create GitHub issues from tasks
 5. **Analyze** - Check spec/plan/tasks consistency
 6. **Implement** - Execute tasks (TDD: tests first)
+7. **Walkthrough** - Document code for onboarding (`walkthrough.md`)
 
 ## GitHub Integration
 
