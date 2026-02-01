@@ -322,6 +322,25 @@ Execute all tasks to build the feature.
 Use the speckit.implement agent to execute all tasks in tasks.md.
 ```
 
+### Phase 8: Walkthrough (Documentation)
+
+After implementation, create a code walkthrough document for onboarding and knowledge sharing.
+
+**Prompt:**
+```
+Explain the code for [feature] as if I were a junior developer joining the project.
+Walk through each file and the key tests. Save this as a walkthrough.md document.
+```
+
+**Output:** `specs/NNN-feature/walkthrough.md`
+
+**What It Includes:**
+- The big picture (how the feature fits in the system)
+- File-by-file explanation with annotated code
+- Key Rust concepts used
+- Test walkthrough (unit, property, stress tests)
+- Common patterns in the codebase
+
 ---
 
 ## Quick Reference
@@ -335,6 +354,7 @@ Use the speckit.implement agent to execute all tasks in tasks.md.
 | 5. Issues | "Create GitHub issues from the tasks" |
 | 6. Analyze | "Use speckit.analyze to check consistency" |
 | 7. Implement | "Use speckit.implement to execute all tasks" |
+| 8. Walkthrough | "Explain the code as if I were a junior developer" |
 | Checklist | "Use speckit.checklist to generate quality checklist" |
 
 ---
@@ -348,6 +368,7 @@ Use the speckit.implement agent to execute all tasks in tasks.md.
 5. **Use the constitution**: Reference it in prompts for consistency
 6. **Iterate**: Re-run phases with refined prompts if needed
 7. **Close issues as you complete tasks**: Use `gh issue close N` after each task
+8. **Generate walkthroughs after implementing**: Great for onboarding and knowledge sharing
 
 ---
 
