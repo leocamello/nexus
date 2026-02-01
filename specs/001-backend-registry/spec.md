@@ -2,8 +2,9 @@
 
 **Feature Branch**: `001-backend-registry`  
 **Created**: 2026-02-01  
-**Status**: Draft  
-**Priority**: P0 (MVP)
+**Status**: ✅ Implemented  
+**Priority**: P0 (MVP)  
+**PR**: [#12](https://github.com/leocamello/nexus/pull/12)
 
 ## Overview
 
@@ -256,11 +257,11 @@ pub enum DiscoverySource {
 
 ### Definition of Done
 
-- [ ] All data structures implemented with proper derives
-- [ ] All operations implemented and documented
-- [ ] Unit tests for every operation
-- [ ] Concurrent access stress tests pass
-- [ ] Property-based tests for counter operations
-- [ ] JSON serialization/deserialization works
-- [ ] Code passes clippy and fmt checks
-- [ ] Module has `#[cfg(test)] mod tests` block
+- [x] All data structures implemented with proper derives
+- [x] All operations implemented and documented
+- [x] Unit tests for every operation
+- [x] Concurrent access stress tests pass
+- [x] Property-based tests for counter operations
+- [x] JSON serialization/deserialization works
+- [x] Code passes clippy and fmt checks
+- [x] Module has `#[cfg(test)] mod tests` block
