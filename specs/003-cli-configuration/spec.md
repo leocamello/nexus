@@ -279,6 +279,36 @@ OPTIONS:
 
 ---
 
+### nexus completions <SHELL>
+
+Generate shell completion scripts.
+
+```
+ARGS:
+  <SHELL>                 Target shell: bash, zsh, fish, powershell, elvish
+
+OPTIONS:
+  -h, --help              Print help
+```
+
+**Usage Examples:**
+```bash
+# Bash (add to ~/.bashrc or ~/.bash_completion.d/)
+nexus completions bash > ~/.bash_completion.d/nexus
+source ~/.bash_completion.d/nexus
+
+# Zsh (add to fpath)
+nexus completions zsh > ~/.zfunc/_nexus
+
+# Fish
+nexus completions fish > ~/.config/fish/completions/nexus.fish
+
+# PowerShell
+nexus completions powershell >> $PROFILE
+```
+
+---
+
 ### nexus --version
 
 Print version information.
@@ -555,12 +585,14 @@ pub struct ServeArgs {
 | FR-007 | `models` command lists models | P0 |
 | FR-008 | `health` command shows status | P0 |
 | FR-009 | JSON output flag for scripting | P1 |
-| FR-010 | `backends add` adds runtime backend | P1 |
+| FR-010 | `backends add` adds runtime backend with auto-type detection | P1 |
 | FR-011 | `backends remove` removes backend | P1 |
 | FR-012 | `config init` generates template | P1 |
 | FR-013 | Graceful shutdown on SIGINT/SIGTERM | P0 |
 | FR-014 | Exit code 1 on startup errors | P0 |
 | FR-015 | Pretty table output with colors | P1 |
+| FR-016 | `completions` command generates shell scripts | P1 |
+| FR-017 | Warn on unknown config keys (don't fail) | P1 |
 
 ---
 
@@ -694,11 +726,71 @@ Tip: Use 'nexus config init' to generate a valid config template.
 
 ---
 
-## Open Questions
+## Design Decisions
 
-1. **Shell completion generation**: Include in `config` subcommand or separate `completion` command?
-2. **Config validation strictness**: Fail on unknown keys or ignore them?
-3. **Backend auto-type detection**: Worth the complexity or require explicit `--type`?
+### Decision 1: Shell Completion Generation
+
+**Question**: Where should shell completion generation live?
+
+**Decision**: Separate top-level command `nexus completions <shell>`
+
+**Rationale**:
+- Follows established patterns from `rustup`, `gh`, `kubectl`
+- More discoverable than nested subcommand
+- Cleaner separation of concerns
+
+**Usage**:
+```bash
+# Bash
+nexus completions bash > ~/.bash_completion.d/nexus
+
+# Zsh
+nexus completions zsh > ~/.zfunc/_nexus
+
+# Fish
+nexus completions fish > ~/.config/fish/completions/nexus.fish
+```
+
+---
+
+### Decision 2: Config Validation Strictness
+
+**Question**: How should unknown config keys be handled?
+
+**Decision**: Warn on unknown keys, continue loading
+
+**Rationale**:
+- Catches typos without being overly strict
+- Allows forward compatibility (old Nexus version with newer config)
+- User sees the issue in logs but service still starts
+
+**Behavior**:
+```
+$ nexus serve -c nexus.toml
+WARN nexus::config: Unknown config key 'server.unknown_setting' - ignoring
+INFO nexus: Nexus server starting on 0.0.0.0:8000
+```
+
+---
+
+### Decision 3: Backend Auto-Type Detection
+
+**Question**: Should `nexus backends add` auto-detect backend type?
+
+**Decision**: Auto-detect with fallback to `generic`
+
+**Rationale**:
+- Zero-friction for common use cases (Ollama, vLLM)
+- Fallback to `generic` prevents blocking on network issues
+- User can always override with explicit `--type` flag
+
+**Detection Order**:
+1. Try `GET /api/tags` → If 200 with valid JSON: **Ollama**
+2. Try `GET /health` → If 200 with `{"status": "ok"}`: **LlamaCpp**
+3. Try `GET /v1/models` → If 200 with valid JSON: **OpenAI-compatible** (vLLM/Exo/Generic)
+4. If all fail or timeout (2s): Default to **Generic**
+
+**Override**: `nexus backends add http://... --type vllm`
 
 ---
 

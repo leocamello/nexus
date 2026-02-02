@@ -12,21 +12,22 @@
 | T02 | NexusConfig struct & defaults | 2h | T01 |
 | T03 | Config file loading & parsing | 2h | T02 |
 | T04 | Environment variable overrides | 1.5h | T03 |
-| T05 | ConfigError enum & validation | 1.5h | T02 |
+| T05 | ConfigError enum & validation (with unknown key warnings) | 1.5h | T02 |
 | T06 | CLI command definitions (clap) | 2h | T01 |
 | T07 | Output formatting (tables/JSON) | 2h | T06 |
 | T08 | Serve command implementation | 3h | T04, T07 |
 | T09 | Backends list command | 1.5h | T07 |
-| T10 | Backends add/remove commands | 2h | T09 |
+| T10 | Backends add/remove commands (with auto-detection) | 2.5h | T09 |
 | T11 | Models command | 1.5h | T07 |
 | T12 | Health command | 1.5h | T07 |
 | T13 | Config init command | 1.5h | T02 |
-| T14 | Graceful shutdown handling | 1.5h | T08 |
-| T15 | Integration tests | 2.5h | All |
-| T16 | Documentation & cleanup | 1.5h | All |
+| T14 | Completions command | 1h | T06 |
+| T15 | Graceful shutdown handling | 1.5h | T08 |
+| T16 | Integration tests | 2.5h | All |
+| T17 | Documentation & cleanup | 1.5h | All |
 
-**Total Estimated Time**: ~27 hours
-**Total Tests**: 62 (unit + integration)
+**Total Estimated Time**: ~29 hours
+**Total Tests**: 70 (unit + integration)
 
 ---
 
@@ -1014,14 +1015,14 @@ fn parse_status(s: &str) -> Result<BackendStatus, Box<dyn std::error::Error>> {
 
 ---
 
-## T10: Backends Add/Remove Commands
+## T10: Backends Add/Remove Commands (with Auto-Detection)
 
-**Goal**: Implement `nexus backends add` and `nexus backends remove`.
+**Goal**: Implement `nexus backends add` with auto-type detection and `nexus backends remove`.
 
 **Files to modify**:
 - `src/cli/backends.rs`
 
-**Tests to Write First** (5 tests):
+**Tests to Write First** (7 tests):
 ```rust
 #[tokio::test]
 async fn test_backends_add_success() {
@@ -1089,10 +1090,102 @@ fn test_backends_remove_not_found() {
     
     assert!(result.is_err());
 }
+
+#[tokio::test]
+async fn test_backends_add_auto_detect_ollama() {
+    // Mock server that responds like Ollama
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/tags"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"models": []})))
+        .mount(&mock_server)
+        .await;
+    
+    let registry = Arc::new(Registry::new());
+    let args = BackendsAddArgs {
+        url: mock_server.uri(),
+        name: None,
+        backend_type: None,  // Auto-detect
+        priority: None,
+    };
+    
+    handle_backends_add(&args, &registry).await.unwrap();
+    
+    let backends = registry.get_all_backends();
+    assert_eq!(backends[0].backend_type, BackendType::Ollama);
+}
+
+#[tokio::test]
+async fn test_backends_add_auto_detect_fallback_generic() {
+    // Mock server that doesn't respond to any known endpoints
+    let mock_server = MockServer::start().await;
+    Mock::given(any())
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&mock_server)
+        .await;
+    
+    let registry = Arc::new(Registry::new());
+    let args = BackendsAddArgs {
+        url: mock_server.uri(),
+        name: None,
+        backend_type: None,
+        priority: None,
+    };
+    
+    handle_backends_add(&args, &registry).await.unwrap();
+    
+    let backends = registry.get_all_backends();
+    assert_eq!(backends[0].backend_type, BackendType::Generic);  // Fallback
+}
 ```
 
 **Implementation**:
 ```rust
+/// Auto-detect backend type by probing known endpoints.
+/// Detection order: Ollama -> LlamaCpp -> OpenAI-compatible -> Generic
+async fn detect_backend_type(base_url: &str) -> Option<BackendType> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+        .ok()?;
+    
+    // Try Ollama: GET /api/tags
+    if let Ok(resp) = client.get(format!("{}/api/tags", base_url)).send().await {
+        if resp.status().is_success() {
+            if let Ok(text) = resp.text().await {
+                if text.contains("models") {
+                    tracing::debug!(url = %base_url, "Detected Ollama backend");
+                    return Some(BackendType::Ollama);
+                }
+            }
+        }
+    }
+    
+    // Try LlamaCpp: GET /health
+    if let Ok(resp) = client.get(format!("{}/health", base_url)).send().await {
+        if resp.status().is_success() {
+            if let Ok(text) = resp.text().await {
+                if text.contains("ok") {
+                    tracing::debug!(url = %base_url, "Detected LlamaCpp backend");
+                    return Some(BackendType::LlamaCpp);
+                }
+            }
+        }
+    }
+    
+    // Try OpenAI-compatible: GET /v1/models
+    if let Ok(resp) = client.get(format!("{}/v1/models", base_url)).send().await {
+        if resp.status().is_success() {
+            tracing::debug!(url = %base_url, "Detected OpenAI-compatible backend");
+            return Some(BackendType::Generic);  // Could be vLLM, Exo, etc.
+        }
+    }
+    
+    // Fallback: unknown, will use Generic
+    tracing::debug!(url = %base_url, "Could not detect backend type, using Generic");
+    None
+}
+
 pub async fn handle_backends_add(
     args: &BackendsAddArgs,
     registry: &Registry,
@@ -1109,7 +1202,10 @@ pub async fn handle_backends_add(
     // Auto-detect type if not provided
     let backend_type = match args.backend_type {
         Some(t) => t,
-        None => detect_backend_type(&args.url).await.unwrap_or(BackendType::Generic),
+        None => {
+            tracing::info!(url = %args.url, "Auto-detecting backend type...");
+            detect_backend_type(&args.url).await.unwrap_or(BackendType::Generic)
+        }
     };
     
     let backend = Backend::new(
@@ -1125,7 +1221,8 @@ pub async fn handle_backends_add(
     let id = backend.id.clone();
     registry.add_backend(backend)?;
     
-    Ok(format!("Added backend '{}' ({})", name, id))
+    tracing::info!(name = %name, id = %id, backend_type = ?backend_type, "Backend added");
+    Ok(format!("Added backend '{}' ({}) as {:?}", name, id, backend_type))
 }
 
 pub fn handle_backends_remove(
@@ -1138,9 +1235,11 @@ pub fn handle_backends_remove(
 ```
 
 **Acceptance Criteria**:
-- [ ] All 5 tests pass
+- [ ] All 7 tests pass
 - [ ] Add generates name from URL if not provided
 - [ ] Add validates URL format
+- [ ] Auto-detection tries Ollama → LlamaCpp → OpenAI → Generic
+- [ ] Auto-detection times out after 2s per endpoint
 - [ ] Remove returns error for unknown ID
 
 **Test Command**: `cargo test cli::backends::tests::test_backends_add`
@@ -1533,7 +1632,94 @@ fn test_config_init_force_overwrites() {
 
 ---
 
-## T14: Graceful Shutdown Handling
+## T14: Completions Command
+
+**Goal**: Implement `nexus completions <shell>` for shell completion generation.
+
+**Files to modify**:
+- `src/cli/mod.rs` (add Completions command)
+
+**Tests to Write First** (4 tests):
+```rust
+#[test]
+fn test_completions_bash() {
+    let cli = Cli::try_parse_from(["nexus", "completions", "bash"]).unwrap();
+    match cli.command {
+        Commands::Completions(args) => assert_eq!(args.shell, Shell::Bash),
+        _ => panic!("Expected Completions command"),
+    }
+}
+
+#[test]
+fn test_completions_zsh() {
+    let cli = Cli::try_parse_from(["nexus", "completions", "zsh"]).unwrap();
+    match cli.command {
+        Commands::Completions(args) => assert_eq!(args.shell, Shell::Zsh),
+        _ => panic!("Expected Completions command"),
+    }
+}
+
+#[test]
+fn test_completions_generates_output() {
+    let output = generate_completions(Shell::Bash);
+    assert!(!output.is_empty());
+    assert!(output.contains("nexus")); // Should reference the command name
+}
+
+#[test]
+fn test_completions_fish() {
+    let output = generate_completions(Shell::Fish);
+    assert!(!output.is_empty());
+}
+```
+
+**Implementation**:
+```rust
+use clap::CommandFactory;
+use clap_complete::{generate, Shell};
+
+#[derive(Args)]
+pub struct CompletionsArgs {
+    /// Target shell
+    #[arg(value_enum)]
+    pub shell: Shell,
+}
+
+pub fn handle_completions(args: &CompletionsArgs) -> String {
+    let mut cmd = Cli::command();
+    let mut buf = Vec::new();
+    generate(args.shell, &mut cmd, "nexus", &mut buf);
+    String::from_utf8(buf).expect("Generated completions should be valid UTF-8")
+}
+```
+
+Add to `Commands` enum:
+```rust
+#[derive(Subcommand)]
+pub enum Commands {
+    // ... existing commands ...
+    
+    /// Generate shell completions
+    Completions(CompletionsArgs),
+}
+```
+
+Add to `Cargo.toml`:
+```toml
+clap_complete = "4"
+```
+
+**Acceptance Criteria**:
+- [ ] All 4 tests pass
+- [ ] `nexus completions bash` outputs valid bash completion script
+- [ ] `nexus completions zsh` outputs valid zsh completion script
+- [ ] `nexus completions fish` outputs valid fish completion script
+
+**Test Command**: `cargo test cli::tests::test_completions`
+
+---
+
+## T15: Graceful Shutdown Handling
 
 **Goal**: Implement proper shutdown on SIGINT/SIGTERM.
 
@@ -1642,7 +1828,7 @@ async fn shutdown_signal(cancel_token: CancellationToken) {
 
 ---
 
-## T15: Integration Tests
+## T16: Integration Tests
 
 **Goal**: End-to-end CLI tests using `assert_cmd`.
 
@@ -1786,7 +1972,7 @@ fn test_backends_list_no_server() {
 
 ---
 
-## T16: Documentation & Cleanup
+## T17: Documentation & Cleanup
 
 **Goal**: Final documentation, examples, and code cleanup.
 
@@ -1871,26 +2057,28 @@ fn test_backends_list_no_server() {
 | T07 | 6 | 0 | 0 | 6 |
 | T08 | 6 | 0 | 0 | 6 |
 | T09 | 4 | 0 | 0 | 4 |
-| T10 | 5 | 0 | 0 | 5 |
+| T10 | 7 | 0 | 0 | 7 |
 | T11 | 4 | 0 | 0 | 4 |
 | T12 | 4 | 0 | 0 | 4 |
 | T13 | 4 | 0 | 0 | 4 |
-| T14 | 3 | 0 | 0 | 3 |
-| T15 | 0 | 10 | 0 | 10 |
-| T16 | 0 | 0 | ~4 | 4 |
-| **Total** | **52** | **10** | **~4** | **~66** |
+| T14 | 4 | 0 | 0 | 4 |
+| T15 | 3 | 0 | 0 | 3 |
+| T16 | 0 | 10 | 0 | 10 |
+| T17 | 0 | 0 | ~4 | 4 |
+| **Total** | **56** | **10** | **~4** | **~70** |
 
 ---
 
 ## Definition of Done
 
-- [ ] All 66 tests pass
+- [ ] All 70 tests pass
 - [ ] `cargo clippy` reports no warnings
 - [ ] `cargo fmt --check` passes
 - [ ] `nexus --version` shows version
 - [ ] `nexus --help` shows all commands
 - [ ] `nexus serve` starts server on configured port
 - [ ] `nexus config init` generates valid config
+- [ ] `nexus completions <shell>` generates valid completions
 - [ ] Config precedence: CLI > env > file > defaults
 - [ ] Graceful shutdown on SIGINT/SIGTERM
 - [ ] JSON output valid for all commands
