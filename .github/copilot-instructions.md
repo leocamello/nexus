@@ -115,6 +115,55 @@ handle.await?;
 - **OpenAI Compatibility**: Strict adherence to the OpenAI Chat Completions API (streaming and non-streaming) is mandatory.
 - **Intelligent Routing**: When implementing the Router, always consider context length, vision support, and tool-use capabilities before load or latency.
 
+## Git Workflow
+
+**IMPORTANT**: Always use feature branches and Pull Requests for feature implementations.
+
+### Feature Branch Process
+
+```bash
+# 1. Create feature branch BEFORE implementing
+git checkout -b feature/f05-intelligent-router
+
+# 2. Implement the feature (commits go to feature branch)
+git add .
+git commit -m "feat: implement Intelligent Router (F05)"
+
+# 3. Push feature branch
+git push -u origin feature/f05-intelligent-router
+
+# 4. Create Pull Request
+gh pr create \
+  --title "feat: Intelligent Router (F05)" \
+  --body "..." \
+  --label "enhancement"
+
+# 5. Merge PR (this closes linked issues automatically)
+gh pr merge --squash
+```
+
+### Commit Message Format
+
+Use conventional commits with issue references:
+```
+feat: implement Feature Name (FXX)
+
+Description of changes...
+
+Closes #123
+Closes #124
+Closes #125
+```
+
+**Note**: Use separate `Closes #X` lines for each issue. Comma-separated syntax (`Closes #1, #2, #3`) may not close all issues reliably.
+
+### Why This Matters
+
+- PRs provide a review checkpoint before merging to main
+- PR history documents feature implementations (see [closed PRs](https://github.com/leocamello/nexus/pulls?q=is%3Apr+is%3Aclosed))
+- Issues are automatically closed when PR is merged
+- Easier to revert if needed (single PR vs hunting commits)
+
 ## Coding Standards
 
 - Line width: 100 characters (see `rustfmt.toml`)
