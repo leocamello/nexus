@@ -1,6 +1,31 @@
 //! Configuration module for Nexus
 //!
 //! Provides layered configuration loading from files, environment variables, and defaults.
+//!
+//! # Configuration Precedence
+//!
+//! 1. CLI arguments (highest priority)
+//! 2. Environment variables (`NEXUS_*`)
+//! 3. Configuration file (TOML)
+//! 4. Default values (lowest priority)
+//!
+//! # Example
+//!
+//! ```rust
+//! use nexus::config::NexusConfig;
+//!
+//! // Load defaults
+//! let config = NexusConfig::default();
+//! assert_eq!(config.server.port, 8000);
+//!
+//! // Parse from TOML
+//! let toml = r#"
+//! [server]
+//! port = 9000
+//! "#;
+//! let config: NexusConfig = toml::from_str(toml).unwrap();
+//! assert_eq!(config.server.port, 9000);
+//! ```
 
 pub mod backend;
 pub mod discovery;
@@ -22,15 +47,34 @@ pub use crate::health::HealthCheckConfig;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-/// Main configuration struct that holds all sub-configurations
+/// Unified configuration for the Nexus server.
+///
+/// This struct aggregates all configuration sections including server settings,
+/// discovery, health checking, routing, backends, and logging.
+///
+/// # Example
+///
+/// ```rust
+/// use nexus::config::NexusConfig;
+///
+/// let config = NexusConfig::default();
+/// assert_eq!(config.server.port, 8000);
+/// assert_eq!(config.server.host, "0.0.0.0");
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct NexusConfig {
+    /// HTTP server configuration
     pub server: ServerConfig,
+    /// mDNS discovery settings
     pub discovery: DiscoveryConfig,
+    /// Health check configuration
     pub health_check: HealthCheckConfig,
+    /// Request routing configuration
     pub routing: RoutingConfig,
+    /// Static backend definitions
     pub backends: Vec<BackendConfig>,
+    /// Logging configuration
     pub logging: LoggingConfig,
 }
 

@@ -49,8 +49,8 @@ pub fn load_config_with_overrides(
 pub fn init_tracing(
     config: &crate::config::LoggingConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(&config.level));
+    let env_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&config.level));
 
     match config.format {
         LogFormat::Pretty => {
@@ -145,7 +145,7 @@ async fn shutdown_signal(cancel_token: CancellationToken) {
 pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>> {
     // 1. Load and merge configuration
     let config = load_config_with_overrides(&args)?;
-    
+
     // Validate configuration
     config.validate()?;
 
@@ -178,7 +178,7 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
     tracing::info!(addr = %addr, "Nexus server listening");
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    
+
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal(cancel_token.clone()))
         .await?;

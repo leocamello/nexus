@@ -1,6 +1,28 @@
 //! CLI module for Nexus
 //!
-//! Command-line interface definitions and handlers.
+//! Command-line interface definitions and handlers for the Nexus LLM orchestrator.
+//!
+//! # Commands
+//!
+//! - `serve` - Start the Nexus server
+//! - `backends` - Manage LLM backends (list, add, remove)
+//! - `models` - List available models across all backends
+//! - `health` - Show system health status
+//! - `config` - Configuration utilities (init)
+//! - `completions` - Generate shell completions
+//!
+//! # Example
+//!
+//! ```bash
+//! # Start server with default config
+//! nexus serve
+//!
+//! # List backends with status
+//! nexus backends list --status healthy
+//!
+//! # Generate shell completions
+//! nexus completions bash > ~/.bash_completion.d/nexus
+//! ```
 
 pub mod backends;
 pub mod completions;
@@ -18,7 +40,11 @@ use std::path::PathBuf;
 
 /// Nexus - Distributed LLM Orchestrator
 #[derive(Parser, Debug)]
-#[command(name = "nexus", version, about = "Distributed LLM model serving orchestrator")]
+#[command(
+    name = "nexus",
+    version,
+    about = "Distributed LLM model serving orchestrator"
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -254,4 +280,3 @@ mod tests {
         assert!(matches!(cli.command, Commands::Health(_)));
     }
 }
-

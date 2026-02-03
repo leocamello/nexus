@@ -1,7 +1,7 @@
 //! Backends command implementation
 
-use crate::cli::{BackendsAddArgs, BackendsListArgs, BackendsRemoveArgs};
 use crate::cli::output::{format_backends_json, format_backends_table, BackendView};
+use crate::cli::{BackendsAddArgs, BackendsListArgs, BackendsRemoveArgs};
 use crate::registry::{Backend, BackendStatus, BackendType, DiscoverySource, Registry};
 use std::collections::HashMap;
 use std::time::Duration;
@@ -13,7 +13,11 @@ fn parse_status(s: &str) -> Result<BackendStatus, Box<dyn std::error::Error>> {
         "unhealthy" => Ok(BackendStatus::Unhealthy),
         "unknown" => Ok(BackendStatus::Unknown),
         "draining" => Ok(BackendStatus::Draining),
-        _ => Err(format!("Invalid status: {}. Use: healthy, unhealthy, unknown, draining", s).into()),
+        _ => Err(format!(
+            "Invalid status: {}. Use: healthy, unhealthy, unknown, draining",
+            s
+        )
+        .into()),
     }
 }
 
@@ -27,7 +31,10 @@ pub fn handle_backends_list(
     // Filter by status if provided
     let filtered: Vec<Backend> = if let Some(ref status) = args.status {
         let target_status = parse_status(status)?;
-        backends.into_iter().filter(|b| b.status == target_status).collect()
+        backends
+            .into_iter()
+            .filter(|b| b.status == target_status)
+            .collect()
     } else {
         backends
     };
@@ -93,13 +100,13 @@ pub async fn handle_backends_add(
     registry: &Registry,
 ) -> Result<String, Box<dyn std::error::Error>> {
     // Validate URL
-    let url = reqwest::Url::parse(&args.url)
-        .map_err(|e| format!("Invalid URL: {}", e))?;
+    let url = reqwest::Url::parse(&args.url).map_err(|e| format!("Invalid URL: {}", e))?;
 
     // Generate name if not provided
-    let name = args.name.clone().unwrap_or_else(|| {
-        url.host_str().unwrap_or("backend").to_string()
-    });
+    let name = args
+        .name
+        .clone()
+        .unwrap_or_else(|| url.host_str().unwrap_or("backend").to_string());
 
     // Parse or auto-detect backend type
     let backend_type = if let Some(ref type_str) = args.backend_type {
@@ -114,7 +121,9 @@ pub async fn handle_backends_add(
         }
     } else {
         tracing::info!(url = %args.url, "Auto-detecting backend type...");
-        detect_backend_type(&args.url).await.unwrap_or(BackendType::Generic)
+        detect_backend_type(&args.url)
+            .await
+            .unwrap_or(BackendType::Generic)
     };
 
     let backend = Backend::new(
@@ -131,7 +140,10 @@ pub async fn handle_backends_add(
     registry.add_backend(backend)?;
 
     tracing::info!(name = %name, id = %id, backend_type = ?backend_type, "Backend added");
-    Ok(format!("Added backend '{}' ({}) as {:?}", name, id, backend_type))
+    Ok(format!(
+        "Added backend '{}' ({}) as {:?}",
+        name, id, backend_type
+    ))
 }
 
 /// Handle backends remove command
@@ -195,13 +207,21 @@ mod tests {
         let mut healthy = create_test_backend();
         healthy.id = "healthy".to_string();
         registry.add_backend(healthy).unwrap();
-        registry.update_status("healthy", BackendStatus::Healthy, None).unwrap();
+        registry
+            .update_status("healthy", BackendStatus::Healthy, None)
+            .unwrap();
 
         let mut unhealthy = create_test_backend();
         unhealthy.id = "unhealthy".to_string();
         unhealthy.name = "Unhealthy Backend".to_string();
         registry.add_backend(unhealthy).unwrap();
-        registry.update_status("unhealthy", BackendStatus::Unhealthy, Some("error".to_string())).unwrap();
+        registry
+            .update_status(
+                "unhealthy",
+                BackendStatus::Unhealthy,
+                Some("error".to_string()),
+            )
+            .unwrap();
 
         let args = BackendsListArgs {
             json: false,

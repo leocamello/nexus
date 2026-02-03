@@ -1,7 +1,7 @@
 use clap::Parser;
 use nexus::cli::{
-    backends, health, models, handle_completions, handle_config_init, Cli, Commands,
-    BackendsCommands, ConfigCommands,
+    backends, handle_completions, handle_config_init, health, models, BackendsCommands, Cli,
+    Commands, ConfigCommands,
 };
 use nexus::config::NexusConfig;
 use nexus::registry::Registry;
@@ -21,7 +21,7 @@ async fn main() {
                 let config = NexusConfig::load(Some(&args.config))
                     .unwrap_or_else(|_| NexusConfig::default());
                 let registry = Arc::new(Registry::new());
-                
+
                 // Load static backends from config
                 if let Err(e) = nexus::cli::serve::load_backends_from_config(&config, &registry) {
                     eprintln!("Warning: Failed to load backends: {}", e);
@@ -58,10 +58,10 @@ async fn main() {
             }
         },
         Commands::Models(args) => {
-            let config = NexusConfig::load(Some(&args.config))
-                .unwrap_or_else(|_| NexusConfig::default());
+            let config =
+                NexusConfig::load(Some(&args.config)).unwrap_or_else(|_| NexusConfig::default());
             let registry = Arc::new(Registry::new());
-            
+
             if let Err(e) = nexus::cli::serve::load_backends_from_config(&config, &registry) {
                 eprintln!("Warning: Failed to load backends: {}", e);
             }
@@ -75,10 +75,10 @@ async fn main() {
             }
         }
         Commands::Health(args) => {
-            let config = NexusConfig::load(Some(&args.config))
-                .unwrap_or_else(|_| NexusConfig::default());
+            let config =
+                NexusConfig::load(Some(&args.config)).unwrap_or_else(|_| NexusConfig::default());
             let registry = Arc::new(Registry::new());
-            
+
             if let Err(e) = nexus::cli::serve::load_backends_from_config(&config, &registry) {
                 eprintln!("Warning: Failed to load backends: {}", e);
             }

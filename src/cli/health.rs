@@ -1,7 +1,7 @@
 //! Health command implementation
 
-use crate::cli::HealthArgs;
 use crate::cli::output::BackendView;
+use crate::cli::HealthArgs;
 use crate::registry::{BackendStatus, Registry};
 use colored::Colorize;
 use serde::Serialize;

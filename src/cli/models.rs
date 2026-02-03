@@ -1,7 +1,7 @@
 //! Models command implementation
 
-use crate::cli::ModelsArgs;
 use crate::cli::output::{format_models_json, format_models_table, ModelView};
+use crate::cli::ModelsArgs;
 use crate::registry::{Model, Registry};
 use std::collections::HashMap;
 
@@ -36,9 +36,7 @@ pub fn handle_models(
             model_map
                 .entry(model.id.clone())
                 .and_modify(|mv| mv.backends.push(backend.name.clone()))
-                .or_insert_with(|| {
-                    ModelView::from_model(model, vec![backend.name.clone()])
-                });
+                .or_insert_with(|| ModelView::from_model(model, vec![backend.name.clone()]));
         }
     }
 

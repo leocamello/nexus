@@ -170,5 +170,3 @@ mod tests {
         assert_eq!(status_icon(BackendStatus::Unknown), "?");
     }
 }
-
-
