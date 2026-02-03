@@ -100,11 +100,33 @@ futures-util = "0.3"  # For StreamExt on response body
 
 ## Implementation Phases
 
-### Phase 1: Types and Error Handling (Tests First)
+### Phase 1: Contract Tests (OpenAI API Compliance)
 
-**Goal**: Define all OpenAI-compatible request/response types and error handling.
+**Goal**: Define contract tests that verify OpenAI API format compliance. These tests define the expected behavior before any implementation.
 
-**Tests to write first** (12 tests):
+**Tests to write first** (8 contract tests):
+1. `test_contract_completions_request_format` - Valid request accepted
+2. `test_contract_completions_response_format` - Response matches OpenAI schema
+3. `test_contract_completions_streaming_format` - SSE chunks match OpenAI schema
+4. `test_contract_models_response_format` - /v1/models matches OpenAI schema
+5. `test_contract_error_400_format` - Bad request error matches OpenAI schema
+6. `test_contract_error_404_format` - Not found error matches OpenAI schema
+7. `test_contract_error_502_format` - Bad gateway error matches OpenAI schema
+8. `test_contract_error_503_format` - Service unavailable matches OpenAI schema
+
+**Implementation**:
+1. Create `tests/api_contract.rs` with JSON schema validation tests
+2. Tests should FAIL initially (no implementation yet)
+
+**Acceptance**: All 8 contract tests defined and verified to FAIL.
+
+---
+
+### Phase 2: Types and Error Handling
+
+**Goal**: Define all OpenAI-compatible request/response types and error handling to make contract tests pass.
+
+**Unit tests to write** (12 tests):
 1. `test_chat_message_deserialize_text` - Simple text message
 2. `test_chat_message_deserialize_multimodal` - Vision content parts
 3. `test_chat_request_deserialize_minimal` - Only required fields
@@ -112,7 +134,7 @@ futures-util = "0.3"  # For StreamExt on response body
 5. `test_chat_request_stream_default_false` - stream defaults to false
 6. `test_chat_response_serialize` - Response matches OpenAI format
 7. `test_chat_chunk_serialize` - Streaming chunk format
-8. `test_usage_serialize` - Token counts format
+8. `test_usage_serialize` - Token counts format (optional field)
 9. `test_api_error_serialize_400` - Bad request error format
 10. `test_api_error_serialize_404` - Model not found format
 11. `test_api_error_serialize_502` - Bad gateway format
@@ -164,11 +186,11 @@ futures-util = "0.3"  # For StreamExt on response body
 
 3. Update `src/lib.rs` to export `api` module
 
-**Acceptance**: All 12 tests pass, types serialize/deserialize correctly.
+**Acceptance**: All 12 unit tests pass, contract tests from Phase 1 now pass.
 
 ---
 
-### Phase 2: AppState and Router Setup (Tests First)
+### Phase 3: AppState and Router Setup
 
 **Goal**: Create shared application state and Axum router skeleton.
 
@@ -228,11 +250,11 @@ futures-util = "0.3"  # For StreamExt on response body
 
 ---
 
-### Phase 3: Health Endpoint (Tests First)
+### Phase 4: Health Endpoint
 
 **Goal**: Implement enhanced /health endpoint with backend status.
 
-**Tests to write first** (5 tests):
+**Integration tests** (5 tests):
 1. `test_health_all_healthy` - Returns "healthy" status
 2. `test_health_some_unhealthy` - Returns "degraded" status
 3. `test_health_none_healthy` - Returns "unhealthy" status
@@ -291,11 +313,11 @@ futures-util = "0.3"  # For StreamExt on response body
 
 ---
 
-### Phase 4: Models Endpoint (Tests First)
+### Phase 5: Models Endpoint
 
 **Goal**: Implement GET /v1/models returning OpenAI-format model list.
 
-**Tests to write first** (6 tests):
+**Integration tests** (6 tests):
 1. `test_models_empty_registry` - Returns empty list
 2. `test_models_single_backend` - Returns models from one backend
 3. `test_models_multiple_backends` - Aggregates unique models
@@ -371,11 +393,11 @@ futures-util = "0.3"  # For StreamExt on response body
 
 ---
 
-### Phase 5: Chat Completions - Non-Streaming (Tests First)
+### Phase 6: Chat Completions - Non-Streaming
 
-**Goal**: Implement POST /v1/chat/completions for non-streaming requests.
+**Goal**: Implement POST /v1/chat/completions for non-streaming requests with retry logic.
 
-**Tests to write first** (10 tests):
+**Integration tests** (14 tests - includes edge cases):
 1. `test_completions_valid_request` - Returns valid response
 2. `test_completions_invalid_json` - Returns 400 with error
 3. `test_completions_model_not_found` - Returns 404 with hint
@@ -383,9 +405,13 @@ futures-util = "0.3"  # For StreamExt on response body
 5. `test_completions_backend_timeout` - Returns 504
 6. `test_completions_backend_error` - Returns 502
 7. `test_completions_forwards_auth_header` - Authorization passed through
-8. `test_completions_passes_usage_stats` - Usage from backend in response
-9. `test_completions_retry_on_failure` - Retries with next backend
+8. `test_completions_passes_usage_stats` - Usage from backend in response (or omitted)
+9. `test_completions_retry_on_failure` - Retries with next healthy backend
 10. `test_completions_tracks_pending_requests` - Increments/decrements registry
+11. `test_completions_all_retries_fail` - Returns 502 after max_retries exhausted
+12. `test_completions_payload_too_large` - Returns 413 for oversized body
+13. `test_completions_long_model_name` - Handles long model names correctly
+14. `test_completions_backend_invalid_json` - Returns 502 for non-JSON backend response
 
 **Implementation**:
 
@@ -486,23 +512,25 @@ futures-util = "0.3"  # For StreamExt on response body
    }
    ```
 
-**Acceptance**: All 10 tests pass, non-streaming completions work.
+**Acceptance**: All 14 tests pass, non-streaming completions work with retry.
 
 ---
 
-### Phase 6: Chat Completions - Streaming (Tests First)
+### Phase 7: Chat Completions - Streaming
 
 **Goal**: Implement SSE streaming for POST /v1/chat/completions with `stream: true`.
 
-**Tests to write first** (8 tests):
+**Integration tests** (10 tests - includes edge cases):
 1. `test_streaming_returns_sse` - Content-Type is text/event-stream
 2. `test_streaming_sends_chunks` - Receives multiple data: lines
 3. `test_streaming_done_message` - Final message is `data: [DONE]`
 4. `test_streaming_chunk_format` - Each chunk is valid JSON
 5. `test_streaming_forwards_immediately` - No buffering (timing test)
-6. `test_streaming_backend_error_mid_stream` - Handles disconnect
-7. `test_streaming_client_disconnect` - Cancels backend request
-8. `test_streaming_model_not_found` - Returns error before streaming
+6. `test_streaming_backend_error_mid_stream` - Handles disconnect gracefully
+7. `test_streaming_client_disconnect` - Cancels backend request via tokio::select!
+8. `test_streaming_model_not_found` - Returns error before streaming starts
+9. `test_streaming_backend_format_transform` - Transforms non-OpenAI SSE to OpenAI format
+10. `test_streaming_backend_invalid_sse` - Returns 502 for unparseable SSE
 
 **Implementation**:
 
@@ -609,19 +637,20 @@ futures-util = "0.3"  # For StreamExt on response body
    }
    ```
 
-**Acceptance**: All 8 tests pass, streaming works end-to-end.
+**Acceptance**: All 10 tests pass, streaming works end-to-end.
 
 ---
 
-### Phase 7: Integration with CLI Serve Command
+### Phase 8: Integration with CLI Serve Command
 
 **Goal**: Wire up the API router to the existing `nexus serve` command.
 
-**Tests to write first** (4 tests):
+**Integration tests** (5 tests):
 1. `test_serve_starts_api_server` - Server accepts requests
 2. `test_serve_with_config_timeout` - Timeout from config applied
-3. `test_serve_graceful_shutdown` - In-flight requests complete
-4. `test_serve_rejects_after_shutdown` - New requests rejected during shutdown
+3. `test_serve_graceful_shutdown` - In-flight requests complete within 30s
+4. `test_serve_rejects_after_shutdown` - New requests rejected with 503 during shutdown
+5. `test_serve_shutdown_timeout` - Forced termination after 30s if requests don't complete
 
 **Implementation**:
 
@@ -654,11 +683,11 @@ futures-util = "0.3"  # For StreamExt on response body
    }
    ```
 
-**Acceptance**: All 4 tests pass, `nexus serve` runs the full API.
+**Acceptance**: All 5 tests pass, `nexus serve` runs the full API.
 
 ---
 
-### Phase 8: Concurrent Request Handling & Performance
+### Phase 9: Concurrent Request Handling & Performance
 
 **Goal**: Verify concurrent request handling and measure performance.
 
@@ -704,7 +733,7 @@ futures-util = "0.3"  # For StreamExt on response body
 
 ---
 
-### Phase 9: Documentation and Cleanup
+### Phase 10: Documentation and Cleanup
 
 **Goal**: Complete documentation and final cleanup.
 
@@ -730,16 +759,19 @@ futures-util = "0.3"  # For StreamExt on response body
 | Memory leaks in streams | Use RAII patterns, test with long-running streams |
 | Timeout edge cases | Test timeout at various stages (connect, read, idle) |
 
-## Open Questions
+## Open Questions (Resolved)
 
-1. **Router integration**: This plan assumes simple first-healthy-backend selection. Full router scoring (F05) will be added later. Is this acceptable for MVP?
-   - **Decision**: ✅ Yes, simple selection for MVP. Router feature will add scoring.
+1. **Router integration**: Simple backend selection with retry for MVP. Full router scoring deferred to F05.
+   - **Decision**: ✅ MVP includes retry logic (FR-008) but not load/latency scoring.
 
-2. **Model aggregation**: When same model exists on multiple backends, should we show one entry or multiple?
-   - **Decision**: ✅ One entry per unique model ID (deduplicated).
+2. **Model aggregation**: One entry per unique model ID (deduplicated across backends).
+   - **Decision**: ✅ Deduplicate by model.id in /v1/models response.
 
-3. **Usage stats source**: Confirmed pass-through from backend. What if backend doesn't include usage?
-   - **Decision**: Return null/omit usage field if backend doesn't provide it.
+3. **Usage stats source**: Pass through from backend; omit usage field if backend doesn't provide it.
+   - **Decision**: ✅ Aligned with updated FR-006.
+
+4. **Retry policy**: Immediate retry with next healthy backend (no backoff). Retry on: connection error, timeout, 5xx response.
+   - **Decision**: ✅ Simple immediate retry; exponential backoff in F05 Router.
 
 ---
 
@@ -754,14 +786,17 @@ futures-util = "0.3"  # For StreamExt on response body
 
 ## Test Summary
 
-| Phase | Unit Tests | Integration Tests | Total |
-|-------|------------|-------------------|-------|
-| Phase 1: Types | 12 | 0 | 12 |
-| Phase 2: Router | 5 | 0 | 5 |
-| Phase 3: Health | 0 | 5 | 5 |
-| Phase 4: Models | 0 | 6 | 6 |
-| Phase 5: Non-Streaming | 0 | 10 | 10 |
-| Phase 6: Streaming | 0 | 8 | 8 |
-| Phase 7: CLI Integration | 0 | 4 | 4 |
-| Phase 8: Performance | 0 | 5 | 5 |
-| **Total** | **17** | **38** | **55** |
+| Phase | Contract | Integration | Unit | Total |
+|-------|----------|-------------|------|-------|
+| Phase 1: Contract Tests | 8 | 0 | 0 | 8 |
+| Phase 2: Types | 0 | 0 | 12 | 12 |
+| Phase 3: Router Setup | 0 | 5 | 0 | 5 |
+| Phase 4: Health | 0 | 5 | 0 | 5 |
+| Phase 5: Models | 0 | 6 | 0 | 6 |
+| Phase 6: Non-Streaming | 0 | 14 | 0 | 14 |
+| Phase 7: Streaming | 0 | 10 | 0 | 10 |
+| Phase 8: CLI Integration | 0 | 5 | 0 | 5 |
+| Phase 9: Performance | 0 | 5 | 0 | 5 |
+| **Total** | **8** | **50** | **12** | **70** |
+
+> Test order follows constitution: Contract → Integration → Unit
