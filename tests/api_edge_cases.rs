@@ -210,10 +210,7 @@ async fn test_completions_all_retries_fail() {
 
     let body = body_to_string(response.into_body()).await;
     let json: serde_json::Value = serde_json::from_str(&body).unwrap();
-    assert!(json["error"]["message"]
-        .as_str()
-        .unwrap()
-        .contains("500"));
+    assert!(json["error"]["message"].as_str().unwrap().contains("500"));
 }
 
 #[tokio::test]
@@ -612,7 +609,10 @@ async fn test_completions_forwards_auth_header_nonstreaming() {
     // Mock expects Authorization header
     Mock::given(method("POST"))
         .and(path("/v1/chat/completions"))
-        .and(wiremock::matchers::header("Authorization", "Bearer test-token-123"))
+        .and(wiremock::matchers::header(
+            "Authorization",
+            "Bearer test-token-123",
+        ))
         .respond_with(ResponseTemplate::new(200).set_body_json(create_completion_response()))
         .mount(&mock_server)
         .await;
