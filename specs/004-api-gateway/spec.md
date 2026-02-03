@@ -4,7 +4,7 @@
 **Created**: 2026-02-03  
 **Status**: 📋 Specified  
 **Priority**: P0 (MVP)  
-**Depends On**: F02 (Backend Registry), F03 (Health Checker)
+**Depends On**: 001-backend-registry, 002-health-checker
 
 ## Overview
 
@@ -101,6 +101,8 @@ As a developer, I want proper error responses so that I can handle failures grac
 - What happens with malformed Authorization header? → Pass through to backend, let it decide
 - What happens when all retries fail? → Return 502 with last error message
 - What happens with extremely long model names? → Accept if backend accepts, return backend's error otherwise
+- What happens when client disconnects mid-stream? → Cancel backend request, log event
+- What happens when backend SSE format differs from OpenAI? → Transform to OpenAI format, return 502 if unparseable
 
 ## Requirements
 
@@ -111,7 +113,7 @@ As a developer, I want proper error responses so that I can handle failures grac
 - **FR-003**: Server MUST expose GET /v1/models endpoint
 - **FR-004**: Server MUST expose GET /health endpoint
 - **FR-005**: Server MUST forward Authorization headers to backends
-- **FR-006**: Server MUST return usage stats (prompt_tokens, completion_tokens)
+- **FR-006**: Server MUST pass through usage stats from backend (prompt_tokens, completion_tokens)
 - **FR-007**: Server MUST handle concurrent requests (100+)
 - **FR-008**: Server MUST retry failed requests with next backend (configurable)
 - **FR-009**: Server MUST gracefully shutdown on SIGTERM
@@ -124,6 +126,7 @@ As a developer, I want proper error responses so that I can handle failures grac
 - **NFR-003**: Server MUST handle 100+ concurrent connections
 - **NFR-004**: Streaming chunks MUST be forwarded with < 10ms additional latency
 - **NFR-005**: All requests MUST be logged via tracing
+- **NFR-006**: API Gateway memory overhead MUST be < 10MB beyond base server
 
 ## API Specification
 
@@ -409,15 +412,15 @@ Client Request
 
 ### Module Structure
 
+> **Simplicity Gate Justification**: The constitution asks for ≤3 main modules. This feature has 4 logical modules (completions, models, health, types/error). We split into more files for maintainability but they form 3 logical groups: (1) handlers (completions.rs, models.rs, health.rs), (2) types (types.rs, error.rs merged), (3) module root (mod.rs). Streaming is inlined in completions.rs.
+
 ```
 src/api/
 ├── mod.rs           # Router setup, shared state
-├── completions.rs   # POST /v1/chat/completions handler
+├── completions.rs   # POST /v1/chat/completions handler + streaming
 ├── models.rs        # GET /v1/models handler  
 ├── health.rs        # GET /health handler
-├── error.rs         # OpenAI-format error types
-├── types.rs         # Request/Response types
-└── streaming.rs     # SSE streaming utilities
+└── types.rs         # Request/Response types + OpenAI error types
 ```
 
 ## Technical Stack
@@ -427,6 +430,41 @@ src/api/
 - **Streaming**: async-stream + axum's SSE support
 - **Serialization**: serde + serde_json
 - **Runtime**: tokio (full features)
+
+## Registry Integration
+
+The API Gateway depends on types from the `registry` module (see `specs/001-backend-registry/spec.md`):
+
+- `registry::Backend` - Backend server info (url, type, status)
+- `registry::Model` - Model capability metadata (context_length, vision, tools)
+- `registry::BackendStatus` - Health status enum (Healthy, Unhealthy, Unknown)
+- `Registry` - The registry instance for backend/model lookups
+
+The Router (to be implemented in F05) will use Registry queries:
+- `get_backends_for_model(model: &str)` - Find backends serving a model
+- `get_healthy_backends()` - Filter to healthy backends only
+- `increment_pending(id)` / `decrement_pending(id)` - Track in-flight requests
+
+For detailed routing logic (scoring by priority/load/latency), see `docs/ARCHITECTURE.md` Router Layer section.
+
+## Test Strategy
+
+Following TDD approach per constitution (tests written first, verified to fail, then implementation).
+
+### Test Files
+
+| File | Purpose |
+|------|---------|
+| `tests/api_integration.rs` | End-to-end API tests with mock backends |
+| `src/api/completions.rs` | `#[cfg(test)] mod tests` for unit tests |
+| `src/api/models.rs` | `#[cfg(test)] mod tests` for unit tests |
+| `src/api/types.rs` | `#[cfg(test)] mod tests` for serialization tests |
+
+### Test Order (per constitution)
+
+1. **Contract tests** - Verify OpenAI API format compliance
+2. **Integration tests** - End-to-end with mock HTTP backends
+3. **Unit tests** - Handler logic and type conversions
 
 ## Success Criteria
 
@@ -442,14 +480,24 @@ src/api/
 
 ### Definition of Done
 
-- [ ] POST /v1/chat/completions handler implemented (non-streaming)
-- [ ] POST /v1/chat/completions handler implemented (streaming)
-- [ ] GET /v1/models handler implemented
-- [ ] GET /health handler updated with full status
+Following TDD workflow (tests first, then implementation):
+
+**Phase 1: Test Setup**
+- [ ] Contract tests defined for OpenAI API format compliance
+- [ ] Integration test scaffolding with mock HTTP backend
+- [ ] Tests verified to FAIL (Red phase)
+
+**Phase 2: Implementation (Green phase)**
+- [ ] POST /v1/chat/completions handler (non-streaming)
+- [ ] POST /v1/chat/completions handler (streaming)
+- [ ] GET /v1/models handler
+- [ ] GET /health handler with full status
 - [ ] Error handling returns OpenAI-format errors
 - [ ] Request timeout is configurable
-- [ ] Retry logic works with router
-- [ ] Integration tests with mock backends pass
-- [ ] Concurrent request handling tested
+- [ ] Retry logic with router integration
+
+**Phase 3: Verification**
+- [ ] All tests pass (Green phase)
+- [ ] Concurrent request handling tested (100+)
 - [ ] Code passes clippy and fmt checks
 - [ ] Module has `#[cfg(test)] mod tests` blocks
