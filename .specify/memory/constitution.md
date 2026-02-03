@@ -175,6 +175,12 @@ No implementation code shall be written before tests exist and fail.
 - `cargo clippy --all-features -- -D warnings` must pass
 - `cargo fmt --all -- --check` must pass
 
+### Acceptance Criteria Tracking
+- Each task in `tasks.md` has explicit acceptance criteria
+- Criteria are checked off (`- [x]`) as they are verified
+- All criteria must be checked before a feature is considered complete
+- Use `grep -c "\- \[ \]" specs/*/tasks.md` to verify no unchecked items
+
 ## Code Style
 
 ### Formatting
@@ -224,4 +230,4 @@ These are explicitly out of scope:
 - Refer to `docs/ARCHITECTURE.md` for system design
 - Refer to `docs/FEATURES.md` for feature specifications
 
-**Version**: 1.0.0 | **Ratified**: 2026-02-01 | **Last Amended**: 2026-02-01
+**Version**: 1.0.0 | **Ratified**: 2026-02-01 | **Last Amended**: 2026-02-03
