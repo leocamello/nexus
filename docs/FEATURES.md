@@ -6,18 +6,22 @@ Detailed specifications for each feature in the Nexus LLM Orchestrator.
 
 ## Feature Index
 
-| ID | Feature | Priority | Status |
-|----|---------|----------|--------|
-| F01 | Core API Gateway | P0 | Planned |
-| F02 | Backend Registry | P0 | Planned |
-| F03 | Health Checker | P0 | Planned |
-| F04 | CLI and Configuration | P0 | Planned |
-| F05 | mDNS Discovery | P1 | Planned |
-| F06 | Intelligent Router | P1 | Planned |
-| F07 | Model Aliases | P1 | Planned |
-| F08 | Fallback Chains | P1 | Planned |
-| F09 | Request Metrics | P2 | Planned |
-| F10 | Web Dashboard | P2 | Planned |
+| ID | Feature | Priority | Status | Spec |
+|----|---------|----------|--------|------|
+| F01 | Core API Gateway | P0 | ✅ Complete | [specs/004-api-gateway](../specs/004-api-gateway/) |
+| F02 | Backend Registry | P0 | ✅ Complete | [specs/001-backend-registry](../specs/001-backend-registry/) |
+| F03 | Health Checker | P0 | ✅ Complete | [specs/002-health-checker](../specs/002-health-checker/) |
+| F04 | CLI and Configuration | P0 | ✅ Complete | [specs/003-cli-configuration](../specs/003-cli-configuration/) |
+| F05 | mDNS Discovery | P1 | Planned | - |
+| F06 | Intelligent Router | P1 | Planned | - |
+| F07 | Model Aliases | P1 | Planned | - |
+| F08 | Fallback Chains | P1 | Planned | - |
+| F09 | Request Metrics | P2 | Planned | - |
+| F10 | Web Dashboard | P2 | Planned | - |
+
+### MVP Status: ✅ Complete
+
+All P0 features implemented with **224 tests passing**.
 
 ---
 
@@ -135,12 +139,12 @@ data: [DONE]
 ```
 
 ### Acceptance Criteria
-- [ ] POST /v1/chat/completions works with non-streaming
-- [ ] POST /v1/chat/completions works with streaming (SSE)
-- [ ] GET /v1/models lists all models from all backends
-- [ ] GET /health returns system status
-- [ ] Handles concurrent requests (100+)
-- [ ] Proper error responses in OpenAI format
+- [x] POST /v1/chat/completions works with non-streaming
+- [x] POST /v1/chat/completions works with streaming (SSE)
+- [x] GET /v1/models lists all models from all backends
+- [x] GET /health returns system status
+- [x] Handles concurrent requests (100+)
+- [x] Proper error responses in OpenAI format
 
 ---
 
@@ -218,10 +222,10 @@ enum DiscoverySource {
 | `decrement_pending(id)` | Request completed |
 
 ### Acceptance Criteria
-- [ ] Thread-safe access (Arc<RwLock>)
-- [ ] Fast lookup by model name (indexed)
-- [ ] Survives concurrent read/write
-- [ ] Serializable to JSON for debugging
+- [x] Thread-safe access (DashMap)
+- [x] Fast lookup by model name (indexed)
+- [x] Survives concurrent read/write
+- [x] Serializable to JSON for debugging
 
 ---
 
@@ -295,12 +299,12 @@ recovery_threshold = 2
 ```
 
 ### Acceptance Criteria
-- [ ] Checks all backends periodically
-- [ ] Updates registry on status change
-- [ ] Logs health transitions
-- [ ] Parses model lists from different backend types
-- [ ] Handles timeouts gracefully
-- [ ] Staggered checks (avoid thundering herd)
+- [x] Checks all backends periodically
+- [x] Updates registry on status change
+- [x] Logs health transitions
+- [x] Parses model lists from different backend types
+- [x] Handles timeouts gracefully
+- [x] Staggered checks (avoid thundering herd)
 
 ---
 
@@ -386,13 +390,13 @@ Backends:
 ```
 
 ### Acceptance Criteria
-- [ ] `serve` command starts server
-- [ ] `backends` lists all backends
-- [ ] `models` lists all models
-- [ ] `health` shows status
-- [ ] Config file loads correctly
-- [ ] Environment variables override config
-- [ ] CLI args override everything
+- [x] `serve` command starts server
+- [x] `backends` lists all backends
+- [x] `models` lists all models
+- [x] `health` shows status
+- [x] Config file loads correctly
+- [x] Environment variables override config
+- [x] CLI args override everything
 
 ---
 
@@ -648,21 +652,21 @@ Simple web UI for monitoring.
 
 ## Implementation Order
 
-### Phase 1: MVP (Weeks 1-3)
-1. F02: Backend Registry
-2. F03: Health Checker
-3. F01: Core API Gateway
-4. F04: CLI and Configuration (basic)
+### Phase 1: MVP ✅ Complete
+1. F02: Backend Registry ✅
+2. F03: Health Checker ✅
+3. F01: Core API Gateway ✅
+4. F04: CLI and Configuration ✅
 
-### Phase 2: Discovery (Weeks 4-5)
+### Phase 2: Discovery (Next)
 5. F05: mDNS Discovery
 
-### Phase 3: Intelligence (Weeks 6-7)
+### Phase 3: Intelligence
 6. F06: Intelligent Router
 7. F07: Model Aliases
 8. F08: Fallback Chains
 
-### Phase 4: Polish (Weeks 8-9)
+### Phase 4: Polish
 9. F04: CLI and Configuration (complete)
 10. F09: Request Metrics
 11. F10: Web Dashboard
