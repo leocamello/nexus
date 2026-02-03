@@ -74,9 +74,9 @@ These tasks implement **P0/P1 features only**. The following P2 features are **e
 5. Run `cargo check` to verify structure compiles
 
 **Acceptance Criteria**:
-- [ ] `cargo check` passes with no errors
-- [ ] Module structure matches plan's file layout
-- [ ] tokio-util is available in dependencies
+- [x] `cargo check` passes with no errors
+- [x] Module structure matches plan's file layout
+- [x] tokio-util is available in dependencies
 
 **Test Command**: `cargo check`
 
@@ -164,9 +164,9 @@ impl Default for HealthCheckConfig {
 ```
 
 **Acceptance Criteria**:
-- [ ] All 4 tests pass
-- [ ] Config can be parsed from TOML
-- [ ] Default values match spec
+- [x] All 4 tests pass
+- [x] Config can be parsed from TOML
+- [x] Default values match spec
 
 **Test Command**: `cargo test health::tests::test_config`
 
@@ -247,9 +247,9 @@ pub enum HealthCheckError {
 ```
 
 **Acceptance Criteria**:
-- [ ] All 6 tests pass
-- [ ] Error implements std::error::Error
-- [ ] Display messages match spec
+- [x] All 6 tests pass
+- [x] Error implements std::error::Error
+- [x] Display messages match spec
 
 **Test Command**: `cargo test health::tests::test_error`
 
@@ -313,9 +313,9 @@ impl Default for BackendHealthState {
 ```
 
 **Acceptance Criteria**:
-- [ ] All 2 tests pass
-- [ ] State references existing registry types
-- [ ] Default values match spec
+- [x] All 2 tests pass
+- [x] State references existing registry types
+- [x] Default values match spec
 
 **Test Command**: `cargo test health::tests::test_state`
 
@@ -423,9 +423,9 @@ pub fn parse_ollama_response(body: &str) -> Result<Vec<Model>, HealthCheckError>
 ```
 
 **Acceptance Criteria**:
-- [ ] All 7 tests pass
-- [ ] Vision model detection works (llava, vision)
-- [ ] Tool model detection works (mistral)
+- [x] All 7 tests pass
+- [x] Vision model detection works (llava, vision)
+- [x] Tool model detection works (mistral)
 
 **Test Command**: `cargo test health::tests::test_parse_ollama`
 
@@ -537,9 +537,9 @@ pub fn parse_llamacpp_response(body: &str) -> Result<bool, HealthCheckError> {
 ```
 
 **Acceptance Criteria**:
-- [ ] All 7 tests pass
-- [ ] OpenAI format parsing works for vLLM, Exo, Generic
-- [ ] LlamaCpp health check returns boolean
+- [x] All 7 tests pass
+- [x] OpenAI format parsing works for vLLM, Exo, Generic
+- [x] LlamaCpp health check returns boolean
 
 **Test Command**: `cargo test health::tests::test_parse_openai && cargo test health::tests::test_parse_llamacpp`
 
@@ -716,12 +716,12 @@ impl BackendHealthState {
 ```
 
 **Acceptance Criteria**:
-- [ ] All 8 tests pass
-- [ ] Unknown → Healthy on 1 success
-- [ ] Unknown → Unhealthy on 1 failure
-- [ ] Healthy → Unhealthy after 3 consecutive failures
-- [ ] Unhealthy → Healthy after 2 consecutive successes
-- [ ] Counters reset on opposite result
+- [x] All 8 tests pass
+- [x] Unknown → Healthy on 1 success
+- [x] Unknown → Unhealthy on 1 failure
+- [x] Healthy → Unhealthy after 3 consecutive failures
+- [x] Unhealthy → Healthy after 2 consecutive successes
+- [x] Counters reset on opposite result
 
 **Test Command**: `cargo test health::tests::test_transition`
 
@@ -818,9 +818,9 @@ impl HealthChecker {
 ```
 
 **Acceptance Criteria**:
-- [ ] All 6 endpoint tests pass
-- [ ] All backend types have defined endpoints
-- [ ] Error classification distinguishes timeout from connection errors
+- [x] All 6 endpoint tests pass
+- [x] All backend types have defined endpoints
+- [x] Error classification distinguishes timeout from connection errors
 
 **Test Command**: `cargo test health::tests::test_endpoint`
 
@@ -967,10 +967,10 @@ impl HealthChecker {
 ```
 
 **Acceptance Criteria**:
-- [ ] All 5 tests pass with mock HTTP server
-- [ ] Latency is measured correctly
-- [ ] Different backend types use correct parsers
-- [ ] Timeout, connection, and HTTP errors are classified correctly
+- [x] All 5 tests pass with mock HTTP server
+- [x] Latency is measured correctly
+- [x] Different backend types use correct parsers
+- [x] Timeout, connection, and HTTP errors are classified correctly
 
 **Test Command**: `cargo test health::tests::test_check_backend`
 
@@ -1137,11 +1137,11 @@ impl HealthChecker {
 ```
 
 **Acceptance Criteria**:
-- [ ] All 5 tests pass
-- [ ] Status updates go to registry
-- [ ] Model updates go to registry
-- [ ] Latency updates go to registry
-- [ ] Removed backends don't cause panic
+- [x] All 5 tests pass
+- [x] Status updates go to registry
+- [x] Model updates go to registry
+- [x] Latency updates go to registry
+- [x] Removed backends don't cause panic
 
 **Test Command**: `cargo test health::tests::test_apply`
 
@@ -1307,10 +1307,10 @@ impl HealthChecker {
 ```
 
 **Acceptance Criteria**:
-- [ ] All 5 tests pass
-- [ ] Loop respects cancellation token
-- [ ] Empty registry doesn't panic
-- [ ] All backends are checked each cycle
+- [x] All 5 tests pass
+- [x] Loop respects cancellation token
+- [x] Empty registry doesn't panic
+- [x] All backends are checked each cycle
 
 **Test Command**: `cargo test health::tests::test_loop`
 
@@ -1405,11 +1405,11 @@ fn test_memory_overhead_per_backend() {
 ```
 
 **Acceptance Criteria**:
-- [ ] Full cycle test passes
-- [ ] Status transition thresholds work correctly
-- [ ] Model discovery populates registry
-- [ ] Graceful shutdown completes cleanly
-- [ ] Memory overhead per backend < 5KB (NFR-004)
+- [x] Full cycle test passes
+- [x] Status transition thresholds work correctly
+- [x] Model discovery populates registry
+- [x] Graceful shutdown completes cleanly
+- [x] Memory overhead per backend < 5KB (NFR-004)
 
 **Test Command**: `cargo test --test health_integration`
 
@@ -1475,12 +1475,12 @@ fn test_memory_overhead_per_backend() {
    ```
 
 **Acceptance Criteria**:
-- [ ] Zero clippy warnings
-- [ ] Code formatted with rustfmt
-- [ ] All tests pass (48+ tests)
-- [ ] Doc comments on all public items
-- [ ] Module docs with example compiles
-- [ ] `cargo doc` generates documentation
+- [x] Zero clippy warnings
+- [x] Code formatted with rustfmt
+- [x] All tests pass (48+ tests)
+- [x] Doc comments on all public items
+- [x] Module docs with example compiles
+- [x] `cargo doc` generates documentation
 
 **Test Command**: `cargo clippy && cargo fmt -- --check && cargo test && cargo doc`
 

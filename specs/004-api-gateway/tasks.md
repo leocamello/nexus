@@ -1155,12 +1155,12 @@ async fn test_streaming_client_disconnect() {
 **Implementation**: (As shown in plan Phase 7)
 
 **Acceptance Criteria**:
-- [ ] All 8 streaming tests pass
-- [ ] Content-Type is text/event-stream
-- [ ] Chunks forwarded immediately (no buffering)
-- [ ] Final message is `data: [DONE]`
-- [ ] Errors before streaming return proper status codes
-- [ ] Client disconnect cancels backend request
+- [x] All 8 streaming tests pass
+- [x] Content-Type is text/event-stream
+- [x] Chunks forwarded immediately (no buffering)
+- [x] Final message is `data: [DONE]`
+- [x] Errors before streaming return proper status codes
+- [x] Client disconnect cancels backend request
 
 **Test Command**: `cargo test streaming`
 
@@ -1282,11 +1282,11 @@ async fn test_streaming_backend_invalid_sse() {
 3. Improve error messages for all-retries-failed case
 
 **Acceptance Criteria**:
-- [ ] All 6 edge case tests pass
-- [ ] 413 returned for oversized payloads
-- [ ] Proper error after all retries exhausted
-- [ ] Long model names handled correctly
-- [ ] Invalid backend responses handled gracefully
+- [x] All 6 edge case tests pass
+- [x] 413 returned for oversized payloads
+- [x] Proper error after all retries exhausted
+- [x] Long model names handled correctly
+- [x] Invalid backend responses handled gracefully
 
 **Test Command**: `cargo test edge_case`
 
@@ -1456,9 +1456,9 @@ async fn test_connection_pooling() {
 ```
 
 **Acceptance Criteria**:
-- [ ] 100 concurrent requests complete successfully
-- [ ] Mixed streaming/non-streaming works
-- [ ] Connection pooling reduces connection count
+- [x] 100 concurrent requests complete successfully
+- [x] Mixed streaming/non-streaming works
+- [x] Connection pooling reduces connection count
 
 **Test Command**: `cargo test concurrent`
 
@@ -1519,9 +1519,9 @@ async fn test_memory_overhead_under_10mb() {
 ```
 
 **Acceptance Criteria**:
-- [ ] Proxy overhead < 5ms (average)
-- [ ] Memory overhead < 10MB
-- [ ] Tests documented with measurement methodology
+- [x] Proxy overhead < 5ms (average)
+- [x] Memory overhead < 10MB
+- [x] Tests documented with measurement methodology
 
 **Test Command**: `cargo test performance`
 
@@ -1592,7 +1592,7 @@ async fn test_memory_overhead_under_10mb() {
 - [X] All public items documented
 - [X] README includes API examples
 - [X] Doc tests pass
-- [ ] walkthrough.md created (optional, can be added later)
+- [x] walkthrough.md created
 
 **Test Command**: `cargo clippy --all-targets -- -D warnings && cargo test --doc`
 
