@@ -29,12 +29,59 @@ Nexus is a distributed LLM model serving orchestrator that unifies heterogeneous
 # Install (from source)
 cargo install --path .
 
+# Generate a configuration file
+nexus config init
+
 # Run with auto-discovery
 nexus serve
 
-# Or with a config file
+# Or with a custom config file
 nexus serve --config nexus.toml
 ```
+
+## CLI Commands
+
+```bash
+# Start the server
+nexus serve [--config FILE] [--port PORT] [--host HOST]
+
+# List backends
+nexus backends list [--json] [--status healthy|unhealthy|unknown]
+
+# Add a backend manually (auto-detects type)
+nexus backends add http://localhost:11434 [--name NAME] [--type ollama|vllm|llamacpp]
+
+# Remove a backend
+nexus backends remove <ID>
+
+# List available models
+nexus models [--json] [--backend ID]
+
+# Show system health
+nexus health [--json]
+
+# Generate config file
+nexus config init [--output FILE] [--force] [--minimal]
+
+# Generate shell completions
+nexus completions bash > ~/.bash_completion.d/nexus
+nexus completions zsh > ~/.zsh/completions/_nexus
+nexus completions fish > ~/.config/fish/completions/nexus.fish
+```
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `NEXUS_CONFIG` | Config file path | `nexus.toml` |
+| `NEXUS_PORT` | Listen port | `8000` |
+| `NEXUS_HOST` | Listen address | `0.0.0.0` |
+| `NEXUS_LOG_LEVEL` | Log level (trace/debug/info/warn/error) | `info` |
+| `NEXUS_LOG_FORMAT` | Log format (pretty/json) | `pretty` |
+| `NEXUS_DISCOVERY` | Enable mDNS discovery | `true` |
+| `NEXUS_HEALTH_CHECK` | Enable health checking | `true` |
+
+**Precedence**: CLI args > Environment variables > Config file > Defaults
 
 ## Usage
 

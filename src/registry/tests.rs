@@ -850,7 +850,6 @@ fn test_update_status_changes_status() {
 
 #[test]
 fn test_update_status_sets_timestamp() {
-    use chrono::Utc;
     use std::thread;
     use std::time::Duration;
 
