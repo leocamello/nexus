@@ -2,15 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Backend type
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum BackendType {
-    Ollama,
-    Vllm,
-    OpenAI,
-    Claude,
-}
+// Re-export BackendType from registry
+pub use crate::registry::BackendType;
 
 /// Backend configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]

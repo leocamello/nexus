@@ -952,10 +952,10 @@ fn build_basic_router(registry: Arc<Registry>) -> Router {
 ```
 
 **Acceptance Criteria**:
-- [ ] All 6 tests pass
-- [ ] Server starts and binds to configured port
-- [ ] Health checker starts (unless disabled)
-- [ ] Config precedence works: CLI > env > file > defaults
+- [X] All 6 tests pass
+- [X] Server starts and binds to configured port
+- [X] Health checker starts (unless disabled)
+- [X] Config precedence works: CLI > env > file > defaults
 
 **Test Command**: `cargo test cli::serve`
 
@@ -1057,10 +1057,10 @@ fn parse_status(s: &str) -> Result<BackendStatus, Box<dyn std::error::Error>> {
 ```
 
 **Acceptance Criteria**:
-- [ ] All 4 tests pass
-- [ ] Empty registry shows empty table (not error)
-- [ ] `--status` filter works
-- [ ] `--json` outputs valid JSON
+- [X] All 4 tests pass
+- [X] Empty registry shows empty table (not error)
+- [X] `--status` filter works
+- [X] `--json` outputs valid JSON
 
 **Test Command**: `cargo test cli::backends::tests::test_backends_list`
 
@@ -1286,12 +1286,12 @@ pub fn handle_backends_remove(
 ```
 
 **Acceptance Criteria**:
-- [ ] All 7 tests pass
-- [ ] Add generates name from URL if not provided
-- [ ] Add validates URL format
-- [ ] Auto-detection tries Ollama → LlamaCpp → OpenAI → Generic
-- [ ] Auto-detection times out after 2s per endpoint
-- [ ] Remove returns error for unknown ID
+- [X] All 7 tests pass
+- [X] Add generates name from URL if not provided
+- [X] Add validates URL format
+- [X] Auto-detection tries Ollama → LlamaCpp → OpenAI → Generic
+- [X] Auto-detection times out after 2s per endpoint
+- [X] Remove returns error for unknown ID
 
 **Test Command**: `cargo test cli::backends::tests::test_backends_add`
 
@@ -1409,10 +1409,10 @@ pub fn handle_models(
 ```
 
 **Acceptance Criteria**:
-- [ ] All 4 tests pass
-- [ ] Models aggregated across backends
-- [ ] `--backend` filter works
-- [ ] Shows capability columns (Vision, Tools, JSON)
+- [X] All 4 tests pass
+- [X] Models aggregated across backends
+- [X] `--backend` filter works
+- [X] Shows capability columns (Vision, Tools, JSON)
 
 **Test Command**: `cargo test cli::models`
 
@@ -1544,10 +1544,10 @@ fn format_health_pretty(status: &HealthStatus, backends: &[BackendView]) -> Stri
 ```
 
 **Acceptance Criteria**:
-- [ ] All 4 tests pass
-- [ ] Shows "healthy" or "degraded" status
-- [ ] Shows formatted uptime
-- [ ] JSON includes all required fields
+- [X] All 4 tests pass
+- [X] Shows "healthy" or "degraded" status
+- [X] Shows formatted uptime
+- [X] JSON includes all required fields
 
 **Test Command**: `cargo test cli::health`
 
@@ -1869,11 +1869,11 @@ async fn shutdown_signal(cancel_token: CancellationToken) {
 ```
 
 **Acceptance Criteria**:
-- [ ] All 3 tests pass
-- [ ] SIGINT triggers graceful shutdown
-- [ ] SIGTERM triggers graceful shutdown (Unix)
-- [ ] Health checker stops cleanly
-- [ ] Exit code 0 on clean shutdown
+- [X] All 3 tests pass
+- [X] SIGINT triggers graceful shutdown
+- [X] SIGTERM triggers graceful shutdown (Unix)
+- [X] Health checker stops cleanly
+- [X] Exit code 0 on clean shutdown
 
 **Test Command**: `cargo test cli::serve::tests::test_shutdown`
 

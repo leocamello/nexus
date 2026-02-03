@@ -85,6 +85,10 @@ pub struct BackendsListArgs {
     #[arg(long)]
     pub json: bool,
 
+    /// Filter by status (healthy, unhealthy, unknown, draining)
+    #[arg(short, long)]
+    pub status: Option<String>,
+
     /// Path to configuration file
     #[arg(short, long, default_value = "nexus.toml")]
     pub config: PathBuf,
@@ -128,8 +132,12 @@ pub struct ModelsArgs {
     #[arg(long)]
     pub json: bool,
 
+    /// Filter by backend ID
+    #[arg(short, long)]
+    pub backend: Option<String>,
+
     /// Path to configuration file
-    #[arg(short, long, default_value = "nexus.toml")]
+    #[arg(short = 'c', long, default_value = "nexus.toml")]
     pub config: PathBuf,
 }
 

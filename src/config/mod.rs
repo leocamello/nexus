@@ -5,7 +5,6 @@
 pub mod backend;
 pub mod discovery;
 pub mod error;
-pub mod health_check;
 pub mod logging;
 pub mod routing;
 pub mod server;
@@ -13,10 +12,12 @@ pub mod server;
 pub use backend::{BackendConfig, BackendType};
 pub use discovery::DiscoveryConfig;
 pub use error::ConfigError;
-pub use health_check::HealthCheckConfig;
 pub use logging::{LogFormat, LoggingConfig};
 pub use routing::{RoutingConfig, RoutingStrategy, RoutingWeights};
 pub use server::ServerConfig;
+
+// Re-export HealthCheckConfig from health module
+pub use crate::health::HealthCheckConfig;
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -85,6 +86,35 @@ impl NexusConfig {
         }
 
         self
+    }
+
+    /// Validate configuration
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        // Validate server config
+        if self.server.port == 0 {
+            return Err(ConfigError::Validation {
+                field: "server.port".to_string(),
+                message: "port must be non-zero".to_string(),
+            });
+        }
+
+        // Validate backends
+        for (i, backend) in self.backends.iter().enumerate() {
+            if backend.url.is_empty() {
+                return Err(ConfigError::Validation {
+                    field: format!("backends[{}].url", i),
+                    message: "URL cannot be empty".to_string(),
+                });
+            }
+            if backend.name.is_empty() {
+                return Err(ConfigError::Validation {
+                    field: format!("backends[{}].name", i),
+                    message: "name cannot be empty".to_string(),
+                });
+            }
+        }
+
+        Ok(())
     }
 }
 

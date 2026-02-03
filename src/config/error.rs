@@ -15,8 +15,8 @@ pub enum ConfigError {
     #[error("Failed to parse config: {0}")]
     Parse(String),
 
-    #[error("Validation error: {0}")]
-    Validation(String),
+    #[error("Invalid value for '{field}': {message}")]
+    Validation { field: String, message: String },
 
     #[error("Missing required field: {0}")]
     MissingField(String),
