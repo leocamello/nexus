@@ -119,6 +119,53 @@ handle.await?;
 
 **IMPORTANT**: Always use feature branches and Pull Requests for feature implementations.
 
+### Feature Development Lifecycle
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  1. SPEC PHASE                                                      │
+│     - Write spec.md, plan.md, tasks.md                              │
+│     - Validate against requirements-quality.md checklist            │
+│     - Create GitHub issues from tasks                               │
+├─────────────────────────────────────────────────────────────────────┤
+│  2. IMPLEMENTATION PHASE                                            │
+│     - Create feature branch                                         │
+│     - Copy implementation-verification.md to feature folder         │
+│     - Implement with TDD (tests first)                              │
+│     - Check off acceptance criteria as you go                       │
+├─────────────────────────────────────────────────────────────────────┤
+│  3. VERIFICATION PHASE                                              │
+│     - Run speckit.analyze                                           │
+│     - Verify all checklists complete                                │
+│     - Create walkthrough.md                                         │
+├─────────────────────────────────────────────────────────────────────┤
+│  4. MERGE PHASE                                                     │
+│     - Push feature branch                                           │
+│     - Create PR with verification summary                           │
+│     - Merge (closes issues automatically)                           │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Quality Checklists
+
+Use the two-checklist system for quality assurance:
+
+| Phase | Checklist | Command |
+|-------|-----------|---------|
+| Before coding | Validate spec quality | Review `.specify/checklists/requirements-quality.md` |
+| After coding | Verify implementation | Check `.specify/templates/implementation-verification.md` |
+
+```bash
+# Copy verification template to your feature
+cp .specify/templates/implementation-verification.md specs/XXX-feature/verification.md
+
+# Verify all items checked before PR
+grep -c "\- \[ \]" specs/XXX-feature/verification.md  # Should be 0
+grep -c "\- \[ \]" specs/XXX-feature/tasks.md         # Should be 0
+```
+
+**Quick Reference**: See `.specify/QUICK-REFERENCE.md` for top critical items.
+
 ### Feature Branch Process
 
 ```bash
@@ -173,8 +220,9 @@ When completing a task, **always update the tasks.md file**:
 3. **Use speckit.analyze**: Run analysis before PR to catch gaps
 
 ```bash
-# Verify no unchecked items remain
-grep -c "\- \[ \]" specs/XXX-feature/tasks.md  # Should be 0
+# Verify no unchecked items remain in ALL feature docs
+grep -c "\- \[ \]" specs/XXX-feature/tasks.md         # Should be 0
+grep -c "\- \[ \]" specs/XXX-feature/verification.md  # Should be 0
 ```
 
 **Why**: Acceptance criteria checkboxes document what was actually delivered. Unchecked boxes create confusion about implementation status.
