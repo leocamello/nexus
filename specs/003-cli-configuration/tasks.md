@@ -61,10 +61,14 @@
    
    # Terminal colors
    colored = "2"
+   
+   # Shell completion generation
+   clap_complete = "4"
    ```
-2. Add dev-dependency:
+2. Add dev-dependencies:
    ```toml
    tempfile = "3"
+   wiremock = "0.6"  # Already present, verify version
    ```
 3. Update `src/lib.rs`:
    ```rust
@@ -400,15 +404,15 @@ impl NexusConfig {
 
 ---
 
-## T05: ConfigError Enum & Validation
+## T05: ConfigError Enum & Validation (with Unknown Key Warnings)
 
-**Goal**: Implement error types with helpful messages.
+**Goal**: Implement error types with helpful messages and unknown key detection.
 
 **Files to modify**:
 - `src/config/error.rs`
 - `src/config/mod.rs`
 
-**Tests to Write First** (4 tests):
+**Tests to Write First** (5 tests):
 ```rust
 #[test]
 fn test_config_error_not_found_display() {
@@ -444,6 +448,23 @@ fn test_config_validation_empty_backend_url() {
     let result = config.validate();
     assert!(matches!(result, Err(ConfigError::ValidationError { field, .. }) if field.contains("url")));
 }
+
+#[test]
+fn test_config_warns_on_unknown_keys() {
+    // This test verifies unknown keys don't cause errors
+    // The warning is logged via tracing (can verify with tracing_test crate)
+    let toml = r#"
+    [server]
+    port = 8000
+    
+    [unknown_section]
+    foo = "bar"
+    "#;
+    
+    // Should parse successfully (unknown keys are warned, not rejected)
+    let result = NexusConfig::load_from_str(toml);
+    assert!(result.is_ok());
+}
 ```
 
 **Implementation**:
@@ -464,6 +485,36 @@ pub enum ConfigError {
 }
 
 impl NexusConfig {
+    /// Load config from string, warning on unknown keys
+    pub fn load_from_str(content: &str) -> Result<Self, ConfigError> {
+        // First, detect unknown keys
+        Self::warn_unknown_keys(content);
+        
+        // Then parse normally
+        toml::from_str(content)
+            .map_err(|e| ConfigError::ParseError(e.to_string()))
+    }
+    
+    /// Warn about unknown top-level config keys
+    fn warn_unknown_keys(content: &str) {
+        let known_keys = ["server", "discovery", "health_check", 
+                         "routing", "backends", "logging"];
+        
+        if let Ok(raw_value) = content.parse::<toml::Value>() {
+            if let toml::Value::Table(table) = raw_value {
+                for key in table.keys() {
+                    if !known_keys.contains(&key.as_str()) {
+                        tracing::warn!(
+                            key = %key, 
+                            "Unknown config key '{}' - ignoring", 
+                            key
+                        );
+                    }
+                }
+            }
+        }
+    }
+    
     pub fn validate(&self) -> Result<(), ConfigError> {
         if self.server.port == 0 {
             return Err(ConfigError::ValidationError {
@@ -493,7 +544,7 @@ impl NexusConfig {
 ```
 
 **Acceptance Criteria**:
-- [ ] All 4 tests pass
+- [ ] All 5 tests pass
 - [ ] Error messages include field names
 - [ ] Validation catches common mistakes
 
@@ -2052,7 +2103,7 @@ fn test_backends_list_no_server() {
 | T02 | 6 | 0 | 0 | 6 |
 | T03 | 5 | 0 | 0 | 5 |
 | T04 | 4 | 0 | 0 | 4 |
-| T05 | 4 | 0 | 0 | 4 |
+| T05 | 5 | 0 | 0 | 5 |
 | T06 | 8 | 0 | 0 | 8 |
 | T07 | 6 | 0 | 0 | 6 |
 | T08 | 6 | 0 | 0 | 6 |
@@ -2065,13 +2116,13 @@ fn test_backends_list_no_server() {
 | T15 | 3 | 0 | 0 | 3 |
 | T16 | 0 | 10 | 0 | 10 |
 | T17 | 0 | 0 | ~4 | 4 |
-| **Total** | **56** | **10** | **~4** | **~70** |
+| **Total** | **57** | **10** | **~4** | **~71** |
 
 ---
 
 ## Definition of Done
 
-- [ ] All 70 tests pass
+- [ ] All 71 tests pass
 - [ ] `cargo clippy` reports no warnings
 - [ ] `cargo fmt --check` passes
 - [ ] `nexus --version` shows version
@@ -2080,6 +2131,7 @@ fn test_backends_list_no_server() {
 - [ ] `nexus config init` generates valid config
 - [ ] `nexus completions <shell>` generates valid completions
 - [ ] Config precedence: CLI > env > file > defaults
+- [ ] Unknown config keys logged as warnings (not errors)
 - [ ] Graceful shutdown on SIGINT/SIGTERM
 - [ ] JSON output valid for all commands
 - [ ] Documentation complete with examples
