@@ -164,6 +164,21 @@ Closes #125
 - Issues are automatically closed when PR is merged
 - Easier to revert if needed (single PR vs hunting commits)
 
+### Task Completion Checklist
+
+When completing a task, **always update the tasks.md file**:
+
+1. **After implementing each task**: Check off acceptance criteria as you verify them
+2. **Before committing**: Ensure all `- [ ]` items for the task are now `- [x]`
+3. **Use speckit.analyze**: Run analysis before PR to catch gaps
+
+```bash
+# Verify no unchecked items remain
+grep -c "\- \[ \]" specs/XXX-feature/tasks.md  # Should be 0
+```
+
+**Why**: Acceptance criteria checkboxes document what was actually delivered. Unchecked boxes create confusion about implementation status.
+
 ## Coding Standards
 
 - Line width: 100 characters (see `rustfmt.toml`)
