@@ -19,8 +19,8 @@ cargo test <test_name>
 # Run tests in a specific module
 cargo test <module>::
 
-# Lint
-cargo clippy --all-features -- -D warnings
+# Lint (all-targets catches test and example code too)
+cargo clippy --all-targets -- -D warnings
 
 # Format check
 cargo fmt --all -- --check
@@ -83,6 +83,30 @@ RUST_LOG=debug cargo run -- serve
 - `BackendStatus`: Healthy, Unhealthy, Unknown
 - `DiscoverySource`: Static (config), MDNS (auto), Manual (CLI)
 - `Model`: Must include context length and feature flags (vision, tools)
+
+### Key Patterns
+
+**View Models for Output**: Separate internal types from display/serialization types:
+```rust
+// Internal type (complex, atomics, business logic)
+pub struct Backend { /* ... */ }
+
+// Display type (simple, serializable, no atomics)
+pub struct BackendView { /* ... */ }
+
+impl From<&Backend> for BackendView { /* ... */ }
+```
+
+**Graceful Shutdown**: Use `CancellationToken` from `tokio_util` for clean shutdown:
+```rust
+let cancel_token = CancellationToken::new();
+// Pass to background tasks
+let handle = health_checker.start(cancel_token.clone());
+// Wait for shutdown signal
+shutdown_signal(cancel_token).await;
+// Cleanup
+handle.await?;
+```
 
 ## Architectural Rules
 
