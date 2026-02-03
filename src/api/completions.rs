@@ -1,11 +1,17 @@
 //! Chat completions endpoint handler.
 
-use crate::api::{ApiError, AppState, ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, ChunkChoice, ChunkDelta};
+use crate::api::{
+    ApiError, AppState, ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse,
+    ChunkChoice, ChunkDelta,
+};
 use crate::registry::{Backend, BackendStatus};
 use axum::{
     extract::State,
     http::HeaderMap,
-    response::{sse::{Event, Sse}, IntoResponse, Response},
+    response::{
+        sse::{Event, Sse},
+        IntoResponse, Response,
+    },
     Json,
 };
 use futures::StreamExt;

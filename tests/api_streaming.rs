@@ -142,7 +142,10 @@ async fn test_streaming_sends_chunks() {
     let body_str = body_to_string(response.into_body()).await;
 
     // Should have multiple data: lines
-    let data_lines: Vec<_> = body_str.lines().filter(|l| l.starts_with("data: ")).collect();
+    let data_lines: Vec<_> = body_str
+        .lines()
+        .filter(|l| l.starts_with("data: "))
+        .collect();
     assert!(
         data_lines.len() >= 4,
         "Expected at least 4 data lines, got {}: {:?}",
@@ -311,7 +314,10 @@ async fn test_streaming_forwards_auth_header() {
 
     Mock::given(method("POST"))
         .and(path("/v1/chat/completions"))
-        .and(wiremock::matchers::header("Authorization", "Bearer test-token"))
+        .and(wiremock::matchers::header(
+            "Authorization",
+            "Bearer test-token",
+        ))
         .respond_with(
             ResponseTemplate::new(200)
                 .set_body_string(create_sse_response(&["Auth OK"], true))
