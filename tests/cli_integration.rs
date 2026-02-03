@@ -2,6 +2,8 @@
 //!
 //! End-to-end tests for CLI commands using assert_cmd.
 
+#![allow(deprecated)] // cargo_bin is deprecated but still works
+
 use assert_cmd::Command;
 use predicates::prelude::*;
 use tempfile::TempDir;

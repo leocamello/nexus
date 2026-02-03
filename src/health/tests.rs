@@ -114,8 +114,10 @@ fn test_state_default() {
 
 #[test]
 fn test_state_clone() {
-    let mut state = BackendHealthState::default();
-    state.consecutive_failures = 2;
+    let state = BackendHealthState {
+        consecutive_failures: 2,
+        ..Default::default()
+    };
     let cloned = state.clone();
     assert_eq!(cloned.consecutive_failures, 2);
 }
@@ -283,8 +285,10 @@ fn test_unknown_to_unhealthy_on_failure() {
 
 #[test]
 fn test_healthy_stays_healthy_under_threshold() {
-    let mut state = BackendHealthState::default();
-    state.last_status = BackendStatus::Healthy;
+    let mut state = BackendHealthState {
+        last_status: BackendStatus::Healthy,
+        ..Default::default()
+    };
     let config = HealthCheckConfig::default();
 
     // First failure
@@ -299,8 +303,10 @@ fn test_healthy_stays_healthy_under_threshold() {
 
 #[test]
 fn test_healthy_to_unhealthy_at_threshold() {
-    let mut state = BackendHealthState::default();
-    state.last_status = BackendStatus::Healthy;
+    let mut state = BackendHealthState {
+        last_status: BackendStatus::Healthy,
+        ..Default::default()
+    };
     let config = HealthCheckConfig::default();
 
     // Apply 3 consecutive failures
@@ -314,8 +320,10 @@ fn test_healthy_to_unhealthy_at_threshold() {
 
 #[test]
 fn test_unhealthy_stays_unhealthy_under_threshold() {
-    let mut state = BackendHealthState::default();
-    state.last_status = BackendStatus::Unhealthy;
+    let mut state = BackendHealthState {
+        last_status: BackendStatus::Unhealthy,
+        ..Default::default()
+    };
     let config = HealthCheckConfig::default();
 
     // First success - under recovery threshold (2)
@@ -326,8 +334,10 @@ fn test_unhealthy_stays_unhealthy_under_threshold() {
 
 #[test]
 fn test_unhealthy_to_healthy_at_threshold() {
-    let mut state = BackendHealthState::default();
-    state.last_status = BackendStatus::Unhealthy;
+    let mut state = BackendHealthState {
+        last_status: BackendStatus::Unhealthy,
+        ..Default::default()
+    };
     let config = HealthCheckConfig::default();
 
     // Apply 2 consecutive successes
@@ -340,8 +350,10 @@ fn test_unhealthy_to_healthy_at_threshold() {
 
 #[test]
 fn test_success_resets_failure_counter() {
-    let mut state = BackendHealthState::default();
-    state.last_status = BackendStatus::Healthy;
+    let mut state = BackendHealthState {
+        last_status: BackendStatus::Healthy,
+        ..Default::default()
+    };
     let config = HealthCheckConfig::default();
 
     // Apply 2 failures
@@ -357,8 +369,10 @@ fn test_success_resets_failure_counter() {
 
 #[test]
 fn test_failure_resets_success_counter() {
-    let mut state = BackendHealthState::default();
-    state.last_status = BackendStatus::Unhealthy;
+    let mut state = BackendHealthState {
+        last_status: BackendStatus::Unhealthy,
+        ..Default::default()
+    };
     let config = HealthCheckConfig::default();
 
     // Apply 1 success

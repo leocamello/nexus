@@ -19,7 +19,7 @@ mod tests {
 
     #[test]
     fn test_completions_bash() {
-        let args = CompletionsArgs { shell: Shell::Bash };
+        let _args = CompletionsArgs { shell: Shell::Bash };
         // Just verify it doesn't panic
         // Output goes to stdout, so we can't easily capture it in tests
         // This is tested manually via: nexus completions bash > /tmp/test.sh
@@ -27,7 +27,7 @@ mod tests {
 
     #[test]
     fn test_completions_zsh() {
-        let args = CompletionsArgs { shell: Shell::Zsh };
+        let _args = CompletionsArgs { shell: Shell::Zsh };
         // Just verify it doesn't panic
     }
 }
