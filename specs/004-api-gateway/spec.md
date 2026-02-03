@@ -95,14 +95,16 @@ As a developer, I want proper error responses so that I can handle failures grac
 
 ### Edge Cases
 
-- What happens when request body exceeds max size? → Return 413 Payload Too Large
-- What happens when backend returns non-JSON response? → Return 502 Bad Gateway
-- What happens during graceful shutdown? → Complete in-flight requests, reject new ones
-- What happens with malformed Authorization header? → Pass through to backend, let it decide
-- What happens when all retries fail? → Return 502 with last error message
-- What happens with extremely long model names? → Accept if backend accepts, return backend's error otherwise
-- What happens when client disconnects mid-stream? → Cancel backend request, log event
-- What happens when backend SSE format differs from OpenAI? → Transform to OpenAI format, return 502 if unparseable
+| Edge Case | Behavior | Test Reference |
+|-----------|----------|----------------|
+| Request body exceeds max size | Return 413 Payload Too Large | `test_completions_payload_too_large` |
+| Backend returns non-JSON response | Return 502 Bad Gateway | `test_completions_backend_invalid_json` |
+| Graceful shutdown in progress | Complete in-flight requests, reject new with 503 | `test_serve_graceful_shutdown` |
+| Malformed Authorization header | Pass through to backend, return backend's error | `test_completions_forwards_auth_header` |
+| All retries fail | Return 502 with last error message | `test_completions_all_retries_fail` |
+| Extremely long model names | Accept if backend accepts, return backend's error | `test_completions_long_model_name` |
+| Client disconnects mid-stream | Cancel backend request via tokio::select!, log event | `test_streaming_client_disconnect` |
+| Backend SSE format differs | Transform to OpenAI format, return 502 if unparseable | `test_streaming_backend_format_transform` |
 
 ## Requirements
 
@@ -113,7 +115,7 @@ As a developer, I want proper error responses so that I can handle failures grac
 - **FR-003**: Server MUST expose GET /v1/models endpoint
 - **FR-004**: Server MUST expose GET /health endpoint
 - **FR-005**: Server MUST forward Authorization headers to backends
-- **FR-006**: Server MUST pass through usage stats from backend (prompt_tokens, completion_tokens)
+- **FR-006**: Server MUST pass through usage stats from backend (prompt_tokens, completion_tokens); omit usage field if backend doesn't provide it
 - **FR-007**: Server MUST handle concurrent requests (100+)
 - **FR-008**: Server MUST retry failed requests with next backend (configurable)
 - **FR-009**: Server MUST gracefully shutdown on SIGTERM
@@ -121,12 +123,12 @@ As a developer, I want proper error responses so that I can handle failures grac
 
 ### Non-Functional Requirements
 
-- **NFR-001**: Request timeout MUST be configurable (default: 5 minutes)
-- **NFR-002**: Proxy overhead MUST be < 5ms per request
+- **NFR-001**: Request timeout MUST be configurable (default: 5 minutes); applies to total request duration including retries
+- **NFR-002**: Proxy overhead MUST be < 5ms per request (measured as: total_time - backend_processing_time, using tracing spans)
 - **NFR-003**: Server MUST handle 100+ concurrent connections
-- **NFR-004**: Streaming chunks MUST be forwarded with < 10ms additional latency
+- **NFR-004**: Streaming chunks MUST be forwarded with < 10ms additional latency (measured from chunk received to chunk sent)
 - **NFR-005**: All requests MUST be logged via tracing
-- **NFR-006**: API Gateway memory overhead MUST be < 10MB beyond base server
+- **NFR-006**: API Gateway memory overhead MUST be < 10MB beyond base server (measured at startup before requests)
 
 ## API Specification
 
@@ -440,12 +442,15 @@ The API Gateway depends on types from the `registry` module (see `specs/001-back
 - `registry::BackendStatus` - Health status enum (Healthy, Unhealthy, Unknown)
 - `Registry` - The registry instance for backend/model lookups
 
-The Router (to be implemented in F05) will use Registry queries:
-- `get_backends_for_model(model: &str)` - Find backends serving a model
-- `get_healthy_backends()` - Filter to healthy backends only
-- `increment_pending(id)` / `decrement_pending(id)` - Track in-flight requests
+### Backend Selection (MVP)
 
-For detailed routing logic (scoring by priority/load/latency), see `docs/ARCHITECTURE.md` Router Layer section.
+For MVP, the API Gateway implements simple backend selection with retry:
+1. Query `get_backends_for_model(model)` to find capable backends
+2. Filter to `BackendStatus::Healthy` backends only
+3. Try backends in order until one succeeds or `max_retries` exhausted
+4. Track in-flight requests via `increment_pending(id)` / `decrement_pending(id)`
+
+> **Note**: Full intelligent routing with scoring by priority/load/latency will be implemented in F05 (Router). The MVP retry logic here provides basic resilience without sophisticated load balancing.
 
 ## Test Strategy
 
