@@ -14,7 +14,7 @@ categories = ["command-line-utilities", "web-programming"]
 axum = { version = "0.7", features = ["macros"] }
 tokio = { version = "1", features = ["full"] }
 tower = "0.4"
-tower-http = { version = "0.5", features = ["trace", "cors"] }
+tower-http = { version = "0.5", features = ["trace", "cors", "timeout", "limit"] }
 
 # HTTP client
 reqwest = { version = "0.12", features = ["json", "stream"] }
@@ -27,6 +27,7 @@ toml = "0.8"
 # Async utilities
 async-stream = "0.3"
 futures = "0.3"
+futures-util = "0.3"
 tokio-util = { version = "0.7", features = ["rt"] }
 
 # Error handling

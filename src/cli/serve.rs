@@ -1,10 +1,10 @@
 //! Serve command implementation
 
+use crate::api::{create_router, AppState};
 use crate::cli::ServeArgs;
 use crate::config::{LogFormat, NexusConfig};
 use crate::health::HealthChecker;
 use crate::registry::{Backend, DiscoverySource, Registry};
-use axum::{routing::get, Router};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
@@ -98,16 +98,10 @@ pub fn load_backends_from_config(
     Ok(())
 }
 
-/// Build basic HTTP router with health endpoint
-fn build_basic_router(registry: Arc<Registry>) -> Router {
-    Router::new()
-        .route("/health", get(health_handler))
-        .with_state(registry)
-}
-
-/// Simple health check endpoint
-async fn health_handler() -> &'static str {
-    "OK"
+/// Build API router with all endpoints
+fn build_api_router(registry: Arc<Registry>, config: Arc<NexusConfig>) -> axum::Router {
+    let app_state = Arc::new(AppState::new(registry, config));
+    create_router(app_state)
 }
 
 /// Wait for shutdown signal (SIGINT or SIGTERM)
@@ -170,12 +164,13 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
         None
     };
 
-    // 5. Build minimal HTTP server
-    let app = build_basic_router(registry.clone());
+    // 5. Build API router with all endpoints
+    let config_arc = Arc::new(config.clone());
+    let app = build_api_router(registry.clone(), config_arc);
 
     // 6. Bind and serve
     let addr = format!("{}:{}", config.server.host, config.server.port);
-    tracing::info!(addr = %addr, "Nexus server listening");
+    tracing::info!(addr = %addr, "Nexus API server listening");
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
 
