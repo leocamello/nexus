@@ -409,6 +409,56 @@ impl Registry {
             }
         }
     }
+
+    // mDNS discovery support methods
+
+    /// Check if a backend with the given URL exists in the registry.
+    ///
+    /// URL comparison is normalized (trailing slashes are ignored).
+    pub fn has_backend_url(&self, url: &str) -> bool {
+        let normalized = normalize_url(url);
+        self.backends
+            .iter()
+            .any(|entry| normalize_url(&entry.value().url) == normalized)
+    }
+
+    /// Set the mDNS instance name for a backend.
+    ///
+    /// Stores the instance name in the backend's metadata for later lookup.
+    pub fn set_mdns_instance(&self, id: &str, instance: &str) -> Result<(), RegistryError> {
+        let mut backend = self
+            .backends
+            .get_mut(id)
+            .ok_or_else(|| RegistryError::BackendNotFound(id.to_string()))?;
+
+        backend
+            .metadata
+            .insert("mdns_instance".to_string(), instance.to_string());
+
+        Ok(())
+    }
+
+    /// Find a backend by its mDNS instance name.
+    ///
+    /// Returns the backend ID if found.
+    pub fn find_by_mdns_instance(&self, instance: &str) -> Option<String> {
+        self.backends
+            .iter()
+            .find(|entry| {
+                entry
+                    .value()
+                    .metadata
+                    .get("mdns_instance")
+                    .map(|s| s.as_str())
+                    == Some(instance)
+            })
+            .map(|entry| entry.value().id.clone())
+    }
+}
+
+/// Normalize a URL for comparison (remove trailing slash)
+fn normalize_url(url: &str) -> String {
+    url.trim_end_matches('/').to_string()
 }
 
 impl Default for Registry {
