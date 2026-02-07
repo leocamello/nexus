@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 pub struct DiscoveryConfig {
     pub enabled: bool,
     pub service_types: Vec<String>,
+    pub grace_period_seconds: u64,
 }
 
 impl Default for DiscoveryConfig {
@@ -18,6 +19,7 @@ impl Default for DiscoveryConfig {
                 "_ollama._tcp.local".to_string(),
                 "_llm._tcp.local".to_string(),
             ],
+            grace_period_seconds: 60,
         }
     }
 }

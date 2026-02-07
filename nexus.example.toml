@@ -9,7 +9,10 @@ request_timeout_seconds = 300
 [discovery]
 # Auto-discover backends via mDNS
 enabled = true
+# Service types to browse for (trailing dot is optional - added automatically)
 service_types = ["_ollama._tcp.local", "_llm._tcp.local"]
+# Grace period before removing disappeared backends (seconds)
+grace_period_seconds = 60
 
 [health_check]
 enabled = true

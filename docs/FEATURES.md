@@ -12,16 +12,18 @@ Detailed specifications for each feature in the Nexus LLM Orchestrator.
 | F02 | Backend Registry | P0 | ✅ Complete | [specs/001-backend-registry](../specs/001-backend-registry/) |
 | F03 | Health Checker | P0 | ✅ Complete | [specs/002-health-checker](../specs/002-health-checker/) |
 | F04 | CLI and Configuration | P0 | ✅ Complete | [specs/003-cli-configuration](../specs/003-cli-configuration/) |
-| F05 | mDNS Discovery | P1 | Planned | - |
+| F05 | mDNS Discovery | P1 | ✅ Complete | [specs/005-mdns-discovery](../specs/005-mdns-discovery/) |
 | F06 | Intelligent Router | P1 | Planned | - |
 | F07 | Model Aliases | P1 | Planned | - |
 | F08 | Fallback Chains | P1 | Planned | - |
 | F09 | Request Metrics | P2 | Planned | - |
 | F10 | Web Dashboard | P2 | Planned | - |
 
-### MVP Status: ✅ Complete
+### Current Status
 
-All P0 features implemented with **224 tests passing**.
+- **MVP (P0)**: ✅ Complete (4/4 features)
+- **Phase 2 (P1)**: 🚧 In Progress (1/4 features complete)
+- **Tests**: 258 passing
 
 ---
 

@@ -164,6 +164,17 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
         None
     };
 
+    // 4.5. Start mDNS discovery (if enabled)
+    let discovery_handle = if config.discovery.enabled {
+        tracing::info!("Starting mDNS discovery");
+        let discovery =
+            crate::discovery::MdnsDiscovery::new(config.discovery.clone(), registry.clone());
+        Some(discovery.start(cancel_token.clone()))
+    } else {
+        tracing::info!("mDNS discovery disabled");
+        None
+    };
+
     // 5. Build API router with all endpoints
     let config_arc = Arc::new(config.clone());
     let app = build_api_router(registry.clone(), config_arc);
@@ -181,6 +192,11 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
     // 7. Cleanup
     if let Some(handle) = health_handle {
         tracing::info!("Waiting for health checker to stop");
+        handle.await?;
+    }
+
+    if let Some(handle) = discovery_handle {
+        tracing::info!("Waiting for mDNS discovery to stop");
         handle.await?;
     }
 
