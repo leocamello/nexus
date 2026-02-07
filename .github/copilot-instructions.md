@@ -132,12 +132,13 @@ handle.await?;
 │     - Create feature branch                                         │
 │     - Copy implementation-verification.md to feature folder         │
 │     - Implement with TDD (tests first)                              │
-│     - Check off acceptance criteria as you go                       │
+│     - Check off acceptance criteria in tasks.md as you go           │
 ├─────────────────────────────────────────────────────────────────────┤
 │  3. VERIFICATION PHASE                                              │
-│     - Run speckit.analyze                                           │
-│     - Verify all checklists complete                                │
-│     - Create walkthrough.md                                         │
+│     - Run speckit.analyze to check spec/implementation alignment    │
+│     - Complete verification.md checklist (mark items [x] or [-])    │
+│     - Create walkthrough.md for code documentation                  │
+│     - Ensure 0 unchecked items remain in tasks.md                   │
 ├─────────────────────────────────────────────────────────────────────┤
 │  4. MERGE PHASE                                                     │
 │     - Push feature branch                                           │
@@ -153,13 +154,18 @@ Use the two-checklist system for quality assurance:
 | Phase | Checklist | Command |
 |-------|-----------|---------|
 | Before coding | Validate spec quality | Review `.specify/checklists/requirements-quality.md` |
-| After coding | Verify implementation | Check `.specify/templates/implementation-verification.md` |
+| After coding | Verify implementation | Complete `specs/XXX-feature/verification.md` |
 
 ```bash
 # Copy verification template to your feature
 cp .specify/templates/implementation-verification.md specs/XXX-feature/verification.md
 
-# Verify all items checked before PR
+# Complete the verification checklist:
+# - Mark [x] for items that pass
+# - Mark [-] for items not applicable (N/A) to this feature
+# - Leave [ ] only for actual issues needing fix
+
+# Verify all items are addressed before PR (should be 0 unchecked items)
 grep -c "\- \[ \]" specs/XXX-feature/verification.md  # Should be 0
 grep -c "\- \[ \]" specs/XXX-feature/tasks.md         # Should be 0
 ```

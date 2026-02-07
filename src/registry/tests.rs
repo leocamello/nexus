@@ -1699,3 +1699,76 @@ async fn test_concurrent_model_queries() {
         "Concurrent model queries should be consistent"
     );
 }
+
+// mDNS discovery extension tests
+
+fn create_test_backend(url: &str) -> Backend {
+    Backend::new(
+        uuid::Uuid::new_v4().to_string(),
+        "Test Backend".to_string(),
+        url.to_string(),
+        BackendType::Ollama,
+        vec![],
+        DiscoverySource::Static,
+        HashMap::new(),
+    )
+}
+
+#[test]
+fn test_registry_has_backend_url_true() {
+    let registry = Registry::new();
+    let backend = create_test_backend("http://localhost:11434");
+    registry.add_backend(backend).unwrap();
+    assert!(registry.has_backend_url("http://localhost:11434"));
+}
+
+#[test]
+fn test_registry_has_backend_url_false() {
+    let registry = Registry::new();
+    assert!(!registry.has_backend_url("http://localhost:11434"));
+}
+
+#[test]
+fn test_registry_has_backend_url_normalized() {
+    let registry = Registry::new();
+    let backend = create_test_backend("http://localhost:11434/");
+    registry.add_backend(backend).unwrap();
+    // Should match with or without trailing slash
+    assert!(registry.has_backend_url("http://localhost:11434"));
+    assert!(registry.has_backend_url("http://localhost:11434/"));
+}
+
+#[test]
+fn test_registry_set_mdns_instance() {
+    let registry = Registry::new();
+    let backend = create_test_backend("http://localhost:11434");
+    let id = backend.id.clone();
+    registry.add_backend(backend).unwrap();
+    registry
+        .set_mdns_instance(&id, "my-instance._ollama._tcp.local")
+        .unwrap();
+
+    let backend = registry.get_backend(&id).unwrap();
+    assert_eq!(
+        backend.metadata.get("mdns_instance"),
+        Some(&"my-instance._ollama._tcp.local".to_string())
+    );
+}
+
+#[test]
+fn test_registry_find_by_mdns_instance_found() {
+    let registry = Registry::new();
+    let backend = create_test_backend("http://localhost:11434");
+    let id = backend.id.clone();
+    registry.add_backend(backend).unwrap();
+    registry.set_mdns_instance(&id, "test-instance").unwrap();
+
+    let found = registry.find_by_mdns_instance("test-instance");
+    assert_eq!(found, Some(id));
+}
+
+#[test]
+fn test_registry_find_by_mdns_instance_not_found() {
+    let registry = Registry::new();
+    assert!(registry.find_by_mdns_instance("nonexistent").is_none());
+}
