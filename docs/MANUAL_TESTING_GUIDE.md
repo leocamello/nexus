@@ -610,6 +610,27 @@ echo "=== All tests passed! ==="
 
 ## Troubleshooting
 
+### Server stops unexpectedly when running in background
+
+If you run `nexus serve &` and the server dies when you run subsequent commands, this is likely due to **shell session termination**. Background processes started with `&` are tied to the shell session and may be killed when the session ends.
+
+**Solutions:**
+
+```bash
+# Option 1: Run in foreground (recommended for testing)
+nexus serve
+# Use a separate terminal for curl commands
+
+# Option 2: Use nohup to detach from terminal
+nohup nexus serve > nexus.log 2>&1 &
+
+# Option 3: Use a terminal multiplexer
+tmux new-session -d -s nexus 'nexus serve'
+
+# Option 4: Run as a systemd service (production)
+sudo systemctl start nexus
+```
+
 ### Server won't start
 
 ```bash
