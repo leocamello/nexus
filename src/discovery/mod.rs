@@ -158,7 +158,13 @@ impl MdnsDiscovery {
         // Browse for each service type
         let mut receivers = Vec::new();
         for service_type in &self.config.service_types {
-            match daemon.browse(service_type) {
+            // Normalize service type - mdns-sd requires trailing dot
+            let normalized = if service_type.ends_with('.') {
+                service_type.clone()
+            } else {
+                format!("{}.", service_type)
+            };
+            match daemon.browse(&normalized) {
                 Ok(receiver) => {
                     tracing::info!(service_type = %service_type, "Browsing for mDNS service");
                     receivers.push((service_type.clone(), receiver));
