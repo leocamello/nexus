@@ -68,6 +68,8 @@ mDNS (Multicast DNS) is a protocol that lets devices find each other on a local 
 - **Ollama** advertises itself as `_ollama._tcp.local`
 - **Generic LLM services** can advertise as `_llm._tcp.local`
 
+> **Note on trailing dots**: The mDNS protocol uses trailing dots in service names (`_ollama._tcp.local.`), but Nexus automatically normalizes service types configured without the trailing dot. You can use either format in your configuration.
+
 ---
 
 ## File Structure

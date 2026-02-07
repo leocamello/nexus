@@ -737,6 +737,8 @@ service_types = ["_ollama._tcp.local", "_llm._tcp.local"]
 grace_period_seconds = 60
 ```
 
+> **Note**: Service types can be configured with or without trailing dots. Nexus automatically normalizes them (adds the trailing dot if missing) for the mdns-sd library.
+
 ### 5.2 Start Server with mDNS Discovery
 
 ```bash
