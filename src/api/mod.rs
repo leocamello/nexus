@@ -77,6 +77,8 @@ use axum::{
 use std::sync::Arc;
 use tower_http::limit::RequestBodyLimitLayer;
 
+use std::time::Instant;
+
 /// Maximum request body size (10 MB).
 const MAX_BODY_SIZE: usize = 10 * 1024 * 1024;
 
@@ -86,6 +88,8 @@ pub struct AppState {
     pub config: Arc<NexusConfig>,
     pub http_client: reqwest::Client,
     pub router: Arc<routing::Router>,
+    /// Server startup time for uptime tracking
+    pub start_time: Instant,
 }
 
 impl AppState {
@@ -113,6 +117,7 @@ impl AppState {
             config,
             http_client,
             router,
+            start_time: Instant::now(),
         }
     }
 }

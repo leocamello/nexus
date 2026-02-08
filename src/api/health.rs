@@ -41,7 +41,7 @@ pub async fn handle(State(state): State<Arc<AppState>>) -> Json<HealthResponse> 
 
     Json(HealthResponse {
         status: status.to_string(),
-        uptime_seconds: 0, // TODO: Track startup time
+        uptime_seconds: state.start_time.elapsed().as_secs(),
         backends: BackendCounts {
             total: all_backends.len(),
             healthy: healthy_backends.len(),

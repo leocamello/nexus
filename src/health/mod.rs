@@ -125,7 +125,18 @@ impl HealthChecker {
         match backend_type {
             BackendType::Ollama => match parser::parse_ollama_response(body) {
                 Ok(models) => HealthCheckResult::Success { latency_ms, models },
-                Err(error) => HealthCheckResult::Failure { error },
+                Err(error) => {
+                    // Backend returned 200 but invalid JSON - treat as healthy, preserve models
+                    tracing::warn!(
+                        backend_type = ?backend_type,
+                        error = %error,
+                        "Backend returned 200 but invalid JSON, treating as healthy"
+                    );
+                    HealthCheckResult::SuccessWithParseError {
+                        latency_ms,
+                        parse_error: error.to_string(),
+                    }
+                }
             },
             BackendType::LlamaCpp => {
                 match parser::parse_llamacpp_response(body) {
@@ -136,13 +147,35 @@ impl HealthChecker {
                     Ok(_) => HealthCheckResult::Failure {
                         error: HealthCheckError::HttpError(500),
                     },
-                    Err(error) => HealthCheckResult::Failure { error },
+                    Err(error) => {
+                        // Backend returned 200 but invalid JSON - treat as healthy
+                        tracing::warn!(
+                            backend_type = ?backend_type,
+                            error = %error,
+                            "Backend returned 200 but invalid JSON, treating as healthy"
+                        );
+                        HealthCheckResult::SuccessWithParseError {
+                            latency_ms,
+                            parse_error: error.to_string(),
+                        }
+                    }
                 }
             }
             BackendType::VLLM | BackendType::Exo | BackendType::OpenAI | BackendType::Generic => {
                 match parser::parse_openai_response(body) {
                     Ok(models) => HealthCheckResult::Success { latency_ms, models },
-                    Err(error) => HealthCheckResult::Failure { error },
+                    Err(error) => {
+                        // Backend returned 200 but invalid JSON - treat as healthy, preserve models
+                        tracing::warn!(
+                            backend_type = ?backend_type,
+                            error = %error,
+                            "Backend returned 200 but invalid JSON, treating as healthy"
+                        );
+                        HealthCheckResult::SuccessWithParseError {
+                            latency_ms,
+                            parse_error: error.to_string(),
+                        }
+                    }
                 }
             }
         }
@@ -184,6 +217,17 @@ impl HealthChecker {
                     }
                 } else if !state.last_models.is_empty() {
                     // Preserve last known models for backends that don't report them
+                    let _ = self
+                        .registry
+                        .update_models(backend_id, state.last_models.clone());
+                }
+            }
+            HealthCheckResult::SuccessWithParseError { latency_ms, .. } => {
+                // Update latency (backend is responding)
+                let _ = self.registry.update_latency(backend_id, *latency_ms);
+
+                // Preserve last known models (don't update with empty/invalid data)
+                if !state.last_models.is_empty() {
                     let _ = self
                         .registry
                         .update_models(backend_id, state.last_models.clone());
