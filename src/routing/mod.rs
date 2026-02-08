@@ -77,12 +77,38 @@ impl Router {
         }
     }
 
-    /// Resolve model aliases (single-level only)
+    /// Resolve model aliases with chaining support (max 3 levels)
     fn resolve_alias(&self, model: &str) -> String {
-        self.aliases
-            .get(model)
-            .cloned()
-            .unwrap_or_else(|| model.to_string())
+        let mut current = model.to_string();
+        let mut depth = 0;
+        const MAX_DEPTH: usize = 3;
+
+        while depth < MAX_DEPTH {
+            match self.aliases.get(&current) {
+                Some(target) => {
+                    tracing::debug!(
+                        from = %current,
+                        to = %target,
+                        depth = depth + 1,
+                        "Resolved alias"
+                    );
+                    current = target.clone();
+                    depth += 1;
+                }
+                None => break,
+            }
+        }
+
+        if depth > 0 {
+            tracing::debug!(
+                original = %model,
+                resolved = %current,
+                chain_depth = depth,
+                "Alias resolution complete"
+            );
+        }
+
+        current
     }
 
     /// Get fallback chain for a model
@@ -1047,6 +1073,167 @@ mod alias_and_fallback_tests {
 
         let requirements = RequestRequirements {
             model: "gpt-4".to_string(), // Alias → llama3:70b → mistral:7b
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: false,
+        };
+
+        let backend = router.select_backend(&requirements).unwrap();
+        assert_eq!(backend.name, "Backend A");
+    }
+
+    // T01: Alias Chaining Tests (TDD RED Phase)
+    #[test]
+    fn alias_chain_two_levels() {
+        // Given aliases: "gpt-4" → "llama-large", "llama-large" → "llama3:70b"
+        let backends = vec![create_test_backend_with_model(
+            "backend_a",
+            "Backend A",
+            "llama3:70b",
+        )];
+
+        let registry = Arc::new(Registry::new());
+        for backend in backends {
+            registry.add_backend(backend).unwrap();
+        }
+
+        let mut aliases = HashMap::new();
+        aliases.insert("gpt-4".to_string(), "llama-large".to_string());
+        aliases.insert("llama-large".to_string(), "llama3:70b".to_string());
+
+        let router = Router::with_aliases_and_fallbacks(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            aliases,
+            HashMap::new(),
+        );
+
+        let requirements = RequestRequirements {
+            model: "gpt-4".to_string(),
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: false,
+        };
+
+        // When resolving "gpt-4"
+        // Then should resolve through chain to "llama3:70b"
+        let backend = router.select_backend(&requirements).unwrap();
+        assert_eq!(backend.name, "Backend A");
+    }
+
+    #[test]
+    fn alias_chain_three_levels() {
+        // Given aliases: "a" → "b", "b" → "c", "c" → "final-model"
+        let backends = vec![create_test_backend_with_model(
+            "backend_a",
+            "Backend A",
+            "final-model",
+        )];
+
+        let registry = Arc::new(Registry::new());
+        for backend in backends {
+            registry.add_backend(backend).unwrap();
+        }
+
+        let mut aliases = HashMap::new();
+        aliases.insert("a".to_string(), "b".to_string());
+        aliases.insert("b".to_string(), "c".to_string());
+        aliases.insert("c".to_string(), "final-model".to_string());
+
+        let router = Router::with_aliases_and_fallbacks(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            aliases,
+            HashMap::new(),
+        );
+
+        let requirements = RequestRequirements {
+            model: "a".to_string(),
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: false,
+        };
+
+        // When resolving "a"
+        // Then should resolve through 3-level chain to "final-model"
+        let backend = router.select_backend(&requirements).unwrap();
+        assert_eq!(backend.name, "Backend A");
+    }
+
+    #[test]
+    fn alias_chain_stops_at_max_depth() {
+        // Given aliases: "a" → "b", "b" → "c", "c" → "d", "d" → "e"
+        // Chain has 4 levels, but we should stop at 3
+        let backends = vec![
+            create_test_backend_with_model("backend_d", "Backend D", "d"),
+            create_test_backend_with_model("backend_e", "Backend E", "e"),
+        ];
+
+        let registry = Arc::new(Registry::new());
+        for backend in backends {
+            registry.add_backend(backend).unwrap();
+        }
+
+        let mut aliases = HashMap::new();
+        aliases.insert("a".to_string(), "b".to_string());
+        aliases.insert("b".to_string(), "c".to_string());
+        aliases.insert("c".to_string(), "d".to_string());
+        aliases.insert("d".to_string(), "e".to_string());
+
+        let router = Router::with_aliases_and_fallbacks(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            aliases,
+            HashMap::new(),
+        );
+
+        let requirements = RequestRequirements {
+            model: "a".to_string(),
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: false,
+        };
+
+        // When resolving "a" (4-level chain)
+        // Then should stop at 3 levels and resolve to "d"
+        let backend = router.select_backend(&requirements).unwrap();
+        assert_eq!(backend.name, "Backend D");
+    }
+
+    #[test]
+    fn alias_preserves_existing_single_level_behavior() {
+        // Ensure single-level aliases still work after chaining implementation
+        let backends = vec![create_test_backend_with_model(
+            "backend_a",
+            "Backend A",
+            "llama3:70b",
+        )];
+
+        let registry = Arc::new(Registry::new());
+        for backend in backends {
+            registry.add_backend(backend).unwrap();
+        }
+
+        let mut aliases = HashMap::new();
+        aliases.insert("gpt-4".to_string(), "llama3:70b".to_string());
+
+        let router = Router::with_aliases_and_fallbacks(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            aliases,
+            HashMap::new(),
+        );
+
+        let requirements = RequestRequirements {
+            model: "gpt-4".to_string(),
             estimated_tokens: 100,
             needs_vision: false,
             needs_tools: false,
