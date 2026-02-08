@@ -1,21 +1,21 @@
 # F08: Fallback Chains
 
-**Status**: 🔄 Partially Implemented  
+**Status**: ✅ Implemented  
 **Priority**: P1  
 **Branch**: feature/f08-fallback-chains  
 **Dependencies**: F06 (Intelligent Router)  
-**Implementation**: `src/routing/mod.rs`, `src/api/`
+**Implementation**: `src/routing/mod.rs`, `src/api/completions.rs`
 
-## Implementation Gap Analysis
+## Implementation Summary
 
 | Requirement | Status | Notes |
 |-------------|--------|-------|
-| Fallback chain configuration | ✅ | Working |
-| Ordered fallback iteration | ✅ | Working |
-| WARN level logging | ✅ | Working |
-| 503 on exhausted chain | ✅ | Working |
-| Response model shows requested | ✅ | Working |
-| X-Nexus-Fallback-Model header | ❌ | Not implemented |
+| Fallback chain configuration | ✅ | Working (F06) |
+| Ordered fallback iteration | ✅ | Working (F06) |
+| WARN level logging | ✅ | Working (F06) |
+| 503 on exhausted chain | ✅ | Working (F06) |
+| Response model shows requested | ✅ | Working (F06) |
+| X-Nexus-Fallback-Model header | ✅ | Working (F08) |
 
 ---
 
@@ -382,7 +382,7 @@ X-Nexus-Fallback-Model: qwen2:72b
 - [x] AC-03: Logs fallback usage at WARN level
 - [x] AC-04: Returns 503 if all fallbacks exhausted (FallbackChainExhausted error)
 - [x] AC-05: Response model field shows requested model
-- [ ] AC-06: X-Nexus-Fallback-Model header indicates actual model used
+- [x] AC-06: X-Nexus-Fallback-Model header indicates actual model used
 
 ---
 
@@ -393,17 +393,10 @@ X-Nexus-Fallback-Model: qwen2:72b
 - `src/routing/error.rs`: `FallbackChainExhausted` error variant
 - `src/config/routing.rs`: `fallbacks` field parsing
 
-**Still Needed (F08)**:
-- `X-Nexus-Fallback-Model` response header
-- Router must return fallback metadata to API layer
-- API layer adds header when fallback was used
-
-**Files to Modify**:
-| File | Changes Needed |
-|------|----------------|
-| `src/routing/mod.rs` | Return `RoutingResult` with fallback info |
-| `src/api/chat.rs` | Add X-Nexus-Fallback-Model header |
-| `tests/` | Integration tests for header
+**Implemented in F08 (Fallback Chains)**:
+- `src/routing/mod.rs`: `RoutingResult` struct with fallback metadata
+- `src/api/completions.rs`: X-Nexus-Fallback-Model header
+- `tests/fallback_header_integration.rs`: Integration tests
 
 ---
 
