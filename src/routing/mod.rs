@@ -4,6 +4,7 @@
 //! for each request based on model requirements, backend capabilities, and
 //! current system state.
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, AtomicU64};
 use std::sync::Arc;
 
@@ -31,6 +32,12 @@ pub struct Router {
     /// Scoring weights for smart strategy
     weights: ScoringWeights,
 
+    /// Model aliases (alias → target)
+    aliases: HashMap<String, String>,
+
+    /// Fallback chains (model → [fallback1, fallback2, ...])
+    fallbacks: HashMap<String, Vec<String>>,
+
     /// Round-robin counter for round-robin strategy
     round_robin_counter: AtomicU64,
 }
@@ -42,8 +49,38 @@ impl Router {
             registry,
             strategy,
             weights,
+            aliases: HashMap::new(),
+            fallbacks: HashMap::new(),
             round_robin_counter: AtomicU64::new(0),
         }
+    }
+
+    /// Create a new router with aliases and fallbacks
+    pub fn with_aliases_and_fallbacks(
+        registry: Arc<Registry>,
+        strategy: RoutingStrategy,
+        weights: ScoringWeights,
+        aliases: HashMap<String, String>,
+        fallbacks: HashMap<String, Vec<String>>,
+    ) -> Self {
+        Self {
+            registry,
+            strategy,
+            weights,
+            aliases,
+            fallbacks,
+            round_robin_counter: AtomicU64::new(0),
+        }
+    }
+
+    /// Resolve model aliases (single-level only)
+    fn resolve_alias(&self, model: &str) -> String {
+        self.aliases.get(model).cloned().unwrap_or_else(|| model.to_string())
+    }
+
+    /// Get fallback chain for a model
+    fn get_fallbacks(&self, model: &str) -> Vec<String> {
+        self.fallbacks.get(model).cloned().unwrap_or_default()
     }
 
     /// Select the best backend for the given requirements
@@ -51,25 +88,49 @@ impl Router {
         &self,
         requirements: &RequestRequirements,
     ) -> Result<Arc<Backend>, RoutingError> {
-        // Filter candidates
-        let candidates = self.filter_candidates(&requirements.model, requirements);
+        // Resolve alias first
+        let model = self.resolve_alias(&requirements.model);
 
-        if candidates.is_empty() {
-            return Err(RoutingError::ModelNotFound {
-                model: requirements.model.clone(),
-            });
+        // Try to find backend for the primary model
+        let candidates = self.filter_candidates(&model, requirements);
+
+        if !candidates.is_empty() {
+            // Apply routing strategy
+            let selected = match self.strategy {
+                RoutingStrategy::Smart => self.select_smart(&candidates),
+                RoutingStrategy::RoundRobin => self.select_round_robin(&candidates),
+                RoutingStrategy::PriorityOnly => self.select_priority_only(&candidates),
+                RoutingStrategy::Random => self.select_random(&candidates),
+            };
+            return Ok(Arc::new(selected));
         }
 
-        // Apply routing strategy
-        let selected = match self.strategy {
-            RoutingStrategy::Smart => self.select_smart(&candidates),
-            RoutingStrategy::RoundRobin => self.select_round_robin(&candidates),
-            RoutingStrategy::PriorityOnly => self.select_priority_only(&candidates),
-            RoutingStrategy::Random => self.select_random(&candidates),
-        };
+        // Try fallback chain
+        let fallbacks = self.get_fallbacks(&model);
+        for fallback_model in &fallbacks {
+            let candidates = self.filter_candidates(fallback_model, requirements);
+            if !candidates.is_empty() {
+                let selected = match self.strategy {
+                    RoutingStrategy::Smart => self.select_smart(&candidates),
+                    RoutingStrategy::RoundRobin => self.select_round_robin(&candidates),
+                    RoutingStrategy::PriorityOnly => self.select_priority_only(&candidates),
+                    RoutingStrategy::Random => self.select_random(&candidates),
+                };
+                return Ok(Arc::new(selected));
+            }
+        }
 
-        // Return as Arc for efficient sharing
-        Ok(Arc::new(selected))
+        // All attempts failed
+        if !fallbacks.is_empty() {
+            // Build chain for error message
+            let mut chain = vec![model.clone()];
+            chain.extend(fallbacks);
+            Err(RoutingError::FallbackChainExhausted { chain })
+        } else {
+            Err(RoutingError::ModelNotFound {
+                model: requirements.model.clone(),
+            })
+        }
     }
 
     /// Select backend using smart scoring
@@ -793,5 +854,201 @@ mod other_strategies_tests {
         assert!(selected.contains_key("Backend A"));
         assert!(selected.contains_key("Backend B"));
         assert!(selected.contains_key("Backend C"));
+    }
+}
+
+#[cfg(test)]
+mod alias_and_fallback_tests {
+    use super::*;
+    use crate::registry::{Backend, BackendStatus, BackendType, DiscoverySource, Model};
+    use chrono::Utc;
+    use std::collections::HashMap;
+    use std::sync::atomic::{AtomicU32, AtomicU64};
+
+    fn create_test_backend_with_model(id: &str, name: &str, model_id: &str) -> Backend {
+        Backend {
+            id: id.to_string(),
+            name: name.to_string(),
+            url: format!("http://{}", name),
+            backend_type: BackendType::Ollama,
+            status: BackendStatus::Healthy,
+            last_health_check: Utc::now(),
+            last_error: None,
+            models: vec![Model {
+                id: model_id.to_string(),
+                name: model_id.to_string(),
+                context_length: 4096,
+                supports_vision: false,
+                supports_tools: false,
+                supports_json_mode: false,
+                max_output_tokens: None,
+            }],
+            priority: 1,
+            pending_requests: AtomicU32::new(0),
+            total_requests: AtomicU64::new(0),
+            avg_latency_ms: AtomicU32::new(50),
+            discovery_source: DiscoverySource::Static,
+            metadata: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn resolves_alias_transparently() {
+        let backends = vec![create_test_backend_with_model(
+            "backend_a",
+            "Backend A",
+            "llama3:70b",
+        )];
+
+        let registry = Arc::new(Registry::new());
+        for backend in backends {
+            registry.add_backend(backend).unwrap();
+        }
+
+        let mut aliases = HashMap::new();
+        aliases.insert("gpt-4".to_string(), "llama3:70b".to_string());
+
+        let router = Router::with_aliases_and_fallbacks(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            aliases,
+            HashMap::new(),
+        );
+
+        let requirements = RequestRequirements {
+            model: "gpt-4".to_string(),
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: false,
+        };
+
+        let backend = router.select_backend(&requirements).unwrap();
+        assert_eq!(backend.name, "Backend A");
+    }
+
+    #[test]
+    fn uses_fallback_when_primary_unavailable() {
+        let backends = vec![create_test_backend_with_model(
+            "backend_a",
+            "Backend A",
+            "mistral:7b",
+        )];
+
+        let registry = Arc::new(Registry::new());
+        for backend in backends {
+            registry.add_backend(backend).unwrap();
+        }
+
+        let mut fallbacks = HashMap::new();
+        fallbacks.insert(
+            "llama3:70b".to_string(),
+            vec!["llama3:8b".to_string(), "mistral:7b".to_string()],
+        );
+
+        let router = Router::with_aliases_and_fallbacks(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            HashMap::new(),
+            fallbacks,
+        );
+
+        let requirements = RequestRequirements {
+            model: "llama3:70b".to_string(),
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: false,
+        };
+
+        let backend = router.select_backend(&requirements).unwrap();
+        assert_eq!(backend.name, "Backend A");
+    }
+
+    #[test]
+    fn exhausts_fallback_chain() {
+        let backends = vec![create_test_backend_with_model(
+            "backend_a",
+            "Backend A",
+            "some-other-model",
+        )];
+
+        let registry = Arc::new(Registry::new());
+        for backend in backends {
+            registry.add_backend(backend).unwrap();
+        }
+
+        let mut fallbacks = HashMap::new();
+        fallbacks.insert(
+            "llama3:70b".to_string(),
+            vec!["llama3:8b".to_string(), "mistral:7b".to_string()],
+        );
+
+        let router = Router::with_aliases_and_fallbacks(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            HashMap::new(),
+            fallbacks,
+        );
+
+        let requirements = RequestRequirements {
+            model: "llama3:70b".to_string(),
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: false,
+        };
+
+        let result = router.select_backend(&requirements);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            RoutingError::FallbackChainExhausted { .. }
+        ));
+    }
+
+    #[test]
+    fn alias_then_fallback() {
+        let backends = vec![create_test_backend_with_model(
+            "backend_a",
+            "Backend A",
+            "mistral:7b",
+        )];
+
+        let registry = Arc::new(Registry::new());
+        for backend in backends {
+            registry.add_backend(backend).unwrap();
+        }
+
+        let mut aliases = HashMap::new();
+        aliases.insert("gpt-4".to_string(), "llama3:70b".to_string());
+
+        let mut fallbacks = HashMap::new();
+        fallbacks.insert(
+            "llama3:70b".to_string(),
+            vec!["mistral:7b".to_string()],
+        );
+
+        let router = Router::with_aliases_and_fallbacks(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            aliases,
+            fallbacks,
+        );
+
+        let requirements = RequestRequirements {
+            model: "gpt-4".to_string(), // Alias → llama3:70b → mistral:7b
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: false,
+        };
+
+        let backend = router.select_backend(&requirements).unwrap();
+        assert_eq!(backend.name, "Backend A");
     }
 }
