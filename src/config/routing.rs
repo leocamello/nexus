@@ -18,6 +18,17 @@ pub enum RoutingStrategy {
     Random,
 }
 
+impl From<RoutingStrategy> for crate::routing::RoutingStrategy {
+    fn from(strategy: RoutingStrategy) -> Self {
+        match strategy {
+            RoutingStrategy::Smart => crate::routing::RoutingStrategy::Smart,
+            RoutingStrategy::RoundRobin => crate::routing::RoutingStrategy::RoundRobin,
+            RoutingStrategy::PriorityOnly => crate::routing::RoutingStrategy::PriorityOnly,
+            RoutingStrategy::Random => crate::routing::RoutingStrategy::Random,
+        }
+    }
+}
+
 /// Routing configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -34,9 +45,9 @@ pub struct RoutingConfig {
 /// Routing weights for backend selection
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoutingWeights {
-    pub priority: f64,
-    pub load: f64,
-    pub latency: f64,
+    pub priority: u32,
+    pub load: u32,
+    pub latency: u32,
 }
 
 impl Default for RoutingConfig {
@@ -54,9 +65,19 @@ impl Default for RoutingConfig {
 impl Default for RoutingWeights {
     fn default() -> Self {
         Self {
-            priority: 50.0,
-            load: 30.0,
-            latency: 20.0,
+            priority: 50,
+            load: 30,
+            latency: 20,
+        }
+    }
+}
+
+impl From<RoutingWeights> for crate::routing::ScoringWeights {
+    fn from(weights: RoutingWeights) -> Self {
+        crate::routing::ScoringWeights {
+            priority: weights.priority,
+            load: weights.load,
+            latency: weights.latency,
         }
     }
 }

@@ -101,7 +101,7 @@ mod tests {
         // load_score = 100 * 0.3 = 30
         // latency_score = 95 * 0.2 = 19
         // total = 98.5 ≈ 98
-        assert!(score >= 97 && score <= 99);
+        assert!((97..=99).contains(&score));
     }
 
     #[test]
