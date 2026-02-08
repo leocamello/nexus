@@ -64,11 +64,11 @@ mod tests {
 4. Add `pub mod routing;` to `src/lib.rs`
 
 ### Acceptance Criteria
-- [ ] `src/routing/mod.rs` exists with module structure
-- [ ] `RoutingStrategy` enum defined with all 4 variants
-- [ ] Default strategy is Smart
-- [ ] FromStr parses all strategy names (case-insensitive)
-- [ ] Module compiles without errors
+- [X] `src/routing/mod.rs` exists with module structure
+- [X] `RoutingStrategy` enum defined with all 4 variants
+- [X] Default strategy is Smart
+- [X] FromStr parses all strategy names (case-insensitive)
+- [X] Module compiles without errors
 
 ---
 
@@ -139,13 +139,13 @@ mod tests {
 7. Estimate tokens from message content lengths
 
 ### Acceptance Criteria
-- [ ] `RequestRequirements` struct defined with all fields
-- [ ] Model name extracted correctly
-- [ ] Token estimation: characters / 4
-- [ ] Vision detected from `image_url` in any message content
-- [ ] Tools detected from non-empty `tools` array
-- [ ] JSON mode detected from `response_format.type == "json_object"`
-- [ ] All unit tests pass
+- [X] `RequestRequirements` struct defined with all fields
+- [X] Model name extracted correctly
+- [X] Token estimation: characters / 4
+- [X] Vision detected from `image_url` in any message content
+- [X] Tools detected from non-empty `tools` array
+- [X] JSON mode detected from `response_format.type == "json_object"`
+- [X] All unit tests pass
 
 ---
 
@@ -214,12 +214,12 @@ mod filter_tests {
 6. Filter by context length >= estimated_tokens
 
 ### Acceptance Criteria
-- [ ] Returns only backends with matching model
-- [ ] Filters out unhealthy backends
-- [ ] Filters by vision capability when required
-- [ ] Filters by tools capability when required
-- [ ] Filters by context length when estimated_tokens > model.context_length
-- [ ] Returns empty Vec when no candidates match
+- [X] Returns only backends with matching model
+- [X] Filters out unhealthy backends
+- [X] Filters by vision capability when required
+- [X] Filters by tools capability when required
+- [X] Filters by context length when estimated_tokens > model.context_length
+- [X] Returns empty Vec when no candidates match
 
 ---
 
@@ -276,12 +276,12 @@ mod tests {
 4. Export from mod.rs
 
 ### Acceptance Criteria
-- [ ] `RoutingError::ModelNotFound` with model name
-- [ ] `RoutingError::NoHealthyBackend` with model name
-- [ ] `RoutingError::CapabilityMismatch` with model and missing capabilities
-- [ ] `RoutingError::FallbackChainExhausted` with attempted chain
-- [ ] All errors implement std::error::Error
-- [ ] Error messages are descriptive and include relevant context
+- [X] `RoutingError::ModelNotFound` with model name
+- [X] `RoutingError::NoHealthyBackend` with model name
+- [X] `RoutingError::CapabilityMismatch` with model and missing capabilities
+- [X] `RoutingError::FallbackChainExhausted` with attempted chain
+- [X] All errors implement std::error::Error
+- [X] Error messages are descriptive and include relevant context
 
 ---
 
@@ -371,13 +371,13 @@ mod prop_tests {
 5. Clamp values > 100 to prevent underflow
 
 ### Acceptance Criteria
-- [ ] `ScoringWeights` with priority=50, load=30, latency=20 default
-- [ ] Score formula: `(priority_score * w.priority + load_score * w.load + latency_score * w.latency) / 100`
-- [ ] Priority score: `100 - min(priority, 100)`
-- [ ] Load score: `100 - min(pending_requests, 100)`
-- [ ] Latency score: `100 - min(avg_latency_ms / 10, 100)`
-- [ ] Score always in range 0-100
-- [ ] Property tests pass
+- [X] `ScoringWeights` with priority=50, load=30, latency=20 default
+- [X] Score formula: `(priority_score * w.priority + load_score * w.load + latency_score * w.latency) / 100`
+- [X] Priority score: `100 - min(priority, 100)`
+- [X] Load score: `100 - min(pending_requests, 100)`
+- [X] Latency score: `100 - min(avg_latency_ms / 10, 100)`
+- [X] Score always in range 0-100
+- [X] Property tests pass
 
 ---
 
@@ -429,10 +429,10 @@ mod smart_strategy_tests {
 4. On tie, return first (stable selection)
 
 ### Acceptance Criteria
-- [ ] Selects backend with highest score
-- [ ] Returns first backend on score tie (deterministic)
-- [ ] Works with single candidate
-- [ ] Scoring uses configured weights
+- [X] Selects backend with highest score
+- [X] Returns first backend on score tie (deterministic)
+- [X] Works with single candidate
+- [X] Scoring uses configured weights
 
 ---
 
@@ -499,11 +499,11 @@ mod round_robin_tests {
 4. Select candidate at `counter % candidates.len()`
 
 ### Acceptance Criteria
-- [ ] Cycles through all candidates in order
-- [ ] Wraps around after last candidate
-- [ ] Handles candidate list changes (uses modulo)
-- [ ] Thread-safe with concurrent access
-- [ ] Counter uses atomic operations
+- [X] Cycles through all candidates in order
+- [X] Wraps around after last candidate
+- [X] Handles candidate list changes (uses modulo)
+- [X] Thread-safe with concurrent access
+- [X] Counter uses atomic operations
 
 ---
 
@@ -547,9 +547,9 @@ mod priority_only_tests {
 3. Return first backend with that priority
 
 ### Acceptance Criteria
-- [ ] Selects backend with lowest priority number
-- [ ] Returns first on priority tie (stable)
-- [ ] Ignores load and latency
+- [X] Selects backend with lowest priority number
+- [X] Returns first on priority tie (stable)
+- [X] Ignores load and latency
 
 ---
 
@@ -592,9 +592,9 @@ mod random_tests {
 4. Return candidate at that index
 
 ### Acceptance Criteria
-- [ ] Selects randomly from candidates
-- [ ] Distribution approximately even over many calls
-- [ ] Works with any number of candidates
+- [X] Selects randomly from candidates
+- [X] Distribution approximately even over many calls
+- [X] Works with any number of candidates
 
 ---
 
@@ -663,11 +663,11 @@ mod alias_tests {
 4. Use alias resolution in `select_backend()` when no candidates found
 
 ### Acceptance Criteria
-- [ ] Resolves configured aliases
-- [ ] Returns original model if no alias exists
-- [ ] Detects circular aliases (a→a same entry)
-- [ ] Aliases are single-level (a→b does not follow b→c)
-- [ ] Applied when model not found in registry
+- [X] Resolves configured aliases
+- [X] Returns original model if no alias exists
+- [X] Detects circular aliases (a→a same entry)
+- [X] Aliases are single-level (a→b does not follow b→c)
+- [X] Applied when model not found in registry
 
 ---
 
@@ -734,11 +734,11 @@ mod fallback_tests {
 5. Fallbacks are single-level only
 
 ### Acceptance Criteria
-- [ ] Tries fallback models in order
-- [ ] Returns error when all fallbacks exhausted
-- [ ] Fallbacks are single-level (don't chain)
-- [ ] Aliases resolved before fallbacks applied
-- [ ] Error includes list of attempted models
+- [X] Tries fallback models in order
+- [X] Returns error when all fallbacks exhausted
+- [X] Fallbacks are single-level (don't chain)
+- [X] Aliases resolved before fallbacks applied
+- [X] Error includes list of attempted models
 
 ---
 
@@ -806,11 +806,11 @@ mod routing_config_tests {
 6. Add to `NexusConfig`
 
 ### Acceptance Criteria
-- [ ] `RoutingConfig` parses from TOML
-- [ ] Default values: strategy=Smart, max_retries=2, weights=50/30/20
-- [ ] Aliases parsed as string map
-- [ ] Fallbacks parsed as string-to-vec map
-- [ ] Environment overrides work for strategy and max_retries
+- [X] `RoutingConfig` parses from TOML
+- [X] Default values: strategy=Smart, max_retries=2, weights=50/30/20
+- [X] Aliases parsed as string map
+- [X] Fallbacks parsed as string-to-vec map
+- [X] Environment overrides work for strategy and max_retries
 
 ---
 
@@ -880,12 +880,12 @@ async fn returns_503_when_no_healthy_backend() {
 5. Add routing info to logs
 
 ### Acceptance Criteria
-- [ ] Router available in request handlers
-- [ ] Chat completions uses router for backend selection
-- [ ] ModelNotFound returns 404 with OpenAI error format
-- [ ] NoHealthyBackend returns 503
-- [ ] CapabilityMismatch returns 400
-- [ ] Routing decision logged at debug level
+- [X] Router available in request handlers
+- [X] Chat completions uses router for backend selection
+- [X] ModelNotFound returns 404 with OpenAI error format
+- [X] NoHealthyBackend returns 503
+- [X] CapabilityMismatch returns 400
+- [X] Routing decision logged at debug level
 
 ---
 
@@ -938,11 +938,11 @@ async fn concurrent_routing_decisions() {
 4. Add stress test for concurrent routing
 
 ### Acceptance Criteria
-- [ ] All routing strategies tested E2E
-- [ ] Alias resolution tested E2E
-- [ ] Fallback chains tested E2E
-- [ ] Capability filtering tested E2E
-- [ ] Concurrent routing works without errors
+- [X] All routing strategies tested E2E
+- [X] Alias resolution tested E2E
+- [X] Fallback chains tested E2E
+- [X] Capability filtering tested E2E
+- [X] Concurrent routing works without errors
 
 ---
 
@@ -986,10 +986,10 @@ fn routing_with_1000_models() {
 5. Document results
 
 ### Acceptance Criteria
-- [ ] Routing decision < 1ms with 100 backends
-- [ ] Routing decision < 1ms with 1000 models
-- [ ] No performance regression under concurrent load
-- [ ] Performance documented in code comments
+- [X] Routing decision < 1ms with 100 backends
+- [X] Routing decision < 1ms with 1000 models
+- [X] No performance regression under concurrent load
+- [X] Performance documented in code comments
 
 ---
 
