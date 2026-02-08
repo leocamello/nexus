@@ -6,6 +6,28 @@
 
 ---
 
+## TDD Enforcement Protocol (Constitution-Mandated)
+
+Before writing ANY implementation code for T07-T10:
+
+1. **RED Phase Checkpoint**:
+   - [ ] All tests written and added to appropriate test files
+   - [ ] Tests executed: `cargo test <feature>` 
+   - [ ] Failures confirmed (output shows expected errors)
+   - [ ] Run: `cargo test <test_name> 2>&1 | grep -E '(FAILED|error)' | head -20`
+
+2. **Implementation Gate**:
+   - Cannot proceed to "Implementation" section until RED phase confirmed
+   - If tests pass on first run, tests are INVALID (rewrite tests)
+
+3. **GREEN Phase Checkpoint**:
+   - [ ] Implementation written
+   - [ ] Tests executed: `cargo test <feature>`
+   - [ ] All tests PASS
+   - [ ] No test code modified during GREEN phase
+
+---
+
 ## Task Overview
 
 | Task | Description | Status | Priority |
@@ -44,7 +66,7 @@ All core fallback functionality was implemented in F06:
 **Status**: Not Started  
 **File**: `src/routing/mod.rs`
 
-### Tests to Write First (TDD Red Phase)
+### Step 1: Write Tests (TDD Red Phase)
 ```rust
 #[test]
 fn routing_result_contains_fallback_info() {
@@ -65,12 +87,14 @@ fn routing_result_no_fallback_when_primary_used() {
 }
 ```
 
-### Verify Tests Fail First
+### Step 2: Verify Tests Fail (RED Phase - MANDATORY)
 1. Write tests above
-2. Run `cargo test routing_result` - must see FAILURES
-3. Only then proceed to implementation
+2. Run: `cargo test routing_result 2>&1 | grep -E '(FAILED|error)' | head -20`
+3. **STOP**: Do NOT proceed if tests pass
+4. Expected: Compilation errors (RoutingResult doesn't exist yet)
+5. Only then proceed to implementation
 
-### Implementation (TDD Green Phase)
+### Step 3: Implementation (TDD Green Phase)
 ```rust
 /// Result of a successful routing decision
 pub struct RoutingResult {
@@ -94,20 +118,26 @@ impl Router {
 }
 ```
 
+### Step 4: Verify Tests Pass (GREEN Phase)
+Run: `cargo test routing_result`
+Expected: All tests PASS
+
 ### Acceptance Criteria
-- [ ] RoutingResult struct with backend, actual_model, fallback_used fields
+- [ ] RoutingResult struct with backend, actual_model, fallback_used fields (`cargo build`)
 - [ ] select_backend returns RoutingResult instead of Arc<Backend>
-- [ ] fallback_used is true when fallback model used
-- [ ] actual_model contains the model that was actually selected
+- [ ] Test `routing_result_contains_fallback_info` passes
+- [ ] Test `routing_result_no_fallback_when_primary_used` passes
+- [ ] All routing_result tests pass (`cargo test routing_result`)
 
 ---
 
 ## T08: X-Nexus-Fallback-Model Header ⬜
 
 **Status**: Not Started  
-**File**: `src/api/chat.rs`
+**File**: `src/api/chat.rs`  
+**Satisfies**: AC-06
 
-### Tests to Write First (TDD Red Phase)
+### Step 1: Write Tests (TDD Red Phase)
 ```rust
 #[tokio::test]
 async fn response_includes_fallback_header_when_fallback_used() {
@@ -127,12 +157,14 @@ async fn response_no_fallback_header_when_primary_used() {
 }
 ```
 
-### Verify Tests Fail First
+### Step 2: Verify Tests Fail (RED Phase - MANDATORY)
 1. Write tests above
-2. Run `cargo test fallback_header` - must see FAILURES
-3. Only then proceed to implementation
+2. Run: `cargo test fallback_header 2>&1 | grep -E '(FAILED|error)' | head -20`
+3. **STOP**: Do NOT proceed if tests pass
+4. Expected: Compilation errors or test failures
+5. Only then proceed to implementation
 
-### Implementation (TDD Green Phase)
+### Step 3: Implementation (TDD Green Phase)
 ```rust
 // In src/api/chat.rs or similar
 pub const FALLBACK_HEADER: &str = "x-nexus-fallback-model";
@@ -146,10 +178,14 @@ if routing_result.fallback_used {
 }
 ```
 
+### Step 4: Verify Tests Pass (GREEN Phase)
+Run: `cargo test fallback_header`
+Expected: All tests PASS
+
 ### Acceptance Criteria
-- [ ] X-Nexus-Fallback-Model header added when fallback used
+- [ ] AC-06 satisfied: X-Nexus-Fallback-Model header present when fallback used
+- [ ] AC-06 satisfied: Header absent when primary model used
 - [ ] Header contains actual model name
-- [ ] No header when primary model used
 - [ ] Header is lowercase (HTTP/2 compliant)
 
 ---
@@ -159,13 +195,30 @@ if routing_result.fallback_used {
 **Status**: Not Started  
 **File**: `src/routing/mod.rs`, `src/api/`
 
-### Tests to Add
-- [ ] `routing_result_contains_fallback_info`
-- [ ] `routing_result_no_fallback_when_primary_used`
-- [ ] `routing_result_with_alias_and_fallback`
+### Step 1: Write Tests (TDD Red Phase)
+```rust
+// In src/routing/mod.rs test module
+#[test]
+fn routing_result_with_alias_and_fallback() {
+    // Given alias "alias" → "primary"
+    // And fallback "primary" → ["fallback"]
+    // And only "fallback" is available
+    // When select_backend("alias")
+    // Then result.fallback_used == true
+    // And result.actual_model == "fallback"
+}
+```
+
+### Step 2: Verify Tests Fail (RED Phase)
+Run: `cargo test routing_result_with_alias 2>&1 | grep -E '(FAILED|error)' | head -20`
+
+### Step 3: Implementation
+This test should pass after T07 implementation if designed correctly.
 
 ### Acceptance Criteria
-- [ ] All RoutingResult tests pass
+- [ ] Test `routing_result_contains_fallback_info` passes
+- [ ] Test `routing_result_no_fallback_when_primary_used` passes
+- [ ] Test `routing_result_with_alias_and_fallback` passes
 - [ ] Edge cases covered (alias + fallback, no fallback configured)
 
 ---
@@ -175,14 +228,31 @@ if routing_result.fallback_used {
 **Status**: Not Started  
 **File**: `tests/api_integration.rs` or `tests/routing_integration.rs`
 
-### Tests to Add
-- [ ] `response_includes_fallback_header_when_fallback_used`
-- [ ] `response_no_fallback_header_when_primary_used`
-- [ ] `streaming_response_includes_fallback_header`
+### Step 1: Write Tests (TDD Red Phase)
+```rust
+#[tokio::test]
+async fn api_response_includes_fallback_header() {
+    // Full HTTP test:
+    // 1. Set up mock backend with only fallback model
+    // 2. Configure fallback "primary" → ["fallback"]
+    // 3. POST /v1/chat/completions with model="primary"
+    // 4. Assert X-Nexus-Fallback-Model: fallback header present
+}
+
+#[tokio::test]
+async fn streaming_response_includes_fallback_header() {
+    // Same as above but with stream: true
+}
+```
+
+### Step 2: Verify Tests Fail (RED Phase)
+Run: `cargo test api_response_includes_fallback 2>&1 | grep -E '(FAILED|error)' | head -20`
 
 ### Acceptance Criteria
+- [ ] Test `api_response_includes_fallback_header` passes
+- [ ] Test `response_no_fallback_header_when_primary_used` passes
+- [ ] Test `streaming_response_includes_fallback_header` passes
 - [ ] Integration tests verify header in HTTP response
-- [ ] Both streaming and non-streaming responses tested
 
 ---
 
