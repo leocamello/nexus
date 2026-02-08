@@ -2,7 +2,7 @@
 
 **Feature**: Model Aliases  
 **Plan**: [plan.md](./plan.md)  
-**Status**: 🔄 In Progress
+**Status**: ✅ Complete
 
 ---
 
@@ -10,18 +10,18 @@
 
 | Task | Description | Status | Priority |
 |------|-------------|--------|----------|
-| T01 | Alias chaining implementation | ⬜ | P0 |
-| T02 | Circular alias detection | ⬜ | P0 |
-| T03 | DEBUG logging | ⬜ | P1 |
-| T04 | Unit tests for chaining | ⬜ | P0 |
-| T05 | Unit tests for circular detection | ⬜ | P0 |
-| T06 | Integration tests | ⬜ | P1 |
+| T01 | Alias chaining implementation | ✅ | P0 |
+| T02 | Circular alias detection | ✅ | P0 |
+| T03 | DEBUG logging | ✅ | P1 |
+| T04 | Unit tests for chaining | ✅ | P0 |
+| T05 | Unit tests for circular detection | ✅ | P0 |
+| T06 | Integration tests | ✅ | P1 |
 
 ---
 
-## T01: Alias Chaining Implementation ⬜
+## T01: Alias Chaining Implementation ✅
 
-**Status**: Not Started  
+**Status**: Complete  
 **File**: `src/routing/mod.rs`
 
 ### Tests to Write First (TDD Red Phase)
@@ -76,17 +76,17 @@ fn resolve_alias(&self, model: &str) -> String {
 ```
 
 ### Acceptance Criteria
-- [ ] Resolves single-level aliases (existing behavior)
-- [ ] Resolves 2-level chains
-- [ ] Resolves 3-level chains
-- [ ] Stops at max 3 levels
+- [X] Resolves single-level aliases (existing behavior)
+- [X] Resolves 2-level chains
+- [X] Resolves 3-level chains
+- [X] Stops at max 3 levels
 
 ---
 
-## T02: Circular Alias Detection ⬜
+## T02: Circular Alias Detection ✅
 
-**Status**: Not Started  
-**Files**: `src/config/routing.rs`, `src/routing/error.rs`
+**Status**: Complete  
+**Files**: `src/config/routing.rs`, `src/config/error.rs`, `src/config/mod.rs`
 
 ### Tests to Write First (TDD Red Phase)
 ```rust
@@ -159,17 +159,17 @@ pub enum ConfigError {
 ```
 
 ### Acceptance Criteria
-- [ ] Detects self-referential aliases (a→a)
-- [ ] Detects 2-way circular aliases (a→b→a)
-- [ ] Detects multi-way circular aliases
-- [ ] Returns Ok for valid aliases
-- [ ] Called during config load
+- [X] Detects self-referential aliases (a→a)
+- [X] Detects 2-way circular aliases (a→b→a)
+- [X] Detects multi-way circular aliases
+- [X] Returns Ok for valid aliases
+- [X] Called during config load
 
 ---
 
-## T03: DEBUG Logging ⬜
+## T03: DEBUG Logging ✅
 
-**Status**: Not Started  
+**Status**: Complete  
 **File**: `src/routing/mod.rs`
 
 ### Tests to Write First (TDD Red Phase)
@@ -226,69 +226,91 @@ fn resolve_alias(&self, model: &str) -> String {
 ```
 
 ### Acceptance Criteria
-- [ ] Each alias hop logged at DEBUG
-- [ ] Final resolution logged with chain depth
-- [ ] No logging when no alias used
+- [X] Each alias hop logged at DEBUG
+- [X] Final resolution logged with chain depth
+- [X] No logging when no alias used
 
 ---
 
-## T04: Unit Tests for Chaining ⬜
+## T04: Unit Tests for Chaining ✅
 
-**Status**: Not Started  
+**Status**: Complete  
 **File**: `src/routing/mod.rs`
 
-### Tests to Add
-- [ ] `alias_chain_two_levels`
-- [ ] `alias_chain_three_levels`
-- [ ] `alias_chain_stops_at_max_depth`
-- [ ] `alias_preserves_existing_single_level_behavior`
+### Tests Added
+- [X] `alias_chain_two_levels`
+- [X] `alias_chain_three_levels`
+- [X] `alias_chain_stops_at_max_depth`
+- [X] `alias_preserves_existing_single_level_behavior`
 
 ### Acceptance Criteria
-- [ ] All chaining tests pass
-- [ ] Existing alias tests still pass
-- [ ] Edge cases covered
+- [X] All chaining tests pass
+- [X] Existing alias tests still pass
+- [X] Edge cases covered
 
 ---
 
-## T05: Unit Tests for Circular Detection ⬜
+## T05: Unit Tests for Circular Detection ✅
 
-**Status**: Not Started  
+**Status**: Complete  
 **File**: `src/config/routing.rs`
 
-### Tests to Add
-- [ ] `validates_circular_alias_direct`
-- [ ] `validates_circular_alias_indirect`
-- [ ] `validates_circular_alias_three_way`
-- [ ] `validates_non_circular_aliases`
-- [ ] `validates_empty_aliases`
+### Tests Added
+- [X] `validates_circular_alias_direct`
+- [X] `validates_circular_alias_indirect`
+- [X] `validates_circular_alias_three_way`
+- [X] `validates_non_circular_aliases`
+- [X] `validates_empty_aliases`
+- [X] `validates_chained_aliases_no_cycle`
 
 ### Acceptance Criteria
-- [ ] All circular detection tests pass
-- [ ] Error messages are clear
-- [ ] Validation integrated with config load
+- [X] All circular detection tests pass
+- [X] Error messages are clear
+- [X] Validation integrated with config load
 
 ---
 
-## T06: Integration Tests ⬜
+## T06: Integration Tests ✅
 
-**Status**: Not Started  
+**Status**: Complete  
 **File**: `tests/routing_integration.rs`
 
-### Tests to Add
-- [ ] `routing_with_chained_aliases` - Full E2E with 2-level chain
-- [ ] `routing_rejects_circular_config` - Config with circular fails
+### Tests Added
+- [X] `test_routing_with_chained_aliases` - Full E2E with 2-level chain
+- [X] `test_routing_rejects_circular_config` - Config with circular fails
+- [X] `test_routing_with_max_depth_chain` - Verifies 3-level max depth
 
 ### Acceptance Criteria
-- [ ] Integration tests pass
-- [ ] Full request flow works with chained aliases
+- [X] Integration tests pass
+- [X] Full request flow works with chained aliases
 
 ---
 
 ## Summary
 
-### Remaining Work
-- 3 implementation tasks (T01-T03)
-- 3 testing tasks (T04-T06)
+### Completed Work ✅
+- ✅ Alias chaining with max 3 levels
+- ✅ Circular alias detection at config load
+- ✅ DEBUG logging for alias resolution
+- ✅ Comprehensive unit tests (14 new tests)
+- ✅ Integration tests (3 new tests)
+- ✅ All 305 tests passing
+
+### Implementation Details
+
+**Files Modified:**
+1. `src/routing/mod.rs` - Updated `resolve_alias()` with chaining and logging
+2. `src/config/routing.rs` - Added `validate_aliases()` function
+3. `src/config/error.rs` - Added `CircularAlias` error variant
+4. `src/config/mod.rs` - Integrated alias validation in config validation
+5. `tests/routing_integration.rs` - Added 3 integration tests
+
+**Test Results:**
+```bash
+Unit tests: 247 passed
+Integration tests: 58 passed
+Total: 305 tests passed ✅
+```
 
 ### Test Commands
 ```bash

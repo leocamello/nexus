@@ -1,7 +1,9 @@
 //! Routing configuration
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+
+use crate::config::error::ConfigError;
 
 /// Routing strategy for backend selection
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -82,6 +84,27 @@ impl From<RoutingWeights> for crate::routing::ScoringWeights {
     }
 }
 
+/// Validate aliases for circular references
+pub fn validate_aliases(aliases: &HashMap<String, String>) -> Result<(), ConfigError> {
+    for start in aliases.keys() {
+        let mut current = start;
+        let mut visited = HashSet::new();
+        visited.insert(start);
+
+        while let Some(target) = aliases.get(current) {
+            if visited.contains(target) {
+                return Err(ConfigError::CircularAlias {
+                    start: start.clone(),
+                    cycle: target.clone(),
+                });
+            }
+            visited.insert(target);
+            current = target;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -98,5 +121,109 @@ mod tests {
         let strategy = RoutingStrategy::RoundRobin;
         let json = serde_json::to_string(&strategy).unwrap();
         assert_eq!(json, "\"round_robin\"");
+    }
+
+    // T02: Circular Alias Detection Tests (TDD RED Phase)
+    #[test]
+    fn validates_circular_alias_direct() {
+        // Given aliases: "a" → "a"
+        let mut aliases = HashMap::new();
+        aliases.insert("a".to_string(), "a".to_string());
+
+        // When validating
+        let result = validate_aliases(&aliases);
+
+        // Then returns CircularAlias error
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ConfigError::CircularAlias { start, cycle } => {
+                assert_eq!(start, "a");
+                assert_eq!(cycle, "a");
+            }
+            _ => panic!("Expected CircularAlias error"),
+        }
+    }
+
+    #[test]
+    fn validates_circular_alias_indirect() {
+        // Given aliases: "a" → "b", "b" → "a"
+        let mut aliases = HashMap::new();
+        aliases.insert("a".to_string(), "b".to_string());
+        aliases.insert("b".to_string(), "a".to_string());
+
+        // When validating
+        let result = validate_aliases(&aliases);
+
+        // Then returns CircularAlias error
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ConfigError::CircularAlias { start, cycle } => {
+                assert!(start == "a" || start == "b");
+                assert!(cycle == "a" || cycle == "b");
+            }
+            _ => panic!("Expected CircularAlias error"),
+        }
+    }
+
+    #[test]
+    fn validates_circular_alias_three_way() {
+        // Given aliases: "a" → "b", "b" → "c", "c" → "a"
+        let mut aliases = HashMap::new();
+        aliases.insert("a".to_string(), "b".to_string());
+        aliases.insert("b".to_string(), "c".to_string());
+        aliases.insert("c".to_string(), "a".to_string());
+
+        // When validating
+        let result = validate_aliases(&aliases);
+
+        // Then returns CircularAlias error
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ConfigError::CircularAlias { .. } => {
+                // Success - circular reference detected
+            }
+            _ => panic!("Expected CircularAlias error"),
+        }
+    }
+
+    #[test]
+    fn validates_non_circular_aliases() {
+        // Given aliases: "a" → "b", "c" → "d"
+        let mut aliases = HashMap::new();
+        aliases.insert("a".to_string(), "b".to_string());
+        aliases.insert("c".to_string(), "d".to_string());
+
+        // When validating
+        let result = validate_aliases(&aliases);
+
+        // Then returns Ok
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validates_empty_aliases() {
+        // Given empty aliases
+        let aliases = HashMap::new();
+
+        // When validating
+        let result = validate_aliases(&aliases);
+
+        // Then returns Ok
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validates_chained_aliases_no_cycle() {
+        // Given aliases: "a" → "b", "b" → "c", "c" → "d" (no cycle)
+        let mut aliases = HashMap::new();
+        aliases.insert("a".to_string(), "b".to_string());
+        aliases.insert("b".to_string(), "c".to_string());
+        aliases.insert("c".to_string(), "d".to_string());
+
+        // When validating
+        let result = validate_aliases(&aliases);
+
+        // Then returns Ok
+        assert!(result.is_ok());
     }
 }
