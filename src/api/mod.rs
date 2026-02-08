@@ -63,12 +63,13 @@
 mod completions;
 mod health;
 mod models;
-mod types;
+pub mod types;
 
 pub use types::*;
 
 use crate::config::NexusConfig;
 use crate::registry::Registry;
+use crate::routing;
 use axum::{
     routing::{get, post},
     Router,
@@ -84,6 +85,7 @@ pub struct AppState {
     pub registry: Arc<Registry>,
     pub config: Arc<NexusConfig>,
     pub http_client: reqwest::Client,
+    pub router: Arc<routing::Router>,
 }
 
 impl AppState {
@@ -97,10 +99,20 @@ impl AppState {
             .build()
             .expect("Failed to create HTTP client");
 
+        // Create router from config
+        let router = Arc::new(routing::Router::with_aliases_and_fallbacks(
+            Arc::clone(&registry),
+            config.routing.strategy.into(),
+            config.routing.weights.clone().into(),
+            config.routing.aliases.clone(),
+            config.routing.fallbacks.clone(),
+        ));
+
         Self {
             registry,
             config,
             http_client,
+            router,
         }
     }
 }
