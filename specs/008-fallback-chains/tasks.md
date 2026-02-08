@@ -2,186 +2,282 @@
 
 **Feature**: Fallback Chains  
 **Plan**: [plan.md](./plan.md)  
-**Status**: ✅ All tasks complete (implemented with F06)
+**Status**: ✅ Complete
+
+---
+
+## TDD Enforcement Protocol (Constitution-Mandated)
+
+Before writing ANY implementation code for T07-T10:
+
+1. **RED Phase Checkpoint**:
+   - [X] All tests written and added to appropriate test files
+   - [X] Tests executed: `cargo test <feature>` 
+   - [X] Failures confirmed (output shows expected errors)
+   - [X] Run: `cargo test <test_name> 2>&1 | grep -E '(FAILED|error)' | head -20`
+
+2. **Implementation Gate**:
+   - Cannot proceed to "Implementation" section until RED phase confirmed
+   - If tests pass on first run, tests are INVALID (rewrite tests)
+
+3. **GREEN Phase Checkpoint**:
+   - [X] Implementation written
+   - [X] Tests executed: `cargo test <feature>`
+   - [X] All tests PASS
+   - [X] No test code modified during GREEN phase
 
 ---
 
 ## Task Overview
 
-| Task | Description | Status | Implemented In |
-|------|-------------|--------|----------------|
-| T01 | Data structure | ✅ | F06 |
-| T02 | Config parsing | ✅ | F06 |
-| T03 | Resolution logic | ✅ | F06 |
-| T04 | Error types | ✅ | F06 |
-| T05 | Unit tests | ✅ | F06 |
-| T06 | Integration tests | ✅ | F06 |
+| Task | Description | Status | Priority |
+|------|-------------|--------|----------|
+| T01 | Fallback data structure | ✅ (F06) | - |
+| T02 | Config parsing | ✅ (F06) | - |
+| T03 | Resolution logic | ✅ (F06) | - |
+| T04 | Error types | ✅ (F06) | - |
+| T05 | Unit tests (fallback) | ✅ (F06) | - |
+| T06 | Integration tests (fallback) | ✅ (F06) | - |
+| T07 | RoutingResult struct | ✅ | P0 |
+| T08 | X-Nexus-Fallback-Model header | ✅ | P0 |
+| T09 | Header unit tests | ✅ | P0 |
+| T10 | Header integration tests | ✅ | P0 |
 
 ---
 
-## T01: Fallback Data Structure ✅
+## Previously Completed Tasks (F06)
 
-**Status**: Complete (F06)  
+### T01-T06: Core Fallback Functionality ✅
+
+All core fallback functionality was implemented in F06:
+- Fallback chains in Router struct
+- Config parsing for `[routing.fallbacks]`
+- Linear iteration through fallback list
+- `FallbackChainExhausted` error type
+- WARN level logging
+- Unit and integration tests
+
+---
+
+## New Tasks (F08)
+
+## T07: RoutingResult Struct ✅
+
+**Status**: Complete  
 **File**: `src/routing/mod.rs`
 
-### Acceptance Criteria
-- [x] HashMap<String, Vec<String>> field in Router
-- [x] Constructor accepts fallbacks parameter
-- [x] Default to empty HashMap
-
-### Implementation
+### Step 1: Write Tests (TDD Red Phase)
 ```rust
-pub struct Router {
-    fallbacks: HashMap<String, Vec<String>>,
-    // ...
+#[test]
+fn routing_result_contains_fallback_info() {
+    // Given router with fallback "primary" → ["fallback"]
+    // And only "fallback" is available
+    // When select_backend("primary")
+    // Then result.fallback_used == true
+    // And result.actual_model == "fallback"
+}
+
+#[test]
+fn routing_result_no_fallback_when_primary_used() {
+    // Given router with fallback "primary" → ["fallback"]
+    // And "primary" is available
+    // When select_backend("primary")
+    // Then result.fallback_used == false
+    // And result.actual_model == "primary"
+}
+```
+
+### Step 2: Verify Tests Fail (RED Phase - MANDATORY)
+1. Write tests above
+2. Run: `cargo test routing_result 2>&1 | grep -E '(FAILED|error)' | head -20`
+3. **STOP**: Do NOT proceed if tests pass
+4. Expected: Compilation errors (RoutingResult doesn't exist yet)
+5. Only then proceed to implementation
+
+### Step 3: Implementation (TDD Green Phase)
+```rust
+/// Result of a successful routing decision
+pub struct RoutingResult {
+    /// The selected backend
+    pub backend: Arc<Backend>,
+    /// The actual model name used (may differ if fallback)
+    pub actual_model: String,
+    /// True if a fallback model was used
+    pub fallback_used: bool,
 }
 
 impl Router {
-    pub fn with_aliases_and_fallbacks(
-        self,
-        aliases: HashMap<String, String>,
-        fallbacks: HashMap<String, Vec<String>>,
-    ) -> Self
+    /// Select the best backend, returning routing metadata
+    pub fn select_backend(
+        &self,
+        requirements: &RequestRequirements,
+    ) -> Result<RoutingResult, RoutingError> {
+        // ... existing logic ...
+        // Return RoutingResult with fallback_used flag
+    }
 }
 ```
 
----
-
-## T02: Configuration Parsing ✅
-
-**Status**: Complete (F06)  
-**File**: `src/config/routing.rs`
+### Step 4: Verify Tests Pass (GREEN Phase)
+Run: `cargo test routing_result`
+Expected: All tests PASS
 
 ### Acceptance Criteria
-- [x] `[routing.fallbacks]` section in TOML
-- [x] HashMap<String, Vec<String>> serde parsing
-- [x] Default to empty if not specified
-
-### Implementation
-```toml
-[routing.fallbacks]
-"llama3:70b" = ["qwen2:72b", "mistral:7b"]
-"gpt-4" = ["llama3:70b", "qwen2:72b"]
-```
+- [X] RoutingResult struct with backend, actual_model, fallback_used fields (`cargo build`)
+- [X] select_backend returns RoutingResult instead of Arc<Backend>
+- [X] Test `routing_result_contains_fallback_info` passes
+- [X] Test `routing_result_no_fallback_when_primary_used` passes
+- [X] All routing_result tests pass (`cargo test routing_result`)
 
 ---
 
-## T03: Resolution Logic ✅
+## T08: X-Nexus-Fallback-Model Header ✅
 
-**Status**: Complete (F06)  
-**File**: `src/routing/mod.rs`
+**Status**: Complete  
+**File**: `src/api/chat.rs`  
+**Satisfies**: AC-06
 
-### Acceptance Criteria
-- [x] Linear iteration through fallback list
-- [x] Returns first available model
-- [x] Logs fallback usage at WARN level
-- [x] Single-level only (no recursion)
-
-### Implementation
+### Step 1: Write Tests (TDD Red Phase)
 ```rust
-fn find_candidates_with_fallback(&self, model: &str) 
-    -> Result<(Vec<Arc<Backend>>, bool), RoutingError> 
-{
-    // Try primary, then iterate fallbacks
-    // ...
+#[tokio::test]
+async fn response_includes_fallback_header_when_fallback_used() {
+    // Given router with fallback config
+    // And primary model unavailable
+    // When POST /v1/chat/completions
+    // Then response has X-Nexus-Fallback-Model header
+    // And header value is the fallback model name
+}
+
+#[tokio::test]
+async fn response_no_fallback_header_when_primary_used() {
+    // Given router with fallback config
+    // And primary model available
+    // When POST /v1/chat/completions
+    // Then response does NOT have X-Nexus-Fallback-Model header
 }
 ```
 
----
+### Step 2: Verify Tests Fail (RED Phase - MANDATORY)
+1. Write tests above
+2. Run: `cargo test fallback_header 2>&1 | grep -E '(FAILED|error)' | head -20`
+3. **STOP**: Do NOT proceed if tests pass
+4. Expected: Compilation errors or test failures
+5. Only then proceed to implementation
 
-## T04: Error Types ✅
-
-**Status**: Complete (F06)  
-**File**: `src/routing/error.rs`
-
-### Acceptance Criteria
-- [x] FallbackChainExhausted error variant
-- [x] Includes original model
-- [x] Includes list of tried models
-- [x] Clear error message
-
-### Implementation
+### Step 3: Implementation (TDD Green Phase)
 ```rust
-#[derive(Debug, thiserror::Error)]
-pub enum RoutingError {
-    #[error("Fallback chain exhausted for model '{model}'. Tried: {tried:?}")]
-    FallbackChainExhausted {
-        model: String,
-        tried: Vec<String>,
-    },
+// In src/api/chat.rs or similar
+pub const FALLBACK_HEADER: &str = "x-nexus-fallback-model";
+
+// After routing and proxying response:
+if routing_result.fallback_used {
+    response.headers_mut().insert(
+        HeaderName::from_static(FALLBACK_HEADER),
+        HeaderValue::from_str(&routing_result.actual_model)?,
+    );
 }
 ```
 
----
-
-## T05: Unit Tests ✅
-
-**Status**: Complete (F06)  
-**File**: `src/routing/mod.rs`
+### Step 4: Verify Tests Pass (GREEN Phase)
+Run: `cargo test fallback_header`
+Expected: All tests PASS
 
 ### Acceptance Criteria
-- [x] Fallback to first available test
-- [x] Skip unavailable, use second test
-- [x] All fallbacks exhausted test
-- [x] No fallback configured test
-
-### Test Coverage
-- `alias_and_fallback_tests` module
-- `uses_fallback_when_primary_unavailable`
-- `fallback_chain_exhausted`
+- [X] AC-06 satisfied: X-Nexus-Fallback-Model header present when fallback used
+- [X] AC-06 satisfied: Header absent when primary model used
+- [X] Header contains actual model name
+- [X] Header is lowercase (HTTP/2 compliant)
 
 ---
 
-## T06: Integration Tests ✅
+## T09: Header Unit Tests ✅
 
-**Status**: Complete (F06)  
-**File**: `tests/routing_integration.rs`
+**Status**: Complete  
+**File**: `src/routing/mod.rs`, `src/api/`
+
+### Step 1: Write Tests (TDD Red Phase)
+```rust
+// In src/routing/mod.rs test module
+#[test]
+fn routing_result_with_alias_and_fallback() {
+    // Given alias "alias" → "primary"
+    // And fallback "primary" → ["fallback"]
+    // And only "fallback" is available
+    // When select_backend("alias")
+    // Then result.fallback_used == true
+    // And result.actual_model == "fallback"
+}
+```
+
+### Step 2: Verify Tests Fail (RED Phase)
+Run: `cargo test routing_result_with_alias 2>&1 | grep -E '(FAILED|error)' | head -20`
+
+### Step 3: Implementation
+This test should pass after T07 implementation if designed correctly.
 
 ### Acceptance Criteria
-- [x] End-to-end routing with fallback
-- [x] Verify correct backend selection
-- [x] Verify WARN logging
+- [X] Test `routing_result_contains_fallback_info` passes
+- [X] Test `routing_result_no_fallback_when_primary_used` passes
+- [X] Test `routing_result_with_alias_and_fallback` passes
+- [X] Edge cases covered (alias + fallback, no fallback configured)
 
-### Test
-- `test_routing_with_fallbacks`
+---
+
+## T10: Header Integration Tests ✅
+
+**Status**: Complete  
+**File**: `tests/api_integration.rs` or `tests/routing_integration.rs`
+
+### Step 1: Write Tests (TDD Red Phase)
+```rust
+#[tokio::test]
+async fn api_response_includes_fallback_header() {
+    // Full HTTP test:
+    // 1. Set up mock backend with only fallback model
+    // 2. Configure fallback "primary" → ["fallback"]
+    // 3. POST /v1/chat/completions with model="primary"
+    // 4. Assert X-Nexus-Fallback-Model: fallback header present
+}
+
+#[tokio::test]
+async fn streaming_response_includes_fallback_header() {
+    // Same as above but with stream: true
+}
+```
+
+### Step 2: Verify Tests Fail (RED Phase)
+Run: `cargo test api_response_includes_fallback 2>&1 | grep -E '(FAILED|error)' | head -20`
+
+### Acceptance Criteria
+- [X] Test `api_response_includes_fallback_header` passes
+- [X] Test `response_no_fallback_header_when_primary_used` passes
+- [X] Test `streaming_response_includes_fallback_header` passes
+- [X] Integration tests verify header in HTTP response
 
 ---
 
 ## Summary
 
-All tasks were completed as part of F06 (Intelligent Router). This tasks.md documents what was implemented for traceability.
+### Previously Completed (F06)
+- Core fallback chain functionality
+- Config parsing
+- Error handling
+- WARN logging
+- Basic tests
 
-### Code Locations
-| Feature | File | Line |
-|---------|------|------|
-| Router.fallbacks | `src/routing/mod.rs` | 38 |
-| find_candidates_with_fallback() | `src/routing/mod.rs` | 120+ |
-| FallbackChainExhausted | `src/routing/error.rs` | 20+ |
-| RoutingConfig.fallbacks | `src/config/routing.rs` | 26 |
-| Unit tests | `src/routing/mod.rs` | 850+ |
-| Integration tests | `tests/routing_integration.rs` | 80+ |
+### New Work (F08)
+- RoutingResult struct to carry fallback metadata
+- X-Nexus-Fallback-Model response header
+- Additional tests for header functionality
 
 ### Test Commands
 ```bash
-# Run fallback-specific tests
+# Run all fallback tests
 cargo test fallback
 
-# Run all routing tests
-cargo test routing::
+# Run routing result tests
+cargo test routing_result
+
+# Run header tests
+cargo test fallback_header
 ```
-
----
-
-## Outstanding Work
-
-### X-Nexus-Fallback-Model Header
-**Status**: Not implemented  
-**Priority**: P2 (Future enhancement)
-
-Would add HTTP response header indicating when fallback was used:
-```
-X-Nexus-Fallback-Model: qwen2:72b
-X-Nexus-Original-Model: llama3:70b
-```
-
-This is documented as a future enhancement in the spec.

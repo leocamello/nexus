@@ -20,6 +20,17 @@ pub use strategies::RoutingStrategy;
 
 use crate::registry::{Backend, BackendStatus, Registry};
 
+/// Result of a successful routing decision
+#[derive(Debug)]
+pub struct RoutingResult {
+    /// The selected backend
+    pub backend: Arc<Backend>,
+    /// The actual model name used (may differ if fallback)
+    pub actual_model: String,
+    /// True if a fallback model was used
+    pub fallback_used: bool,
+}
+
 /// Router selects the best backend for each request
 #[allow(dead_code)] // Fields will be used in subsequent tasks
 pub struct Router {
@@ -120,9 +131,13 @@ impl Router {
     pub fn select_backend(
         &self,
         requirements: &RequestRequirements,
-    ) -> Result<Arc<Backend>, RoutingError> {
+    ) -> Result<RoutingResult, RoutingError> {
         // Resolve alias first
         let model = self.resolve_alias(&requirements.model);
+
+        // Check if model exists at all (in any backend, regardless of health)
+        let all_backends = self.registry.get_backends_for_model(&model);
+        let model_exists = !all_backends.is_empty();
 
         // Try to find backend for the primary model
         let candidates = self.filter_candidates(&model, requirements);
@@ -135,7 +150,11 @@ impl Router {
                 RoutingStrategy::PriorityOnly => self.select_priority_only(&candidates),
                 RoutingStrategy::Random => self.select_random(&candidates),
             };
-            return Ok(Arc::new(selected));
+            return Ok(RoutingResult {
+                backend: Arc::new(selected),
+                actual_model: model.clone(),
+                fallback_used: false,
+            });
         }
 
         // Try fallback chain
@@ -149,7 +168,17 @@ impl Router {
                     RoutingStrategy::PriorityOnly => self.select_priority_only(&candidates),
                     RoutingStrategy::Random => self.select_random(&candidates),
                 };
-                return Ok(Arc::new(selected));
+                tracing::warn!(
+                    requested_model = %model,
+                    fallback_model = %fallback_model,
+                    backend = %selected.name,
+                    "Using fallback model"
+                );
+                return Ok(RoutingResult {
+                    backend: Arc::new(selected),
+                    actual_model: fallback_model.clone(),
+                    fallback_used: true,
+                });
             }
         }
 
@@ -159,6 +188,11 @@ impl Router {
             let mut chain = vec![model.clone()];
             chain.extend(fallbacks);
             Err(RoutingError::FallbackChainExhausted { chain })
+        } else if model_exists {
+            // Model exists but no healthy backends
+            Err(RoutingError::NoHealthyBackend {
+                model: model.clone(),
+            })
         } else {
             Err(RoutingError::ModelNotFound {
                 model: requirements.model.clone(),
@@ -684,8 +718,8 @@ mod smart_strategy_tests {
             needs_json_mode: false,
         };
 
-        let backend = router.select_backend(&requirements).unwrap();
-        assert_eq!(backend.name, "Backend A");
+        let result = router.select_backend(&requirements).unwrap();
+        assert_eq!(result.backend.name, "Backend A");
     }
 
     #[test]
@@ -705,8 +739,8 @@ mod smart_strategy_tests {
             needs_json_mode: false,
         };
 
-        let backend = router.select_backend(&requirements).unwrap();
-        assert_eq!(backend.name, "Backend A"); // Lower load
+        let result = router.select_backend(&requirements).unwrap();
+        assert_eq!(result.backend.name, "Backend A"); // Lower load
     }
 
     #[test]
@@ -726,8 +760,8 @@ mod smart_strategy_tests {
             needs_json_mode: false,
         };
 
-        let backend = router.select_backend(&requirements).unwrap();
-        assert_eq!(backend.name, "Backend A"); // Lower latency
+        let result = router.select_backend(&requirements).unwrap();
+        assert_eq!(result.backend.name, "Backend A"); // Lower latency
     }
 
     #[test]
@@ -824,7 +858,14 @@ mod other_strategies_tests {
 
         // Should cycle through: A, B, C, A, B, C
         let names: Vec<String> = (0..6)
-            .map(|_| router.select_backend(&requirements).unwrap().name.clone())
+            .map(|_| {
+                router
+                    .select_backend(&requirements)
+                    .unwrap()
+                    .backend
+                    .name
+                    .clone()
+            })
             .collect();
 
         // Verify round-robin pattern
@@ -855,8 +896,8 @@ mod other_strategies_tests {
 
         // Should always select Backend B (priority 1)
         for _ in 0..5 {
-            let backend = router.select_backend(&requirements).unwrap();
-            assert_eq!(backend.name, "Backend B");
+            let result = router.select_backend(&requirements).unwrap();
+            assert_eq!(result.backend.name, "Backend B");
         }
     }
 
@@ -880,8 +921,8 @@ mod other_strategies_tests {
         // Should select from all three backends over many iterations
         let mut selected = HashMap::new();
         for _ in 0..30 {
-            let backend = router.select_backend(&requirements).unwrap();
-            *selected.entry(backend.name.clone()).or_insert(0) += 1;
+            let result = router.select_backend(&requirements).unwrap();
+            *selected.entry(result.backend.name.clone()).or_insert(0) += 1;
         }
 
         // All three backends should be selected at least once
@@ -958,8 +999,8 @@ mod alias_and_fallback_tests {
             needs_json_mode: false,
         };
 
-        let backend = router.select_backend(&requirements).unwrap();
-        assert_eq!(backend.name, "Backend A");
+        let result = router.select_backend(&requirements).unwrap();
+        assert_eq!(result.backend.name, "Backend A");
     }
 
     #[test]
@@ -997,8 +1038,8 @@ mod alias_and_fallback_tests {
             needs_json_mode: false,
         };
 
-        let backend = router.select_backend(&requirements).unwrap();
-        assert_eq!(backend.name, "Backend A");
+        let result = router.select_backend(&requirements).unwrap();
+        assert_eq!(result.backend.name, "Backend A");
     }
 
     #[test]
@@ -1079,8 +1120,8 @@ mod alias_and_fallback_tests {
             needs_json_mode: false,
         };
 
-        let backend = router.select_backend(&requirements).unwrap();
-        assert_eq!(backend.name, "Backend A");
+        let result = router.select_backend(&requirements).unwrap();
+        assert_eq!(result.backend.name, "Backend A");
     }
 
     // T01: Alias Chaining Tests (TDD RED Phase)
@@ -1120,8 +1161,8 @@ mod alias_and_fallback_tests {
 
         // When resolving "gpt-4"
         // Then should resolve through chain to "llama3:70b"
-        let backend = router.select_backend(&requirements).unwrap();
-        assert_eq!(backend.name, "Backend A");
+        let result = router.select_backend(&requirements).unwrap();
+        assert_eq!(result.backend.name, "Backend A");
     }
 
     #[test]
@@ -1161,8 +1202,8 @@ mod alias_and_fallback_tests {
 
         // When resolving "a"
         // Then should resolve through 3-level chain to "final-model"
-        let backend = router.select_backend(&requirements).unwrap();
-        assert_eq!(backend.name, "Backend A");
+        let result = router.select_backend(&requirements).unwrap();
+        assert_eq!(result.backend.name, "Backend A");
     }
 
     #[test]
@@ -1203,8 +1244,8 @@ mod alias_and_fallback_tests {
 
         // When resolving "a" (4-level chain)
         // Then should stop at 3 levels and resolve to "d"
-        let backend = router.select_backend(&requirements).unwrap();
-        assert_eq!(backend.name, "Backend D");
+        let result = router.select_backend(&requirements).unwrap();
+        assert_eq!(result.backend.name, "Backend D");
     }
 
     #[test]
@@ -1240,7 +1281,97 @@ mod alias_and_fallback_tests {
             needs_json_mode: false,
         };
 
-        let backend = router.select_backend(&requirements).unwrap();
-        assert_eq!(backend.name, "Backend A");
+        let result = router.select_backend(&requirements).unwrap();
+        assert_eq!(result.backend.name, "Backend A");
+    }
+
+    // T07: RoutingResult struct tests (TDD RED phase)
+    #[test]
+    fn routing_result_contains_fallback_info() {
+        // Given router with fallback "primary" → ["fallback"]
+        let backends = vec![create_test_backend_with_model(
+            "backend_fallback",
+            "Backend Fallback",
+            "fallback",
+        )];
+
+        let registry = Arc::new(Registry::new());
+        for backend in backends {
+            registry.add_backend(backend).unwrap();
+        }
+
+        let mut fallbacks = HashMap::new();
+        fallbacks.insert("primary".to_string(), vec!["fallback".to_string()]);
+
+        let router = Router::with_aliases_and_fallbacks(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            HashMap::new(),
+            fallbacks,
+        );
+
+        // And only "fallback" is available (no primary backend)
+        let requirements = RequestRequirements {
+            model: "primary".to_string(),
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: false,
+        };
+
+        // When select_backend("primary")
+        let result = router.select_backend(&requirements).unwrap();
+
+        // Then result.fallback_used == true
+        assert!(result.fallback_used, "Expected fallback_used to be true");
+        // And result.actual_model == "fallback"
+        assert_eq!(result.actual_model, "fallback");
+        // And result.backend is the fallback backend
+        assert_eq!(result.backend.name, "Backend Fallback");
+    }
+
+    #[test]
+    fn routing_result_no_fallback_when_primary_used() {
+        // Given router with fallback "primary" → ["fallback"]
+        let backends = vec![
+            create_test_backend_with_model("backend_primary", "Backend Primary", "primary"),
+            create_test_backend_with_model("backend_fallback", "Backend Fallback", "fallback"),
+        ];
+
+        let registry = Arc::new(Registry::new());
+        for backend in backends {
+            registry.add_backend(backend).unwrap();
+        }
+
+        let mut fallbacks = HashMap::new();
+        fallbacks.insert("primary".to_string(), vec!["fallback".to_string()]);
+
+        let router = Router::with_aliases_and_fallbacks(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            HashMap::new(),
+            fallbacks,
+        );
+
+        // And "primary" is available
+        let requirements = RequestRequirements {
+            model: "primary".to_string(),
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: false,
+        };
+
+        // When select_backend("primary")
+        let result = router.select_backend(&requirements).unwrap();
+
+        // Then result.fallback_used == false
+        assert!(!result.fallback_used, "Expected fallback_used to be false");
+        // And result.actual_model == "primary"
+        assert_eq!(result.actual_model, "primary");
+        // And result.backend is the primary backend
+        assert_eq!(result.backend.name, "Backend Primary");
     }
 }
