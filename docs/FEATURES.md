@@ -13,17 +13,18 @@ Detailed specifications for each feature in the Nexus LLM Orchestrator.
 | F03 | Health Checker | P0 | ✅ Complete | [specs/002-health-checker](../specs/002-health-checker/) |
 | F04 | CLI and Configuration | P0 | ✅ Complete | [specs/003-cli-configuration](../specs/003-cli-configuration/) |
 | F05 | mDNS Discovery | P1 | ✅ Complete | [specs/005-mdns-discovery](../specs/005-mdns-discovery/) |
-| F06 | Intelligent Router | P1 | Planned | - |
-| F07 | Model Aliases | P1 | Planned | - |
-| F08 | Fallback Chains | P1 | Planned | - |
+| F06 | Intelligent Router | P1 | ✅ Complete | [specs/006-intelligent-router](../specs/006-intelligent-router/) |
+| F07 | Model Aliases | P1 | ✅ Included in F06 | - |
+| F08 | Fallback Chains | P1 | ✅ Included in F06 | - |
 | F09 | Request Metrics | P2 | Planned | - |
 | F10 | Web Dashboard | P2 | Planned | - |
 
 ### Current Status
 
 - **MVP (P0)**: ✅ Complete (4/4 features)
-- **Phase 2 (P1)**: 🚧 In Progress (1/4 features complete)
-- **Tests**: 258 passing
+- **Phase 2 (P1)**: ✅ Complete (F05, F06 with F07/F08 integrated)
+- **Phase 3 (P2)**: 🎯 Next (Metrics, Dashboard)
+- **Tests**: 297 passing
 
 ---
 
@@ -660,15 +661,10 @@ Simple web UI for monitoring.
 3. F01: Core API Gateway ✅
 4. F04: CLI and Configuration ✅
 
-### Phase 2: Discovery (Next)
-5. F05: mDNS Discovery
+### Phase 2: Discovery & Intelligence ✅ Complete
+5. F05: mDNS Discovery ✅
+6. F06: Intelligent Router ✅ (includes F07 + F08)
 
-### Phase 3: Intelligence
-6. F06: Intelligent Router
-7. F07: Model Aliases
-8. F08: Fallback Chains
-
-### Phase 4: Polish
-9. F04: CLI and Configuration (complete)
-10. F09: Request Metrics
-11. F10: Web Dashboard
+### Phase 3: Observability (Next)
+7. F09: Request Metrics
+8. F10: Web Dashboard
