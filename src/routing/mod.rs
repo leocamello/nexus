@@ -4,7 +4,7 @@
 //! for each request based on model requirements, backend capabilities, and
 //! current system state.
 
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicU32, AtomicU64};
 use std::sync::Arc;
 
 pub mod error;
@@ -49,10 +49,165 @@ impl Router {
     /// Select the best backend for the given requirements
     pub fn select_backend(
         &self,
-        _requirements: &RequestRequirements,
+        requirements: &RequestRequirements,
     ) -> Result<Arc<Backend>, RoutingError> {
-        // Implementation will be added in subsequent tasks
-        todo!("select_backend implementation")
+        // Filter candidates
+        let candidates = self.filter_candidates(&requirements.model, requirements);
+
+        if candidates.is_empty() {
+            return Err(RoutingError::ModelNotFound {
+                model: requirements.model.clone(),
+            });
+        }
+
+        // Apply routing strategy
+        let selected = match self.strategy {
+            RoutingStrategy::Smart => self.select_smart(&candidates),
+            RoutingStrategy::RoundRobin => self.select_round_robin(&candidates),
+            RoutingStrategy::PriorityOnly => self.select_priority_only(&candidates),
+            RoutingStrategy::Random => self.select_random(&candidates),
+        };
+
+        // Return as Arc for efficient sharing
+        Ok(Arc::new(selected))
+    }
+
+    /// Select backend using smart scoring
+    fn select_smart(&self, candidates: &[Backend]) -> Backend {
+        let best = candidates
+            .iter()
+            .max_by_key(|backend| {
+                let priority = backend.priority as u32;
+                let pending = backend.pending_requests.load(std::sync::atomic::Ordering::Relaxed);
+                let latency = backend.avg_latency_ms.load(std::sync::atomic::Ordering::Relaxed);
+                score_backend(priority, pending, latency, &self.weights)
+            })
+            .unwrap();
+
+        // Create a new Backend by copying all fields (atomics are cloned by their current values)
+        Backend {
+            id: best.id.clone(),
+            name: best.name.clone(),
+            url: best.url.clone(),
+            backend_type: best.backend_type,
+            status: best.status,
+            last_health_check: best.last_health_check,
+            last_error: best.last_error.clone(),
+            models: best.models.clone(),
+            priority: best.priority,
+            pending_requests: AtomicU32::new(
+                best.pending_requests.load(std::sync::atomic::Ordering::Relaxed),
+            ),
+            total_requests: AtomicU64::new(
+                best.total_requests.load(std::sync::atomic::Ordering::Relaxed),
+            ),
+            avg_latency_ms: AtomicU32::new(
+                best.avg_latency_ms.load(std::sync::atomic::Ordering::Relaxed),
+            ),
+            discovery_source: best.discovery_source,
+            metadata: best.metadata.clone(),
+        }
+    }
+
+    /// Select backend using round-robin
+    fn select_round_robin(&self, candidates: &[Backend]) -> Backend {
+        let counter = self
+            .round_robin_counter
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let index = (counter as usize) % candidates.len();
+        let best = &candidates[index];
+
+        // Create a new Backend snapshot
+        Backend {
+            id: best.id.clone(),
+            name: best.name.clone(),
+            url: best.url.clone(),
+            backend_type: best.backend_type,
+            status: best.status,
+            last_health_check: best.last_health_check,
+            last_error: best.last_error.clone(),
+            models: best.models.clone(),
+            priority: best.priority,
+            pending_requests: AtomicU32::new(
+                best.pending_requests.load(std::sync::atomic::Ordering::Relaxed),
+            ),
+            total_requests: AtomicU64::new(
+                best.total_requests.load(std::sync::atomic::Ordering::Relaxed),
+            ),
+            avg_latency_ms: AtomicU32::new(
+                best.avg_latency_ms.load(std::sync::atomic::Ordering::Relaxed),
+            ),
+            discovery_source: best.discovery_source,
+            metadata: best.metadata.clone(),
+        }
+    }
+
+    /// Select backend using priority-only
+    fn select_priority_only(&self, candidates: &[Backend]) -> Backend {
+        let best = candidates
+            .iter()
+            .min_by_key(|backend| backend.priority)
+            .unwrap();
+
+        // Create a new Backend snapshot
+        Backend {
+            id: best.id.clone(),
+            name: best.name.clone(),
+            url: best.url.clone(),
+            backend_type: best.backend_type,
+            status: best.status,
+            last_health_check: best.last_health_check,
+            last_error: best.last_error.clone(),
+            models: best.models.clone(),
+            priority: best.priority,
+            pending_requests: AtomicU32::new(
+                best.pending_requests.load(std::sync::atomic::Ordering::Relaxed),
+            ),
+            total_requests: AtomicU64::new(
+                best.total_requests.load(std::sync::atomic::Ordering::Relaxed),
+            ),
+            avg_latency_ms: AtomicU32::new(
+                best.avg_latency_ms.load(std::sync::atomic::Ordering::Relaxed),
+            ),
+            discovery_source: best.discovery_source,
+            metadata: best.metadata.clone(),
+        }
+    }
+
+    /// Select backend using random
+    fn select_random(&self, candidates: &[Backend]) -> Backend {
+        use std::collections::hash_map::RandomState;
+        use std::hash::BuildHasher;
+
+        // Use RandomState to generate a random index
+        let random_state = RandomState::new();
+        let random_value = random_state.hash_one(std::time::SystemTime::now());
+        let index = (random_value as usize) % candidates.len();
+        let best = &candidates[index];
+
+        // Create a new Backend snapshot
+        Backend {
+            id: best.id.clone(),
+            name: best.name.clone(),
+            url: best.url.clone(),
+            backend_type: best.backend_type,
+            status: best.status,
+            last_health_check: best.last_health_check,
+            last_error: best.last_error.clone(),
+            models: best.models.clone(),
+            priority: best.priority,
+            pending_requests: AtomicU32::new(
+                best.pending_requests.load(std::sync::atomic::Ordering::Relaxed),
+            ),
+            total_requests: AtomicU64::new(
+                best.total_requests.load(std::sync::atomic::Ordering::Relaxed),
+            ),
+            avg_latency_ms: AtomicU32::new(
+                best.avg_latency_ms.load(std::sync::atomic::Ordering::Relaxed),
+            ),
+            discovery_source: best.discovery_source,
+            metadata: best.metadata.clone(),
+        }
     }
 
     /// Filter candidates by model, health, and capabilities
@@ -356,5 +511,287 @@ mod filter_tests {
 
         let candidates = router.filter_candidates("nonexistent", &requirements);
         assert!(candidates.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod smart_strategy_tests {
+    use super::*;
+    use crate::registry::{Backend, BackendStatus, BackendType, DiscoverySource, Model};
+    use chrono::Utc;
+    use std::collections::HashMap;
+    use std::sync::atomic::{AtomicU32, AtomicU64};
+
+    fn create_test_backend_with_state(
+        id: &str,
+        name: &str,
+        priority: i32,
+        pending_requests: u32,
+        avg_latency_ms: u32,
+    ) -> Backend {
+        Backend {
+            id: id.to_string(),
+            name: name.to_string(),
+            url: format!("http://{}", name),
+            backend_type: BackendType::Ollama,
+            status: BackendStatus::Healthy,
+            last_health_check: Utc::now(),
+            last_error: None,
+            models: vec![Model {
+                id: "llama3:8b".to_string(),
+                name: "llama3:8b".to_string(),
+                context_length: 4096,
+                supports_vision: false,
+                supports_tools: false,
+                supports_json_mode: false,
+                max_output_tokens: None,
+            }],
+            priority,
+            pending_requests: AtomicU32::new(pending_requests),
+            total_requests: AtomicU64::new(0),
+            avg_latency_ms: AtomicU32::new(avg_latency_ms),
+            discovery_source: DiscoverySource::Static,
+            metadata: HashMap::new(),
+        }
+    }
+
+    fn create_test_router(backends: Vec<Backend>) -> Router {
+        let registry = Arc::new(Registry::new());
+        for backend in backends {
+            registry.add_backend(backend).unwrap();
+        }
+
+        Router::new(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+        )
+    }
+
+    #[test]
+    fn smart_selects_highest_score() {
+        let backends = vec![
+            // Backend A: high priority (1), no load, low latency → high score
+            create_test_backend_with_state("backend_a", "Backend A", 1, 0, 50),
+            // Backend B: low priority (10), high load, high latency → low score
+            create_test_backend_with_state("backend_b", "Backend B", 10, 50, 500),
+        ];
+
+        let router = create_test_router(backends);
+        let requirements = RequestRequirements {
+            model: "llama3:8b".to_string(),
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: false,
+        };
+
+        let backend = router.select_backend(&requirements).unwrap();
+        assert_eq!(backend.name, "Backend A");
+    }
+
+    #[test]
+    fn smart_considers_load() {
+        let backends = vec![
+            // Both same priority and latency, but different load
+            create_test_backend_with_state("backend_a", "Backend A", 5, 0, 100),
+            create_test_backend_with_state("backend_b", "Backend B", 5, 50, 100),
+        ];
+
+        let router = create_test_router(backends);
+        let requirements = RequestRequirements {
+            model: "llama3:8b".to_string(),
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: false,
+        };
+
+        let backend = router.select_backend(&requirements).unwrap();
+        assert_eq!(backend.name, "Backend A"); // Lower load
+    }
+
+    #[test]
+    fn smart_considers_latency() {
+        let backends = vec![
+            // Same priority and load, but different latency
+            create_test_backend_with_state("backend_a", "Backend A", 5, 10, 50),
+            create_test_backend_with_state("backend_b", "Backend B", 5, 10, 500),
+        ];
+
+        let router = create_test_router(backends);
+        let requirements = RequestRequirements {
+            model: "llama3:8b".to_string(),
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: false,
+        };
+
+        let backend = router.select_backend(&requirements).unwrap();
+        assert_eq!(backend.name, "Backend A"); // Lower latency
+    }
+
+    #[test]
+    fn returns_error_when_no_candidates() {
+        let backends = vec![create_test_backend_with_state(
+            "backend_a",
+            "Backend A",
+            1,
+            0,
+            50,
+        )];
+
+        let router = create_test_router(backends);
+        let requirements = RequestRequirements {
+            model: "nonexistent".to_string(),
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: false,
+        };
+
+        let result = router.select_backend(&requirements);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), RoutingError::ModelNotFound { .. }));
+    }
+}
+
+#[cfg(test)]
+mod other_strategies_tests {
+    use super::*;
+    use crate::registry::{Backend, BackendStatus, BackendType, DiscoverySource, Model};
+    use chrono::Utc;
+    use std::collections::HashMap;
+    use std::sync::atomic::{AtomicU32, AtomicU64};
+
+    fn create_test_backend_simple(id: &str, name: &str, priority: i32) -> Backend {
+        Backend {
+            id: id.to_string(),
+            name: name.to_string(),
+            url: format!("http://{}", name),
+            backend_type: BackendType::Ollama,
+            status: BackendStatus::Healthy,
+            last_health_check: Utc::now(),
+            last_error: None,
+            models: vec![Model {
+                id: "llama3:8b".to_string(),
+                name: "llama3:8b".to_string(),
+                context_length: 4096,
+                supports_vision: false,
+                supports_tools: false,
+                supports_json_mode: false,
+                max_output_tokens: None,
+            }],
+            priority,
+            pending_requests: AtomicU32::new(0),
+            total_requests: AtomicU64::new(0),
+            avg_latency_ms: AtomicU32::new(50),
+            discovery_source: DiscoverySource::Static,
+            metadata: HashMap::new(),
+        }
+    }
+
+    fn create_test_router_with_strategy(
+        backends: Vec<Backend>,
+        strategy: RoutingStrategy,
+    ) -> Router {
+        let registry = Arc::new(Registry::new());
+        for backend in backends {
+            registry.add_backend(backend).unwrap();
+        }
+
+        Router::new(registry, strategy, ScoringWeights::default())
+    }
+
+    #[test]
+    fn round_robin_cycles_through_backends() {
+        let backends = vec![
+            create_test_backend_simple("backend_a", "Backend A", 1),
+            create_test_backend_simple("backend_b", "Backend B", 1),
+            create_test_backend_simple("backend_c", "Backend C", 1),
+        ];
+
+        let router = create_test_router_with_strategy(backends, RoutingStrategy::RoundRobin);
+        let requirements = RequestRequirements {
+            model: "llama3:8b".to_string(),
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: false,
+        };
+
+        // Should cycle through: A, B, C, A, B, C
+        let names: Vec<String> = (0..6)
+            .map(|_| {
+                router
+                    .select_backend(&requirements)
+                    .unwrap()
+                    .name
+                    .clone()
+            })
+            .collect();
+
+        // Verify round-robin pattern
+        assert_eq!(names[0], "Backend A");
+        assert_eq!(names[1], "Backend B");
+        assert_eq!(names[2], "Backend C");
+        assert_eq!(names[3], "Backend A");
+        assert_eq!(names[4], "Backend B");
+        assert_eq!(names[5], "Backend C");
+    }
+
+    #[test]
+    fn priority_only_selects_lowest_priority() {
+        let backends = vec![
+            create_test_backend_simple("backend_a", "Backend A", 10),
+            create_test_backend_simple("backend_b", "Backend B", 1),
+            create_test_backend_simple("backend_c", "Backend C", 5),
+        ];
+
+        let router = create_test_router_with_strategy(backends, RoutingStrategy::PriorityOnly);
+        let requirements = RequestRequirements {
+            model: "llama3:8b".to_string(),
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: false,
+        };
+
+        // Should always select Backend B (priority 1)
+        for _ in 0..5 {
+            let backend = router.select_backend(&requirements).unwrap();
+            assert_eq!(backend.name, "Backend B");
+        }
+    }
+
+    #[test]
+    fn random_selects_from_candidates() {
+        let backends = vec![
+            create_test_backend_simple("backend_a", "Backend A", 1),
+            create_test_backend_simple("backend_b", "Backend B", 1),
+            create_test_backend_simple("backend_c", "Backend C", 1),
+        ];
+
+        let router = create_test_router_with_strategy(backends, RoutingStrategy::Random);
+        let requirements = RequestRequirements {
+            model: "llama3:8b".to_string(),
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: false,
+        };
+
+        // Should select from all three backends over many iterations
+        let mut selected = HashMap::new();
+        for _ in 0..30 {
+            let backend = router.select_backend(&requirements).unwrap();
+            *selected.entry(backend.name.clone()).or_insert(0) += 1;
+        }
+
+        // All three backends should be selected at least once
+        assert!(selected.contains_key("Backend A"));
+        assert!(selected.contains_key("Backend B"));
+        assert!(selected.contains_key("Backend C"));
     }
 }
