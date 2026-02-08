@@ -158,6 +158,9 @@ impl NexusConfig {
             }
         }
 
+        // Validate routing aliases for circular references
+        routing::validate_aliases(&self.routing.aliases)?;
+
         Ok(())
     }
 }
@@ -263,5 +266,48 @@ mod tests {
 
         // Should keep default, not crash
         assert_eq!(config.server.port, 8000);
+    }
+
+    #[test]
+    fn test_config_validation_circular_alias() {
+        let mut config = NexusConfig::default();
+
+        // Add circular alias: a → b, b → a
+        config
+            .routing
+            .aliases
+            .insert("a".to_string(), "b".to_string());
+        config
+            .routing
+            .aliases
+            .insert("b".to_string(), "a".to_string());
+
+        // Validation should fail
+        let result = config.validate();
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ConfigError::CircularAlias { .. } => {
+                // Success - expected error
+            }
+            _ => panic!("Expected CircularAlias error"),
+        }
+    }
+
+    #[test]
+    fn test_config_validation_valid_aliases() {
+        let mut config = NexusConfig::default();
+
+        // Add valid aliases
+        config
+            .routing
+            .aliases
+            .insert("gpt-4".to_string(), "llama3:70b".to_string());
+        config
+            .routing
+            .aliases
+            .insert("claude".to_string(), "mixtral".to_string());
+
+        // Validation should pass
+        assert!(config.validate().is_ok());
     }
 }

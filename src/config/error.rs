@@ -20,4 +20,7 @@ pub enum ConfigError {
 
     #[error("Missing required field: {0}")]
     MissingField(String),
+
+    #[error("Circular alias detected: '{start}' eventually points back to '{cycle}'")]
+    CircularAlias { start: String, cycle: String },
 }
