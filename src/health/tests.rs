@@ -426,3 +426,75 @@ fn test_endpoint_selection_generic() {
     let endpoint = crate::health::HealthChecker::get_health_endpoint(BackendType::Generic);
     assert_eq!(endpoint, "/v1/models");
 }
+
+// ============================================================================
+// SuccessWithParseError Tests (F02 Critical Fix)
+// ============================================================================
+
+/// Helper for creating SuccessWithParseError results
+fn make_success_with_parse_error() -> HealthCheckResult {
+    HealthCheckResult::SuccessWithParseError {
+        latency_ms: 100,
+        parse_error: "invalid JSON".to_string(),
+    }
+}
+
+#[test]
+fn test_success_with_parse_error_counts_as_success() {
+    // Backend returning 200 with invalid JSON should be treated as healthy
+    let mut state = BackendHealthState::default();
+    let config = HealthCheckConfig::default();
+    let result = make_success_with_parse_error();
+
+    let new_status = state.apply_result(&result, &config);
+    assert_eq!(new_status, Some(BackendStatus::Healthy));
+    assert_eq!(state.consecutive_successes, 1);
+    assert_eq!(state.consecutive_failures, 0);
+}
+
+#[test]
+fn test_success_with_parse_error_resets_failure_counter() {
+    // Parse error should reset failure counter like a normal success
+    let mut state = BackendHealthState {
+        last_status: BackendStatus::Healthy,
+        consecutive_failures: 2,
+        ..Default::default()
+    };
+    let config = HealthCheckConfig::default();
+
+    state.apply_result(&make_success_with_parse_error(), &config);
+    assert_eq!(state.consecutive_failures, 0);
+    assert_eq!(state.consecutive_successes, 1);
+}
+
+#[test]
+fn test_success_with_parse_error_recovers_unhealthy_backend() {
+    // Parse error should allow recovery from unhealthy state
+    let mut state = BackendHealthState {
+        last_status: BackendStatus::Unhealthy,
+        ..Default::default()
+    };
+    let config = HealthCheckConfig::default();
+
+    // Apply 2 parse error successes (recovery threshold)
+    state.apply_result(&make_success_with_parse_error(), &config);
+    let new_status = state.apply_result(&make_success_with_parse_error(), &config);
+
+    assert_eq!(new_status, Some(BackendStatus::Healthy));
+    assert_eq!(state.consecutive_successes, 2);
+}
+
+#[test]
+fn test_success_with_parse_error_preserves_healthy_status() {
+    // Parse error on healthy backend should keep it healthy
+    let mut state = BackendHealthState {
+        last_status: BackendStatus::Healthy,
+        ..Default::default()
+    };
+    let config = HealthCheckConfig::default();
+
+    let new_status = state.apply_result(&make_success_with_parse_error(), &config);
+    // No transition (already healthy)
+    assert_eq!(new_status, None);
+    assert_eq!(state.consecutive_successes, 1);
+}

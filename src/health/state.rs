@@ -34,10 +34,15 @@ impl Default for BackendHealthState {
 /// Result of a health check
 #[derive(Debug, Clone)]
 pub enum HealthCheckResult {
-    Success {
+    /// Backend responded successfully with valid model list
+    Success { latency_ms: u32, models: Vec<Model> },
+    /// Backend responded with HTTP 200 but invalid/unparseable JSON.
+    /// Treated as healthy (backend is responding) but models are preserved from last check.
+    SuccessWithParseError {
         latency_ms: u32,
-        models: Vec<Model>,
+        parse_error: String,
     },
+    /// Backend failed to respond or returned error status
     Failure {
         error: super::error::HealthCheckError,
     },
@@ -52,7 +57,9 @@ impl BackendHealthState {
         config: &HealthCheckConfig,
     ) -> Option<BackendStatus> {
         match result {
-            HealthCheckResult::Success { .. } => {
+            // Both Success and SuccessWithParseError count as successful health checks
+            // (backend is responding, even if JSON is malformed)
+            HealthCheckResult::Success { .. } | HealthCheckResult::SuccessWithParseError { .. } => {
                 self.consecutive_failures = 0;
                 self.consecutive_successes += 1;
 
