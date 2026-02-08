@@ -1,35 +1,38 @@
 # Nexus Checklist System - Quick Reference Card
 
-## 📋 Two Checklists, Two Purposes
+## 📋 Three Checklists, Three Purposes
 
 | Checklist | When | Purpose | File |
 |-----------|------|---------|------|
-| **Requirements Quality** | BEFORE implementation | Validate spec quality | `.specify/checklists/requirements-quality.md` |
-| **Implementation Verification** | AFTER implementation | Validate implementation correctness | `.specify/templates/implementation-verification.md` |
+| **Requirements Validation** | BEFORE implementation | Validate spec is ready | Copy `.specify/templates/requirements-validation.md` to feature folder |
+| **Implementation Verification** | AFTER implementation | Validate code correctness | Copy `.specify/templates/implementation-verification.md` to feature folder |
+| **Tasks** | DURING implementation | Track acceptance criteria | `specs/XXX-feature/tasks.md` |
 
 ---
 
 ## 🚀 Quick Start
 
-### For Spec Authors (Using Requirements Quality Checklist)
+### For Spec Authors (Using Requirements Validation Checklist)
 
 ```bash
-# 1. Write your spec (reference checklist while writing)
+# 1. Write your spec, plan, and tasks
 vim specs/XXX-your-feature/spec.md
+vim specs/XXX-your-feature/plan.md  
+vim specs/XXX-your-feature/tasks.md
 
-# 2. Open checklist in split window
-code .specify/checklists/requirements-quality.md
+# 2. Copy requirements validation template
+cp .specify/templates/requirements-validation.md specs/XXX-your-feature/requirements-validation.md
 
-# 3. Self-review against checklist
-# Check off items as you verify them
+# 3. Complete the validation checklist
+# Fix any issues before proceeding
 
-# 4. Submit for team review
-# Reviewer uses same checklist
+# 4. Verify ready for implementation (should be 0)
+grep -c "\- \[ \]" specs/XXX-your-feature/requirements-validation.md
 ```
 
 **Key Questions**:
-- ✅ Are requirements complete, clear, consistent?
-- ✅ Are all Constitution principles addressed?
+- ✅ Are Constitution gates addressed?
+- ✅ Are requirements complete and testable?
 - ✅ Are NFRs quantified with specific metrics?
 - ✅ Are edge cases documented?
 - ✅ Is testing approach defined?
@@ -43,18 +46,13 @@ code .specify/checklists/requirements-quality.md
 cp .specify/templates/implementation-verification.md \
    specs/XXX-your-feature/verification.md
 
-# 2. Customize for your feature
-vim specs/XXX-your-feature/verification.md
-# Add feature-specific items
+# 2. Implement using TDD - check off tasks.md as you go
 
-# 3. Track progress during implementation
-# Check off items as you complete them
+# 3. Complete verification checklist after implementation
 
-# 4. Pre-PR verification
-# Ensure all items are checked or N/A
-
-# 5. Create PR with verification summary
-gh pr create --title "..." --body "..."
+# 4. Pre-PR verification (all should be 0)
+grep -c "\- \[ \]" specs/XXX-your-feature/verification.md
+grep -c "\- \[ \]" specs/XXX-your-feature/tasks.md
 ```
 
 **Key Questions**:
