@@ -237,7 +237,31 @@ Generate implementation tasks from the plan. Each task should be:
 - Have clear acceptance criteria
 ```
 
-### Phase 5: GitHub Issues (For Collaborative Development)
+### Phase 5: Requirements Validation (Quality Gate)
+
+Before creating issues or implementing, validate that your spec is ready.
+
+**Steps:**
+```bash
+# 1. Copy requirements validation template to your feature folder
+cp .specify/templates/requirements-validation.md specs/XXX-your-feature/requirements-validation.md
+
+# 2. Complete the 65-item checklist
+# - Mark [x] for items that pass
+# - Mark [-] for items not applicable
+# - Fix any [ ] items before proceeding
+
+# 3. Verify ready for implementation (should be 0)
+grep -c "\- \[ \]" specs/XXX-your-feature/requirements-validation.md
+```
+
+**Key Validations:**
+- Constitution gates addressed (Simplicity, Anti-Abstraction, Integration-First, Performance)
+- Core principles aligned (Zero-Config, Single Binary, OpenAI-Compatible, etc.)
+- Requirements are complete, testable, and unambiguous
+- Edge cases and error handling documented
+
+### Phase 6: GitHub Issues (For Collaborative Development)
 
 Convert tasks to GitHub issues for open-source collaboration and progress tracking.
 
@@ -299,7 +323,7 @@ gh issue view N                  # View issue #N
 gh issue close N                 # Close issue after completion
 ```
 
-### Phase 6: Analyze (Optional but Recommended)
+### Phase 7: Analyze (Optional but Recommended)
 
 Run before implementation to catch inconsistencies.
 
@@ -313,16 +337,48 @@ Or use the task tool:
 Use the speckit.analyze agent to analyze the current feature.
 ```
 
-### Phase 7: Implement
+### Phase 8: Implement
 
 Execute all tasks to build the feature.
+
+**Steps:**
+```bash
+# 1. Create feature branch
+git checkout -b feature/fXX-feature-name
+
+# 2. Copy implementation verification template
+cp .specify/templates/implementation-verification.md specs/XXX-your-feature/verification.md
+
+# 3. Run implementation agent
+# Prompt: "Use speckit.implement to execute all tasks in tasks.md"
+
+# 4. Check off tasks.md criteria as you verify them
+# 5. Complete verification.md after implementation
+```
 
 **Prompt:**
 ```
 Use the speckit.implement agent to execute all tasks in tasks.md.
 ```
 
-### Phase 8: Walkthrough (Documentation)
+### Phase 9: Verification (Quality Gate)
+
+After implementation, verify all quality criteria are met.
+
+**Steps:**
+```bash
+# 1. Run speckit.analyze for final consistency check
+# Prompt: "Use speckit.analyze"
+
+# 2. Complete the 210-item verification checklist
+# Mark [x] for verified, [-] for N/A
+
+# 3. Verify no unchecked items remain (all should be 0)
+grep -c "\- \[ \]" specs/XXX-your-feature/verification.md
+grep -c "\- \[ \]" specs/XXX-your-feature/tasks.md
+```
+
+### Phase 10: Walkthrough (Documentation)
 
 After implementation, create a code walkthrough document for onboarding and knowledge sharing.
 
@@ -351,24 +407,46 @@ Walk through each file and the key tests. Save this as a walkthrough.md document
 | 2. Specify | "Create a spec for: [feature description]" |
 | 3. Plan | "Create a technical plan for the spec" |
 | 4. Tasks | "Generate implementation tasks from the plan" |
-| 5. Issues | "Create GitHub issues from the tasks" |
-| 6. Analyze | "Use speckit.analyze to check consistency" |
-| 7. Implement | "Use speckit.implement to execute all tasks" |
-| 8. Walkthrough | "Explain the code as if I were a junior developer" |
-| Checklist | "Use speckit.checklist to generate quality checklist" |
+| 5. Validate | Copy `requirements-validation.md` and complete checklist |
+| 6. Issues | "Create GitHub issues from the tasks" |
+| 7. Analyze | "Use speckit.analyze to check consistency" |
+| 8. Implement | "Use speckit.implement to execute all tasks" |
+| 9. Verify | Copy `verification.md` and complete checklist |
+| 10. Walkthrough | "Explain the code as if I were a junior developer" |
+
+---
+
+## The Three-Checklist System
+
+Nexus uses a **three-checklist system** for quality assurance:
+
+| Checklist | When | Items | Purpose |
+|-----------|------|-------|---------|
+| `requirements-validation.md` | BEFORE implementation | 65 | Validate spec is ready |
+| `tasks.md` | DURING implementation | varies | Track acceptance criteria |
+| `implementation-verification.md` | AFTER implementation | 210 | Verify implementation |
+
+**Template Files:**
+- `.specify/templates/requirements-validation.md`
+- `.specify/templates/implementation-verification.md`
+
+**Reference Checklist (not copied):**
+- `.specify/checklists/requirements-quality.md` (208 items - comprehensive reference)
 
 ---
 
 ## Tips
 
-1. **Work in feature branches**: Spec-kit uses branch names to organize features
+1. **Work in feature branches**: Create `feature/fXX-name` branch before implementing
 2. **Review generated artifacts**: Edit spec.md, plan.md, tasks.md before implementing
-3. **Create GitHub issues before implementing**: Enables progress tracking and collaboration
-4. **Run analyze before implement**: Catches issues early
-5. **Use the constitution**: Reference it in prompts for consistency
-6. **Iterate**: Re-run phases with refined prompts if needed
-7. **Close issues as you complete tasks**: Use `gh issue close N` after each task
-8. **Generate walkthroughs after implementing**: Great for onboarding and knowledge sharing
+3. **Complete requirements-validation.md**: No unchecked items before creating issues
+4. **Create GitHub issues before implementing**: Enables progress tracking and collaboration
+5. **Run analyze before implement**: Catches issues early
+6. **Use the constitution**: Reference it in prompts for consistency
+7. **Iterate**: Re-run phases with refined prompts if needed
+8. **Check off tasks.md as you go**: Update acceptance criteria during implementation
+9. **Complete verification.md before PR**: Ensures quality gate is passed
+10. **Generate walkthroughs after implementing**: Great for onboarding and knowledge sharing
 
 ---
 
