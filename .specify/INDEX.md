@@ -1,33 +1,33 @@
 # Nexus Quality Assurance System - Index
 
-Welcome to the Nexus dual checklist system for ensuring feature quality throughout the development lifecycle.
+Welcome to the Nexus **three-checklist system** for ensuring feature quality throughout the development lifecycle.
 
 ## 🎯 What is This?
 
-This is a comprehensive quality assurance system consisting of **two complementary checklists** that work together to ensure both specification quality and implementation correctness.
+This is a comprehensive quality assurance system consisting of **three complementary checklists** that work together to ensure specification quality, implementation correctness, and acceptance criteria tracking.
 
-## 📋 The Two Checklists
+## 📋 The Three Checklists
 
-### 1. Requirements Quality Checklist (208 items)
-**Purpose**: Unit tests for requirements writing - validates spec quality BEFORE implementation  
-**File**: `.specify/checklists/requirements-quality.md`  
-**When**: During spec writing and review phase  
-**Who**: Spec authors, reviewers, architects
+### 1. Requirements Validation Checklist (65 items)
+**Purpose**: Quality gate for specifications - validates spec is ready BEFORE implementation  
+**File**: `.specify/templates/requirements-validation.md` (copy to feature folder)  
+**When**: After writing spec.md, plan.md, tasks.md - before creating feature branch  
+**Who**: Spec authors
 
 **What it validates**:
-- ✅ Requirements are complete, clear, consistent, and measurable
-- ✅ Constitutional principles and gates are addressed
-- ✅ Technical constraints are respected
-- ✅ Testing approach is documented
-- ✅ Edge cases and dependencies are identified
+- ✅ Constitution gates are addressed
+- ✅ Core principles are followed
+- ✅ Spec is complete and clear
+- ✅ Requirements are testable
+- ✅ Edge cases are documented
 
 ---
 
 ### 2. Implementation Verification Checklist (210 items)
 **Purpose**: Verify implementation correctness AFTER development  
-**File**: `.specify/templates/implementation-verification.md`  
+**File**: `.specify/templates/implementation-verification.md` (copy to feature folder)  
 **When**: During and after implementation, before PR merge  
-**Who**: Feature implementers, code reviewers, QA
+**Who**: Feature implementers, code reviewers
 
 **What it validates**:
 - ✅ All acceptance criteria are met
@@ -38,22 +38,37 @@ This is a comprehensive quality assurance system consisting of **two complementa
 
 ---
 
+### 3. Tasks & Acceptance Criteria (tasks.md)
+**Purpose**: Track granular acceptance criteria during implementation  
+**File**: `specs/XXX-feature/tasks.md` (created during spec phase)  
+**When**: During implementation - check off as you complete each item  
+**Who**: Feature implementers
+
+**What it tracks**:
+- ✅ Individual task completion
+- ✅ Acceptance criteria per task
+- ✅ Test requirements per task
+
+---
+
 ## 🚀 Quick Start
 
 ### For Spec Authors
 
 ```bash
-# 1. Open requirements quality checklist while writing spec
-code .specify/checklists/requirements-quality.md
-
-# 2. Reference checklist sections as you draft your spec
+# 1. Write your spec
 vim specs/XXX-your-feature/spec.md
+vim specs/XXX-your-feature/plan.md
+vim specs/XXX-your-feature/tasks.md
 
-# 3. Self-review before submitting
-# Check off items in requirements-quality.md
+# 2. Copy requirements validation template
+cp .specify/templates/requirements-validation.md specs/XXX-your-feature/requirements-validation.md
 
-# 4. Submit for team review
-# Reviewer uses same checklist
+# 3. Complete the validation checklist
+# Fix any issues before proceeding
+
+# 4. Verify spec is ready (should be 0 unchecked)
+grep -c "\- \[ \]" specs/XXX-your-feature/requirements-validation.md
 ```
 
 ### For Implementers
@@ -63,15 +78,13 @@ vim specs/XXX-your-feature/spec.md
 cp .specify/templates/implementation-verification.md \
    specs/XXX-your-feature/verification.md
 
-# 2. Customize for your feature
-vim specs/XXX-your-feature/verification.md
+# 2. Implement using TDD - check off tasks.md criteria as you go
 
-# 3. Track progress during implementation
-# Check off items as you complete them
+# 3. Complete verification checklist after implementation
 
-# 4. Pre-PR verification
+# 4. Pre-PR verification (all should be 0)
 grep -c "\- \[ \]" specs/XXX-your-feature/verification.md
-# Goal: 0 unchecked items
+grep -c "\- \[ \]" specs/XXX-your-feature/tasks.md
 ```
 
 ---

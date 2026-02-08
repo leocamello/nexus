@@ -122,57 +122,65 @@ handle.await?;
 ### Feature Development Lifecycle
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│  1. SPEC PHASE                                                      │
-│     - Write spec.md, plan.md, tasks.md                              │
-│     - Validate against requirements-quality.md checklist            │
-│     - Create GitHub issues from tasks                               │
-├─────────────────────────────────────────────────────────────────────┤
-│  2. IMPLEMENTATION PHASE                                            │
-│     - Create feature branch                                         │
-│     - Copy implementation-verification.md to feature folder         │
-│     - Implement with TDD (tests first)                              │
-│     - Check off acceptance criteria in tasks.md as you go           │
-├─────────────────────────────────────────────────────────────────────┤
-│  3. VERIFICATION PHASE                                              │
-│     - Run speckit.analyze to check spec/implementation alignment    │
-│     - Complete verification.md checklist (mark items [x] or [-])    │
-│     - Create walkthrough.md for code documentation                  │
-│     - Ensure 0 unchecked items remain in tasks.md                   │
-├─────────────────────────────────────────────────────────────────────┤
-│  4. MERGE PHASE                                                     │
-│     - Push feature branch                                           │
-│     - Create PR with verification summary                           │
-│     - Merge (closes issues automatically)                           │
-└─────────────────────────────────────────────────────────────────────┘
++-------------------------------------------------------------------------+
+|  1. SPEC PHASE                                                          |
+|     a) Write spec.md, plan.md, tasks.md                                 |
+|     b) Copy requirements-validation.md to feature folder                |
+|     c) Complete requirements-quality checklist (spec quality gate)      |
+|     d) Run speckit.analyze (early check for spec issues)                |
+|     e) Create GitHub issues via speckit.taskstoissues                   |
++-------------------------------------------------------------------------+
+|  2. IMPLEMENTATION PHASE                                                |
+|     a) Create feature branch                                            |
+|     b) Copy verification.md template to feature folder                  |
+|     c) Implement with TDD (tests first) - use speckit.implement         |
+|     d) Check off acceptance criteria in tasks.md as you go              |
++-------------------------------------------------------------------------+
+|  3. VERIFICATION PHASE                                                  |
+|     a) Run speckit.analyze - verify spec/implementation alignment       |
+|     b) Complete verification.md checklist (mark items [x] or [-])       |
+|     c) Create walkthrough.md for code documentation                     |
+|     d) Ensure 0 unchecked items in tasks.md and verification.md         |
++-------------------------------------------------------------------------+
+|  4. MERGE PHASE                                                         |
+|     a) Push feature branch                                              |
+|     b) Create PR with verification summary                              |
+|     c) Merge (closes issues automatically)                              |
++-------------------------------------------------------------------------+
 ```
 
 ### Quality Checklists
 
-Use the two-checklist system for quality assurance:
+Use the three-checklist system for quality assurance:
 
-| Phase | Checklist | Command |
+| Phase | Checklist | Purpose |
 |-------|-----------|---------|
-| Before coding | Validate spec quality | Review `.specify/checklists/requirements-quality.md` |
-| After coding | Verify implementation | Complete `specs/XXX-feature/verification.md` |
+| After spec, before coding | `requirements-validation.md` | Validate spec quality (quality gate) |
+| During/after coding | `verification.md` | Verify implementation correctness |
+| Reference | `tasks.md` | Track acceptance criteria completion |
 
 ```bash
-# Copy verification template to your feature
+# 1. SPEC PHASE: Copy requirements validation template
+cp .specify/templates/requirements-validation.md specs/XXX-feature/requirements-validation.md
+
+# Complete requirements validation checklist before implementation:
+# - Mark [x] for items that pass
+# - Mark [-] for items not applicable (N/A)
+# - Fix any [ ] items before proceeding to implementation
+
+# Verify spec is ready (should be 0 unchecked items)
+grep -c "\- \[ \]" specs/XXX-feature/requirements-validation.md  # Should be 0
+
+# 2. IMPLEMENTATION PHASE: Copy verification template
 cp .specify/templates/implementation-verification.md specs/XXX-feature/verification.md
 
-# Complete the verification checklist:
-# - Mark [x] for items that pass
-# - Mark [-] for items not applicable (N/A) to this feature
-# - Leave [ ] only for actual issues needing fix
-
-# Verify all items are addressed before PR (should be 0 unchecked items)
+# 3. VERIFICATION PHASE: Complete both checklists
 grep -c "\- \[ \]" specs/XXX-feature/verification.md  # Should be 0
 grep -c "\- \[ \]" specs/XXX-feature/tasks.md         # Should be 0
 ```
 
 **Quick Reference**: See `.specify/QUICK-REFERENCE.md` for top critical items.
 
-### Feature Branch Process
 
 ```bash
 # 1. Create feature branch BEFORE implementing
