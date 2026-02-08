@@ -63,7 +63,7 @@
 mod completions;
 mod health;
 mod models;
-mod types;
+pub mod types;
 
 pub use types::*;
 
