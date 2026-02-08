@@ -2,7 +2,7 @@
 
 **Feature**: Fallback Chains  
 **Plan**: [plan.md](./plan.md)  
-**Status**: 🔄 In Progress
+**Status**: ✅ Complete
 
 ---
 
@@ -11,20 +11,20 @@
 Before writing ANY implementation code for T07-T10:
 
 1. **RED Phase Checkpoint**:
-   - [ ] All tests written and added to appropriate test files
-   - [ ] Tests executed: `cargo test <feature>` 
-   - [ ] Failures confirmed (output shows expected errors)
-   - [ ] Run: `cargo test <test_name> 2>&1 | grep -E '(FAILED|error)' | head -20`
+   - [X] All tests written and added to appropriate test files
+   - [X] Tests executed: `cargo test <feature>` 
+   - [X] Failures confirmed (output shows expected errors)
+   - [X] Run: `cargo test <test_name> 2>&1 | grep -E '(FAILED|error)' | head -20`
 
 2. **Implementation Gate**:
    - Cannot proceed to "Implementation" section until RED phase confirmed
    - If tests pass on first run, tests are INVALID (rewrite tests)
 
 3. **GREEN Phase Checkpoint**:
-   - [ ] Implementation written
-   - [ ] Tests executed: `cargo test <feature>`
-   - [ ] All tests PASS
-   - [ ] No test code modified during GREEN phase
+   - [X] Implementation written
+   - [X] Tests executed: `cargo test <feature>`
+   - [X] All tests PASS
+   - [X] No test code modified during GREEN phase
 
 ---
 
@@ -38,10 +38,10 @@ Before writing ANY implementation code for T07-T10:
 | T04 | Error types | ✅ (F06) | - |
 | T05 | Unit tests (fallback) | ✅ (F06) | - |
 | T06 | Integration tests (fallback) | ✅ (F06) | - |
-| T07 | RoutingResult struct | ⬜ | P0 |
-| T08 | X-Nexus-Fallback-Model header | ⬜ | P0 |
-| T09 | Header unit tests | ⬜ | P0 |
-| T10 | Header integration tests | ⬜ | P0 |
+| T07 | RoutingResult struct | ✅ | P0 |
+| T08 | X-Nexus-Fallback-Model header | ✅ | P0 |
+| T09 | Header unit tests | ✅ | P0 |
+| T10 | Header integration tests | ✅ | P0 |
 
 ---
 
@@ -61,9 +61,9 @@ All core fallback functionality was implemented in F06:
 
 ## New Tasks (F08)
 
-## T07: RoutingResult Struct ⬜
+## T07: RoutingResult Struct ✅
 
-**Status**: Not Started  
+**Status**: Complete  
 **File**: `src/routing/mod.rs`
 
 ### Step 1: Write Tests (TDD Red Phase)
@@ -123,17 +123,17 @@ Run: `cargo test routing_result`
 Expected: All tests PASS
 
 ### Acceptance Criteria
-- [ ] RoutingResult struct with backend, actual_model, fallback_used fields (`cargo build`)
-- [ ] select_backend returns RoutingResult instead of Arc<Backend>
-- [ ] Test `routing_result_contains_fallback_info` passes
-- [ ] Test `routing_result_no_fallback_when_primary_used` passes
-- [ ] All routing_result tests pass (`cargo test routing_result`)
+- [X] RoutingResult struct with backend, actual_model, fallback_used fields (`cargo build`)
+- [X] select_backend returns RoutingResult instead of Arc<Backend>
+- [X] Test `routing_result_contains_fallback_info` passes
+- [X] Test `routing_result_no_fallback_when_primary_used` passes
+- [X] All routing_result tests pass (`cargo test routing_result`)
 
 ---
 
-## T08: X-Nexus-Fallback-Model Header ⬜
+## T08: X-Nexus-Fallback-Model Header ✅
 
-**Status**: Not Started  
+**Status**: Complete  
 **File**: `src/api/chat.rs`  
 **Satisfies**: AC-06
 
@@ -183,16 +183,16 @@ Run: `cargo test fallback_header`
 Expected: All tests PASS
 
 ### Acceptance Criteria
-- [ ] AC-06 satisfied: X-Nexus-Fallback-Model header present when fallback used
-- [ ] AC-06 satisfied: Header absent when primary model used
-- [ ] Header contains actual model name
-- [ ] Header is lowercase (HTTP/2 compliant)
+- [X] AC-06 satisfied: X-Nexus-Fallback-Model header present when fallback used
+- [X] AC-06 satisfied: Header absent when primary model used
+- [X] Header contains actual model name
+- [X] Header is lowercase (HTTP/2 compliant)
 
 ---
 
-## T09: Header Unit Tests ⬜
+## T09: Header Unit Tests ✅
 
-**Status**: Not Started  
+**Status**: Complete  
 **File**: `src/routing/mod.rs`, `src/api/`
 
 ### Step 1: Write Tests (TDD Red Phase)
@@ -216,16 +216,16 @@ Run: `cargo test routing_result_with_alias 2>&1 | grep -E '(FAILED|error)' | hea
 This test should pass after T07 implementation if designed correctly.
 
 ### Acceptance Criteria
-- [ ] Test `routing_result_contains_fallback_info` passes
-- [ ] Test `routing_result_no_fallback_when_primary_used` passes
-- [ ] Test `routing_result_with_alias_and_fallback` passes
-- [ ] Edge cases covered (alias + fallback, no fallback configured)
+- [X] Test `routing_result_contains_fallback_info` passes
+- [X] Test `routing_result_no_fallback_when_primary_used` passes
+- [X] Test `routing_result_with_alias_and_fallback` passes
+- [X] Edge cases covered (alias + fallback, no fallback configured)
 
 ---
 
-## T10: Header Integration Tests ⬜
+## T10: Header Integration Tests ✅
 
-**Status**: Not Started  
+**Status**: Complete  
 **File**: `tests/api_integration.rs` or `tests/routing_integration.rs`
 
 ### Step 1: Write Tests (TDD Red Phase)
@@ -249,10 +249,10 @@ async fn streaming_response_includes_fallback_header() {
 Run: `cargo test api_response_includes_fallback 2>&1 | grep -E '(FAILED|error)' | head -20`
 
 ### Acceptance Criteria
-- [ ] Test `api_response_includes_fallback_header` passes
-- [ ] Test `response_no_fallback_header_when_primary_used` passes
-- [ ] Test `streaming_response_includes_fallback_header` passes
-- [ ] Integration tests verify header in HTTP response
+- [X] Test `api_response_includes_fallback_header` passes
+- [X] Test `response_no_fallback_header_when_primary_used` passes
+- [X] Test `streaming_response_includes_fallback_header` passes
+- [X] Integration tests verify header in HTTP response
 
 ---
 

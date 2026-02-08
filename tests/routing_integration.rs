@@ -84,11 +84,11 @@ fn test_routing_with_multiple_backends() {
     let requirements = nexus::routing::RequestRequirements::from_request(&request);
 
     // Select backend
-    let backend = state.router.select_backend(&requirements).unwrap();
+    let result = state.router.select_backend(&requirements).unwrap();
 
     // Should select one of the llama3:8b backends (Backend 1 or 2)
-    assert!(backend.name == "Backend 1" || backend.name == "Backend 2");
-    assert_eq!(backend.models[0].id, "llama3:8b");
+    assert!(result.backend.name == "Backend 1" || result.backend.name == "Backend 2");
+    assert_eq!(result.backend.models[0].id, "llama3:8b");
 }
 
 #[test]
@@ -135,7 +135,8 @@ fn test_routing_with_aliases() {
     };
 
     let requirements = nexus::routing::RequestRequirements::from_request(&request);
-    let backend = state.router.select_backend(&requirements).unwrap();
+    let result = state.router.select_backend(&requirements).unwrap();
+    let backend = &result.backend;
 
     // Should resolve alias and select backend
     assert_eq!(backend.name, "Backend 1");
@@ -186,7 +187,8 @@ fn test_routing_with_fallbacks() {
     };
 
     let requirements = nexus::routing::RequestRequirements::from_request(&request);
-    let backend = state.router.select_backend(&requirements).unwrap();
+    let result = state.router.select_backend(&requirements).unwrap();
+    let backend = &result.backend;
 
     // Should fallback to mistral
     assert_eq!(backend.name, "Backend 1");
@@ -295,7 +297,8 @@ fn test_routing_with_chained_aliases() {
     };
 
     let requirements = nexus::routing::RequestRequirements::from_request(&request);
-    let backend = state.router.select_backend(&requirements).unwrap();
+    let result = state.router.select_backend(&requirements).unwrap();
+    let backend = &result.backend;
 
     // Should resolve through 2-level chain and select backend
     assert_eq!(backend.name, "Backend 1");
@@ -385,9 +388,110 @@ fn test_routing_with_max_depth_chain() {
     };
 
     let requirements = nexus::routing::RequestRequirements::from_request(&request);
-    let backend = state.router.select_backend(&requirements).unwrap();
+    let result = state.router.select_backend(&requirements).unwrap();
+    let backend = &result.backend;
 
     // Should stop at max depth (3) and resolve to "d"
     assert_eq!(backend.name, "Backend D");
     assert_eq!(backend.models[0].id, "d");
+}
+
+// T09: Header Unit Tests
+#[test]
+fn test_routing_result_with_alias_and_fallback() {
+    // Given alias "alias" → "primary"
+    // And fallback "primary" → ["fallback"]
+    // And only "fallback" is available
+    let registry = Arc::new(Registry::new());
+    registry
+        .add_backend(create_test_backend(
+            "backend_fallback",
+            "Backend Fallback",
+            "fallback",
+            1,
+        ))
+        .unwrap();
+
+    let mut config = NexusConfig::default();
+    config
+        .routing
+        .aliases
+        .insert("alias".to_string(), "primary".to_string());
+    config
+        .routing
+        .fallbacks
+        .insert("primary".to_string(), vec!["fallback".to_string()]);
+    let config = Arc::new(config);
+
+    let state = AppState::new(registry, config);
+
+    let request = ChatCompletionRequest {
+        model: "alias".to_string(),
+        messages: vec![ChatMessage {
+            role: "user".to_string(),
+            content: MessageContent::Text {
+                content: "Test".to_string(),
+            },
+            name: None,
+        }],
+        stream: false,
+        temperature: None,
+        max_tokens: None,
+        top_p: None,
+        stop: None,
+        presence_penalty: None,
+        frequency_penalty: None,
+        user: None,
+        extra: HashMap::new(),
+    };
+
+    let requirements = nexus::routing::RequestRequirements::from_request(&request);
+    let result = state.router.select_backend(&requirements).unwrap();
+
+    // Then result.fallback_used == true
+    assert!(result.fallback_used, "Expected fallback_used to be true");
+    // And result.actual_model == "fallback"
+    assert_eq!(result.actual_model, "fallback");
+    // And result.backend is the fallback backend
+    assert_eq!(result.backend.name, "Backend Fallback");
+}
+
+#[test]
+fn test_routing_result_no_fallback_info_when_no_fallback_configured() {
+    // Given no fallback configured
+    let registry = Arc::new(Registry::new());
+    registry
+        .add_backend(create_test_backend("backend1", "Backend 1", "model1", 1))
+        .unwrap();
+
+    let config = Arc::new(NexusConfig::default());
+    let state = AppState::new(registry, config);
+
+    let request = ChatCompletionRequest {
+        model: "model1".to_string(),
+        messages: vec![ChatMessage {
+            role: "user".to_string(),
+            content: MessageContent::Text {
+                content: "Test".to_string(),
+            },
+            name: None,
+        }],
+        stream: false,
+        temperature: None,
+        max_tokens: None,
+        top_p: None,
+        stop: None,
+        presence_penalty: None,
+        frequency_penalty: None,
+        user: None,
+        extra: HashMap::new(),
+    };
+
+    let requirements = nexus::routing::RequestRequirements::from_request(&request);
+    let result = state.router.select_backend(&requirements).unwrap();
+
+    // Then result.fallback_used == false
+    assert!(!result.fallback_used, "Expected fallback_used to be false");
+    // And result.actual_model == "model1"
+    assert_eq!(result.actual_model, "model1");
 }
