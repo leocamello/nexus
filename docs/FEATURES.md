@@ -14,8 +14,8 @@ Detailed specifications for each feature in the Nexus LLM Orchestrator.
 | F04 | CLI and Configuration | P0 | ✅ Complete | [specs/003-cli-configuration](../specs/003-cli-configuration/) |
 | F05 | mDNS Discovery | P1 | ✅ Complete | [specs/005-mdns-discovery](../specs/005-mdns-discovery/) |
 | F06 | Intelligent Router | P1 | ✅ Complete | [specs/006-intelligent-router](../specs/006-intelligent-router/) |
-| F07 | Model Aliases | P1 | ✅ Included in F06 | - |
-| F08 | Fallback Chains | P1 | ✅ Included in F06 | - |
+| F07 | Model Aliases | P1 | ✅ Complete | [specs/007-model-aliases](../specs/007-model-aliases/) |
+| F08 | Fallback Chains | P1 | ✅ Complete | [specs/008-fallback-chains](../specs/008-fallback-chains/) |
 | F09 | Request Metrics | P2 | Planned | - |
 | F10 | Web Dashboard | P2 | Planned | - |
 
@@ -454,11 +454,11 @@ models=llama3:70b,mistral:7b
 ```
 
 ### Acceptance Criteria
-- [ ] Discovers Ollama instances automatically
-- [ ] Handles service appearing/disappearing
-- [ ] Grace period before removal
-- [ ] Works on macOS, Linux, Windows
-- [ ] Graceful fallback if mDNS unavailable
+- [x] Discovers Ollama instances automatically
+- [x] Handles service appearing/disappearing
+- [x] Grace period before removal
+- [x] Works on macOS, Linux, Windows
+- [x] Graceful fallback if mDNS unavailable
 
 ---
 
@@ -522,11 +522,11 @@ def score(backend, requirements):
 | Context Length | Estimate: `sum(len(m.content) for m in messages) / 4` |
 
 ### Acceptance Criteria
-- [ ] Matches model by name
-- [ ] Filters by capabilities
-- [ ] Scores by priority, load, latency
-- [ ] Falls back to aliases
-- [ ] Returns error if no backend available
+- [x] Matches model by name
+- [x] Filters by capabilities
+- [x] Scores by priority, load, latency
+- [x] Falls back to aliases
+- [x] Returns error if no backend available
 
 ---
 
@@ -555,9 +555,12 @@ Map common model names to available local models.
 5. Response model field shows "gpt-4" (what client requested)
 
 ### Acceptance Criteria
-- [ ] Aliases configured in config file
-- [ ] Transparent to client (sees requested model name)
-- [ ] Logged at DEBUG level
+- [x] Aliases configured in config file
+- [x] Transparent to client (sees requested model name)
+- [x] Logged at DEBUG level
+- [x] Circular alias detection at config load
+- [x] Max 3 levels of chaining
+- [x] Direct matches preferred over aliases
 
 ---
 
@@ -583,10 +586,12 @@ Automatic fallback to alternative models when primary fails.
 5. Log fallback at WARN level
 
 ### Acceptance Criteria
-- [ ] Fallback chains in config
-- [ ] Tries each fallback in order
-- [ ] Logs when fallback used
-- [ ] Returns 503 if all fallbacks exhausted
+- [x] Fallback chains configurable per model
+- [x] Tries each fallback in order
+- [x] Logs fallback usage at WARN level
+- [x] Returns 503 if all fallbacks exhausted
+- [x] X-Nexus-Fallback-Model header indicates actual model
+- [x] Response model field shows requested model
 
 ---
 
@@ -663,8 +668,10 @@ Simple web UI for monitoring.
 
 ### Phase 2: Discovery & Intelligence ✅ Complete
 5. F05: mDNS Discovery ✅
-6. F06: Intelligent Router ✅ (includes F07 + F08)
+6. F06: Intelligent Router ✅
+7. F07: Model Aliases ✅
+8. F08: Fallback Chains ✅
 
 ### Phase 3: Observability (Next)
-7. F09: Request Metrics
-8. F10: Web Dashboard
+9. F09: Request Metrics
+10. F10: Web Dashboard
