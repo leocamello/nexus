@@ -1,10 +1,21 @@
 # F08: Fallback Chains
 
-**Status**: ✅ Implemented (as part of F06)  
+**Status**: 🔄 Partially Implemented  
 **Priority**: P1  
-**Branch**: N/A (merged with F06)  
+**Branch**: feature/f08-fallback-chains  
 **Dependencies**: F06 (Intelligent Router)  
-**Implementation**: `src/routing/mod.rs`
+**Implementation**: `src/routing/mod.rs`, `src/api/`
+
+## Implementation Gap Analysis
+
+| Requirement | Status | Notes |
+|-------------|--------|-------|
+| Fallback chain configuration | ✅ | Working |
+| Ordered fallback iteration | ✅ | Working |
+| WARN level logging | ✅ | Working |
+| 503 on exhausted chain | ✅ | Working |
+| Response model shows requested | ✅ | Working |
+| X-Nexus-Fallback-Model header | ❌ | Not implemented |
 
 ---
 
@@ -72,6 +83,20 @@ A fallback chain system that automatically routes requests to alternative models
 - **When** I request model "special:model"
 - **Then** I receive a 503 Service Unavailable error
 - **And** the error indicates all fallbacks were exhausted
+
+### US-04: Fallback Transparency Header
+**As a** developer  
+**I want** to know when a fallback model was used via HTTP headers  
+**So that** I can log, monitor, or adjust my application behavior
+
+**Priority**: P1 (Enhanced functionality)
+
+**Acceptance Scenarios**:
+- **Given** fallback "llama3:70b" → ["qwen2:72b"]
+- **And** "llama3:70b" is unavailable but "qwen2:72b" is available
+- **When** I request model "llama3:70b"
+- **Then** the response includes header `X-Nexus-Fallback-Model: qwen2:72b`
+- **And** the response body model field shows "llama3:70b" (requested model)
 
 ---
 
@@ -298,17 +323,35 @@ WARN routing: Fallback chain exhausted model="llama3:70b" tried=["qwen2:72b", "m
 
 ## Response Handling
 
-### Current Implementation
+### Response Model Field
 - Response model field shows the **requested** model (not fallback)
-- Transparent to client
+- Transparent to client - they requested "gpt-4", they see "gpt-4" in response
 
-### Future Enhancement (Not Implemented)
+### X-Nexus-Fallback-Model Header
+When a fallback is used, the response includes a custom header indicating the actual model:
+
 ```
+HTTP/1.1 200 OK
+Content-Type: application/json
 X-Nexus-Fallback-Model: qwen2:72b
-X-Nexus-Original-Model: llama3:70b
+
+{
+  "id": "chatcmpl-xxx",
+  "object": "chat.completion",
+  "model": "llama3:70b",  // Shows requested model
+  ...
+}
 ```
 
-This header feature is documented in the acceptance criteria but not yet implemented. It would be added in a future enhancement.
+**Header Behavior**:
+| Scenario | Header Present | Header Value |
+|----------|----------------|--------------|
+| Primary model used | No | - |
+| Fallback used | Yes | Actual model name |
+| Alias resolved, no fallback | No | - |
+| Alias + fallback | Yes | Final fallback model |
+
+**Implementation Note**: Header is added in the API layer after routing decision, not in the Router itself.
 
 ---
 
@@ -339,23 +382,28 @@ This header feature is documented in the acceptance criteria but not yet impleme
 - [x] AC-03: Logs fallback usage at WARN level
 - [x] AC-04: Returns 503 if all fallbacks exhausted (FallbackChainExhausted error)
 - [x] AC-05: Response model field shows requested model
-- [ ] AC-06: X-Nexus-Fallback-Model header (future enhancement)
+- [ ] AC-06: X-Nexus-Fallback-Model header indicates actual model used
 
 ---
 
 ## Implementation Status
 
 **Implemented in F06 (Intelligent Router)**:
-- `src/routing/mod.rs`: `find_candidates_with_fallback()` function
+- `src/routing/mod.rs`: Fallback chain iteration
 - `src/routing/error.rs`: `FallbackChainExhausted` error variant
 - `src/config/routing.rs`: `fallbacks` field parsing
 
-**Files**:
-| File | Function |
-|------|----------|
-| `src/routing/mod.rs` | `find_candidates_with_fallback()`, `with_aliases_and_fallbacks()` |
-| `src/routing/error.rs` | `RoutingError::FallbackChainExhausted` |
-| `src/config/routing.rs` | `RoutingConfig.fallbacks` |
+**Still Needed (F08)**:
+- `X-Nexus-Fallback-Model` response header
+- Router must return fallback metadata to API layer
+- API layer adds header when fallback was used
+
+**Files to Modify**:
+| File | Changes Needed |
+|------|----------------|
+| `src/routing/mod.rs` | Return `RoutingResult` with fallback info |
+| `src/api/chat.rs` | Add X-Nexus-Fallback-Model header |
+| `tests/` | Integration tests for header
 
 ---
 
