@@ -15,10 +15,7 @@ pub enum RoutingError {
 
     /// No backend supports the required capabilities
     #[error("No backend supports required capabilities for model '{model}': {missing:?}")]
-    CapabilityMismatch {
-        model: String,
-        missing: Vec<String>,
-    },
+    CapabilityMismatch { model: String, missing: Vec<String> },
 
     /// All models in the fallback chain were exhausted
     #[error("All backends in fallback chain unavailable: {chain:?}")]

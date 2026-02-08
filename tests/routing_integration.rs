@@ -39,20 +39,10 @@ fn test_routing_with_multiple_backends() {
     // Setup registry with multiple backends
     let registry = Arc::new(Registry::new());
     registry
-        .add_backend(create_test_backend(
-            "backend1",
-            "Backend 1",
-            "llama3:8b",
-            1,
-        ))
+        .add_backend(create_test_backend("backend1", "Backend 1", "llama3:8b", 1))
         .unwrap();
     registry
-        .add_backend(create_test_backend(
-            "backend2",
-            "Backend 2",
-            "llama3:8b",
-            2,
-        ))
+        .add_backend(create_test_backend("backend2", "Backend 2", "llama3:8b", 2))
         .unwrap();
     registry
         .add_backend(create_test_backend(
@@ -252,9 +242,6 @@ fn test_routing_performance() {
 
     // Average should be < 1ms per routing decision
     let avg_micros = elapsed.as_micros() / 1000;
-    println!(
-        "Average routing time: {} microseconds",
-        avg_micros
-    );
+    println!("Average routing time: {} microseconds", avg_micros);
     assert!(avg_micros < 1000, "Routing too slow: {} µs", avg_micros);
 }

@@ -28,10 +28,7 @@ impl ScoringWeights {
     pub fn validate(&self) -> Result<(), String> {
         let sum = self.priority + self.load + self.latency;
         if sum != 100 {
-            Err(format!(
-                "Scoring weights must sum to 100, got {}",
-                sum
-            ))
+            Err(format!("Scoring weights must sum to 100, got {}", sum))
         } else {
             Ok(())
         }
@@ -58,7 +55,9 @@ pub fn score_backend(
     let latency_score = 100 - (avg_latency_ms / 10).min(100);
 
     // Weighted average
-    (priority_score * weights.priority + load_score * weights.load + latency_score * weights.latency)
+    (priority_score * weights.priority
+        + load_score * weights.load
+        + latency_score * weights.latency)
         / 100
 }
 

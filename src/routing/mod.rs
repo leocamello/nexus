@@ -44,7 +44,11 @@ pub struct Router {
 
 impl Router {
     /// Create a new router with the given configuration
-    pub fn new(registry: Arc<Registry>, strategy: RoutingStrategy, weights: ScoringWeights) -> Self {
+    pub fn new(
+        registry: Arc<Registry>,
+        strategy: RoutingStrategy,
+        weights: ScoringWeights,
+    ) -> Self {
         Self {
             registry,
             strategy,
@@ -75,7 +79,10 @@ impl Router {
 
     /// Resolve model aliases (single-level only)
     fn resolve_alias(&self, model: &str) -> String {
-        self.aliases.get(model).cloned().unwrap_or_else(|| model.to_string())
+        self.aliases
+            .get(model)
+            .cloned()
+            .unwrap_or_else(|| model.to_string())
     }
 
     /// Get fallback chain for a model
@@ -139,8 +146,12 @@ impl Router {
             .iter()
             .max_by_key(|backend| {
                 let priority = backend.priority as u32;
-                let pending = backend.pending_requests.load(std::sync::atomic::Ordering::Relaxed);
-                let latency = backend.avg_latency_ms.load(std::sync::atomic::Ordering::Relaxed);
+                let pending = backend
+                    .pending_requests
+                    .load(std::sync::atomic::Ordering::Relaxed);
+                let latency = backend
+                    .avg_latency_ms
+                    .load(std::sync::atomic::Ordering::Relaxed);
                 score_backend(priority, pending, latency, &self.weights)
             })
             .unwrap();
@@ -157,13 +168,16 @@ impl Router {
             models: best.models.clone(),
             priority: best.priority,
             pending_requests: AtomicU32::new(
-                best.pending_requests.load(std::sync::atomic::Ordering::Relaxed),
+                best.pending_requests
+                    .load(std::sync::atomic::Ordering::Relaxed),
             ),
             total_requests: AtomicU64::new(
-                best.total_requests.load(std::sync::atomic::Ordering::Relaxed),
+                best.total_requests
+                    .load(std::sync::atomic::Ordering::Relaxed),
             ),
             avg_latency_ms: AtomicU32::new(
-                best.avg_latency_ms.load(std::sync::atomic::Ordering::Relaxed),
+                best.avg_latency_ms
+                    .load(std::sync::atomic::Ordering::Relaxed),
             ),
             discovery_source: best.discovery_source,
             metadata: best.metadata.clone(),
@@ -190,13 +204,16 @@ impl Router {
             models: best.models.clone(),
             priority: best.priority,
             pending_requests: AtomicU32::new(
-                best.pending_requests.load(std::sync::atomic::Ordering::Relaxed),
+                best.pending_requests
+                    .load(std::sync::atomic::Ordering::Relaxed),
             ),
             total_requests: AtomicU64::new(
-                best.total_requests.load(std::sync::atomic::Ordering::Relaxed),
+                best.total_requests
+                    .load(std::sync::atomic::Ordering::Relaxed),
             ),
             avg_latency_ms: AtomicU32::new(
-                best.avg_latency_ms.load(std::sync::atomic::Ordering::Relaxed),
+                best.avg_latency_ms
+                    .load(std::sync::atomic::Ordering::Relaxed),
             ),
             discovery_source: best.discovery_source,
             metadata: best.metadata.clone(),
@@ -222,13 +239,16 @@ impl Router {
             models: best.models.clone(),
             priority: best.priority,
             pending_requests: AtomicU32::new(
-                best.pending_requests.load(std::sync::atomic::Ordering::Relaxed),
+                best.pending_requests
+                    .load(std::sync::atomic::Ordering::Relaxed),
             ),
             total_requests: AtomicU64::new(
-                best.total_requests.load(std::sync::atomic::Ordering::Relaxed),
+                best.total_requests
+                    .load(std::sync::atomic::Ordering::Relaxed),
             ),
             avg_latency_ms: AtomicU32::new(
-                best.avg_latency_ms.load(std::sync::atomic::Ordering::Relaxed),
+                best.avg_latency_ms
+                    .load(std::sync::atomic::Ordering::Relaxed),
             ),
             discovery_source: best.discovery_source,
             metadata: best.metadata.clone(),
@@ -258,13 +278,16 @@ impl Router {
             models: best.models.clone(),
             priority: best.priority,
             pending_requests: AtomicU32::new(
-                best.pending_requests.load(std::sync::atomic::Ordering::Relaxed),
+                best.pending_requests
+                    .load(std::sync::atomic::Ordering::Relaxed),
             ),
             total_requests: AtomicU64::new(
-                best.total_requests.load(std::sync::atomic::Ordering::Relaxed),
+                best.total_requests
+                    .load(std::sync::atomic::Ordering::Relaxed),
             ),
             avg_latency_ms: AtomicU32::new(
-                best.avg_latency_ms.load(std::sync::atomic::Ordering::Relaxed),
+                best.avg_latency_ms
+                    .load(std::sync::atomic::Ordering::Relaxed),
             ),
             discovery_source: best.discovery_source,
             metadata: best.metadata.clone(),
@@ -273,11 +296,7 @@ impl Router {
 
     /// Filter candidates by model, health, and capabilities
     #[allow(dead_code)] // Will be used when select_backend is implemented
-    fn filter_candidates(
-        &self,
-        model: &str,
-        requirements: &RequestRequirements,
-    ) -> Vec<Backend> {
+    fn filter_candidates(&self, model: &str, requirements: &RequestRequirements) -> Vec<Backend> {
         // Get all backends that have this model
         let mut candidates = self.registry.get_backends_for_model(model);
 
@@ -421,11 +440,7 @@ mod filter_tests {
             registry.add_backend(backend).unwrap();
         }
 
-        Router::new(
-            registry,
-            RoutingStrategy::Smart,
-            ScoringWeights::default(),
-        )
+        Router::new(registry, RoutingStrategy::Smart, ScoringWeights::default())
     }
 
     #[test]
@@ -622,11 +637,7 @@ mod smart_strategy_tests {
             registry.add_backend(backend).unwrap();
         }
 
-        Router::new(
-            registry,
-            RoutingStrategy::Smart,
-            ScoringWeights::default(),
-        )
+        Router::new(registry, RoutingStrategy::Smart, ScoringWeights::default())
     }
 
     #[test]
@@ -714,7 +725,10 @@ mod smart_strategy_tests {
 
         let result = router.select_backend(&requirements);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), RoutingError::ModelNotFound { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            RoutingError::ModelNotFound { .. }
+        ));
     }
 }
 
@@ -784,13 +798,7 @@ mod other_strategies_tests {
 
         // Should cycle through: A, B, C, A, B, C
         let names: Vec<String> = (0..6)
-            .map(|_| {
-                router
-                    .select_backend(&requirements)
-                    .unwrap()
-                    .name
-                    .clone()
-            })
+            .map(|_| router.select_backend(&requirements).unwrap().name.clone())
             .collect();
 
         // Verify round-robin pattern
@@ -1027,10 +1035,7 @@ mod alias_and_fallback_tests {
         aliases.insert("gpt-4".to_string(), "llama3:70b".to_string());
 
         let mut fallbacks = HashMap::new();
-        fallbacks.insert(
-            "llama3:70b".to_string(),
-            vec!["mistral:7b".to_string()],
-        );
+        fallbacks.insert("llama3:70b".to_string(), vec!["mistral:7b".to_string()]);
 
         let router = Router::with_aliases_and_fallbacks(
             registry,
