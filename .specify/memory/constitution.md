@@ -181,6 +181,14 @@ No implementation code shall be written before tests exist and fail.
 - All criteria must be checked before a feature is considered complete
 - Use `grep -c "\- \[ \]" specs/*/tasks.md` to verify no unchecked items
 
+### Three-Checklist Quality System
+The project uses three checklists to ensure quality:
+1. **Requirements Validation** (65 items) - Before implementation
+2. **Tasks** - During implementation  
+3. **Implementation Verification** (210 items) - After implementation
+
+Templates are in `.specify/templates/`. See `.specify/INDEX.md` for details.
+
 ## Code Style
 
 ### Formatting

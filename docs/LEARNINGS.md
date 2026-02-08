@@ -107,6 +107,66 @@ handle.await?;
 
 ---
 
+## After F05 (mDNS Discovery)
+
+**Date**: 2026-02-08
+
+### Workflow Learnings
+
+#### 1. Three-Checklist System Established
+After completing F05, we applied verification checklists retroactively to all features and discovered the need for a formal requirements validation phase. The new workflow uses three checklists:
+
+| Checklist | When | Items | Purpose |
+|-----------|------|-------|---------|
+| `requirements-validation.md` | BEFORE implementation | 65 | Validate spec is ready |
+| `tasks.md` | DURING implementation | varies | Track acceptance criteria |
+| `implementation-verification.md` | AFTER implementation | 210 | Verify implementation |
+
+**Key Insight**: The requirements-validation checklist (condensed from the 208-item requirements-quality.md) serves as a quality gate before creating GitHub issues or starting implementation.
+
+#### 2. Verification Baselines Established
+All 5 implemented features now have verification checklists:
+- F01 (API Gateway): 170 verified, 40 N/A
+- F02 (Backend Registry): 120 verified, 90 N/A
+- F03 (Health Checker): 147 verified, 63 N/A
+- F04 (CLI & Config): 148 verified, 62 N/A
+- F05 (mDNS Discovery): 138 verified, 72 N/A
+
+**Total**: 723 items verified, 327 N/A, 0 blocking issues.
+
+### Technical Learnings
+
+#### 1. mDNS Service Type Normalization
+Service types must end with a trailing dot for the mdns-sd crate. Instead of requiring users to know this, we normalize automatically:
+
+```rust
+let normalized = if service_type.ends_with('.') {
+    service_type.clone()
+} else {
+    format!("{}.", service_type)
+};
+```
+
+#### 2. Single-Machine mDNS Testing
+Testing mDNS on a single machine requires OS-specific tools:
+- **Linux**: `avahi-publish -s` to announce services
+- **macOS**: `dns-sd -R` to register services
+
+### Metrics
+
+| Feature | Tasks | Tests | Issues Closed |
+|---------|-------|-------|---------------|
+| F05 mDNS Discovery | 12 | 29 | 12 (#59-#70) |
+
+### Process Improvements for Next Feature (F06)
+
+1. **Copy requirements-validation.md** to feature folder BEFORE creating issues
+2. **Complete all 65 validation items** before `speckit.taskstoissues`
+3. **Complete verification.md** before creating PR
+4. **Follow 10-phase workflow** documented in `docs/SPEC_KIT_PROMPTS.md`
+
+---
+
 ## Template for Future Entries
 
 ```markdown
