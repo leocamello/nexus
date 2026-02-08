@@ -3,87 +3,113 @@
 **Feature**: Fallback Chains  
 **Spec**: [spec.md](./spec.md)  
 **Created**: 2026-02-08  
-**Status**: ✅ Implemented (as part of F06)
+**Status**: 🔄 Partially Implemented
 
 ---
 
 ## Constitution Check
 
 ### Simplicity Gate ✅
-- [x] Using ≤3 main modules? **Yes**: Part of routing module only
-- [x] No speculative features? **Yes**: Single-level fallbacks only
-- [x] No premature optimization? **Yes**: Simple linear iteration
-- [x] Simplest approach? **Yes**: Ordered list iteration
+- [x] Using ≤3 main modules? **Yes**: routing + api modules
+- [x] No speculative features? **Yes**: Only what's in AC
+- [x] No premature optimization? **Yes**: Simple header addition
+- [x] Simplest approach? **Yes**: Add header in response
 
 ### Anti-Abstraction Gate ✅
-- [x] No wrapper layers? **Yes**: Direct HashMap in Router struct
-- [x] Single representation? **Yes**: `HashMap<String, Vec<String>>`
-- [x] No framework-on-framework? **Yes**: Plain Rust
-- [x] Abstractions justified? **Yes**: No unnecessary abstractions
+- [x] No wrapper layers? **Yes**: Direct header manipulation
+- [x] Single representation? **Yes**: String header value
+- [x] No framework-on-framework? **Yes**: Plain axum
+- [x] Abstractions justified? **Yes**: RoutingResult carries metadata
 
 ### Integration-First Gate ✅
-- [x] API contracts defined? **Yes**: Transparent fallback
-- [x] Integration tests planned? **Yes**: Fallback routing tests
-- [x] End-to-end testable? **Yes**: Can test full fallback flow
+- [x] API contracts defined? **Yes**: X-Nexus-Fallback-Model header
+- [x] Integration tests planned? **Yes**: Header verification tests
+- [x] End-to-end testable? **Yes**: Can test full flow with header
 
 ### Performance Gate ✅
-- [x] Routing decision < 1ms? **Yes**: O(n) for n fallbacks
-- [x] Total overhead < 5ms? **Yes**: Linear iteration
-- [x] Memory baseline < 50MB? **Yes**: ~200 bytes per chain
+- [x] Routing decision < 1ms? **Yes**: Unchanged
+- [x] Total overhead < 5ms? **Yes**: Header addition is negligible
+- [x] Memory baseline < 50MB? **Yes**: One string per response
+
+---
+
+## Gap Analysis
+
+| Component | Status | Work Needed |
+|-----------|--------|-------------|
+| Fallback chain iteration | ✅ | None |
+| FallbackChainExhausted error | ✅ | None |
+| WARN logging | ✅ | None |
+| Config parsing | ✅ | None |
+| X-Nexus-Fallback-Model header | ❌ | Implement |
 
 ---
 
 ## Technical Approach
 
-### Implementation (Completed)
+### Existing Implementation (F06)
+- `HashMap<String, Vec<String>>` for fallback chains
+- Linear iteration through fallback list
+- `FallbackChainExhausted` error type
+- WARN level logging for fallback usage
 
-Fallback chains were implemented as part of F06 (Intelligent Router):
+### New Implementation (F08)
 
-1. **Data Structure**: `HashMap<String, Vec<String>>` in Router
-2. **Resolution**: Linear iteration through fallback list
-3. **Error Handling**: `FallbackChainExhausted` error type
-4. **Logging**: WARN level for fallback usage
+#### 1. Router Returns Fallback Metadata
 
-### Key Design Decisions
+The router needs to return not just the backend, but also whether a fallback was used:
 
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| Fallback depth | Single-level | Predictability, explicit control |
-| Iteration | Linear | Clear priority order |
-| Error type | FallbackChainExhausted | Clear error semantics |
-| Log level | WARN | Indicates degraded service |
+```rust
+/// Result of a routing decision
+pub struct RoutingResult {
+    /// Selected backend
+    pub backend: Arc<Backend>,
+    /// The actual model being used (may differ from requested if fallback)
+    pub actual_model: String,
+    /// Whether a fallback was used
+    pub fallback_used: bool,
+}
+```
+
+#### 2. API Layer Adds Header
+
+In `src/api/chat.rs`, after proxying the response:
+
+```rust
+if routing_result.fallback_used {
+    response.headers_mut().insert(
+        HeaderName::from_static("x-nexus-fallback-model"),
+        HeaderValue::from_str(&routing_result.actual_model)?,
+    );
+}
+```
 
 ---
 
 ## Data Structures
 
+### New: RoutingResult
+
 ```rust
-// Part of Router struct in src/routing/mod.rs
-pub struct Router {
-    // ... other fields ...
-    
-    /// Fallback chains (model → list of fallbacks)
-    fallbacks: HashMap<String, Vec<String>>,
+/// Result of a successful routing decision
+pub struct RoutingResult {
+    /// The selected backend
+    pub backend: Arc<Backend>,
+    /// The actual model name (after alias resolution and fallback)
+    pub actual_model: String,
+    /// True if a fallback model was used
+    pub fallback_used: bool,
 }
+```
 
-// Error type in src/routing/error.rs
-#[derive(Debug, thiserror::Error)]
-pub enum RoutingError {
-    #[error("Fallback chain exhausted for model '{model}'. Tried: {tried:?}")]
-    FallbackChainExhausted {
-        model: String,
-        tried: Vec<String>,
-    },
-    // ...
-}
+### Existing (unchanged)
 
-// In RoutingConfig
-pub struct RoutingConfig {
-    // ... other fields ...
-    
-    #[serde(default)]
-    pub fallbacks: HashMap<String, Vec<String>>,
-}
+```rust
+// Router fallbacks field
+fallbacks: HashMap<String, Vec<String>>
+
+// Error type
+RoutingError::FallbackChainExhausted { model, tried }
 ```
 
 ---
@@ -92,22 +118,26 @@ pub struct RoutingConfig {
 
 | File | Changes | Status |
 |------|---------|--------|
-| `src/routing/mod.rs` | `find_candidates_with_fallback()` function | ✅ Complete |
-| `src/routing/error.rs` | `FallbackChainExhausted` error | ✅ Complete |
-| `src/config/routing.rs` | `fallbacks` field in RoutingConfig | ✅ Complete |
-| `tests/routing_integration.rs` | Fallback integration tests | ✅ Complete |
+| `src/routing/mod.rs` | Return `RoutingResult` instead of `Arc<Backend>` | ⬜ |
+| `src/api/chat.rs` | Add X-Nexus-Fallback-Model header | ⬜ |
+| `src/api/mod.rs` | May need header constant | ⬜ |
+| `tests/routing_integration.rs` | Test header presence | ⬜ |
 
 ---
 
-## Test Coverage
+## Test Plan
 
-### Unit Tests (in `src/routing/mod.rs`)
-- `uses_fallback_when_primary_unavailable` - Basic fallback
-- `fallback_chain_exhausted` - All fallbacks failed
-- Part of `alias_and_fallback_tests` module
+### Unit Tests to Add
+| Test | Description |
+|------|-------------|
+| `routing_result_includes_fallback_info` | RoutingResult has correct fields |
+| `no_fallback_used_flag_is_false` | Primary model used |
 
-### Integration Tests (in `tests/routing_integration.rs`)
-- `test_routing_with_fallbacks` - End-to-end fallback routing
+### Integration Tests to Add
+| Test | Description |
+|------|-------------|
+| `response_has_fallback_header_when_fallback_used` | Header present |
+| `response_no_fallback_header_when_primary_used` | Header absent |
 
 ---
 
@@ -115,11 +145,11 @@ pub struct RoutingConfig {
 
 | Component | Lines | Complexity | Notes |
 |-----------|-------|------------|-------|
-| find_candidates_with_fallback() | 25 | Medium | Iteration with early return |
-| FallbackChainExhausted | 5 | Low | Error type definition |
-| Config parsing | 3 | Low | Serde handles it |
-| Tests | ~100 | Low | Straightforward scenarios |
-| **Total** | ~135 | **Low-Medium** | Minimal footprint |
+| RoutingResult struct | 10 | Low | Simple data struct |
+| Router signature change | 20 | Low | Return type change |
+| API header addition | 10 | Low | Conditional header |
+| Tests | 50 | Low | Header checking |
+| **Total** | ~90 | **Low** | Minimal footprint |
 
 ---
 
@@ -127,42 +157,19 @@ pub struct RoutingConfig {
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|------------|--------|------------|
-| Long fallback chains | Low | Medium | Document performance impact |
-| Unexpected fallback | Medium | Low | WARN logging |
-| Capability mismatch | Medium | Medium | Document user responsibility |
+| Breaking Router API | Medium | Medium | Update all callers |
+| Header not forwarded by proxy | Low | Low | Document behavior |
+| Performance overhead | Low | Low | Negligible string copy |
 
 ---
 
-## Success Metrics
+## Estimated Effort
 
-| Metric | Target | Actual |
-|--------|--------|--------|
-| Fallback selection time | < 1ms | ~100μs |
-| Test coverage | 100% | ✅ |
-| Documentation | Complete | ✅ |
-
----
-
-## Future Enhancements
-
-### X-Nexus-Fallback-Model Header
-Not yet implemented. Would add response header indicating actual model used:
-```
-X-Nexus-Fallback-Model: qwen2:72b
-X-Nexus-Original-Model: llama3:70b
-```
-
-### Capability-Aware Fallbacks
-Future enhancement to skip fallbacks that don't meet capability requirements (e.g., skip non-vision models when vision is needed).
-
----
-
-## Notes
-
-This feature was implemented as part of F06 (Intelligent Router) because:
-1. Fallbacks are integral to the routing decision
-2. They share the same configuration section
-3. They work together with model aliases
-4. Separating would create unnecessary module boundaries
-
-The spec is created retroactively to document the implemented functionality and ensure completeness.
+| Task | Estimate |
+|------|----------|
+| T01: RoutingResult struct | 15 min |
+| T02: Update Router.select_backend | 30 min |
+| T03: Add header in API layer | 20 min |
+| T04: Unit tests | 30 min |
+| T05: Integration tests | 30 min |
+| **Total** | ~2 hours |

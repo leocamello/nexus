@@ -4,10 +4,11 @@ use crate::api::{
     ApiError, AppState, ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse,
     ChunkChoice, ChunkDelta,
 };
-use crate::registry::{Backend, BackendStatus};
+use crate::registry::Backend;
+use crate::routing::RequestRequirements;
 use axum::{
     extract::State,
-    http::HeaderMap,
+    http::{HeaderMap, HeaderName, HeaderValue},
     response::{
         sse::{Event, Sse},
         IntoResponse, Response,
@@ -17,6 +18,9 @@ use axum::{
 use futures::StreamExt;
 use std::sync::Arc;
 use tracing::{info, warn};
+
+/// Header name for fallback model notification (lowercase for HTTP/2 compatibility)
+pub const FALLBACK_HEADER: &str = "x-nexus-fallback-model";
 
 /// POST /v1/chat/completions - Handle chat completion requests.
 pub async fn handle(
@@ -31,30 +35,41 @@ pub async fn handle(
         return handle_streaming(state, headers, request).await;
     }
 
-    // Find backends that support this model
-    let backends = state.registry.get_backends_for_model(&request.model);
-    if backends.is_empty() {
+    // Use router to select backend
+    let requirements = RequestRequirements::from_request(&request);
+    let routing_result = state.router.select_backend(&requirements).map_err(|e| {
         let available = available_models(&state);
-        return Err(ApiError::model_not_found(&request.model, &available));
-    }
+        match e {
+            crate::routing::RoutingError::ModelNotFound { model } => {
+                ApiError::model_not_found(&model, &available)
+            }
+            crate::routing::RoutingError::FallbackChainExhausted { chain } => {
+                ApiError::model_not_found(&chain[0], &available)
+            }
+            crate::routing::RoutingError::NoHealthyBackend { model } => {
+                ApiError::service_unavailable(&format!(
+                    "No healthy backend available for model '{}'",
+                    model
+                ))
+            }
+            crate::routing::RoutingError::CapabilityMismatch { model, missing } => {
+                ApiError::bad_request(&format!(
+                    "Model '{}' lacks required capabilities: {:?}",
+                    model, missing
+                ))
+            }
+        }
+    })?;
 
-    // Filter to healthy backends only
-    let healthy: Vec<_> = backends
-        .into_iter()
-        .filter(|b| b.status == BackendStatus::Healthy)
-        .collect();
+    let backend = &routing_result.backend;
+    let fallback_used = routing_result.fallback_used;
+    let actual_model = routing_result.actual_model.clone();
 
-    if healthy.is_empty() {
-        return Err(ApiError::service_unavailable(
-            "No healthy backends available for this model",
-        ));
-    }
-
-    // Try backends with retry logic
+    // Try backend with retry logic
     let max_retries = state.config.routing.max_retries as usize;
     let mut last_error = None;
 
-    for (attempt, backend) in healthy.iter().take(max_retries + 1).enumerate() {
+    for attempt in 0..=max_retries {
         info!(backend_id = %backend.id, attempt, "Trying backend");
 
         // Increment pending requests
@@ -64,7 +79,16 @@ pub async fn handle(
             Ok(response) => {
                 let _ = state.registry.decrement_pending(&backend.id);
                 info!(backend_id = %backend.id, "Request succeeded");
-                return Ok(Json(response).into_response());
+
+                // Create response with fallback header if applicable
+                let mut resp = Json(response).into_response();
+                if fallback_used {
+                    if let Ok(header_value) = HeaderValue::from_str(&actual_model) {
+                        resp.headers_mut()
+                            .insert(HeaderName::from_static(FALLBACK_HEADER), header_value);
+                    }
+                }
+                return Ok(resp);
             }
             Err(e) => {
                 let _ = state.registry.decrement_pending(&backend.id);
@@ -139,27 +163,35 @@ async fn handle_streaming(
     headers: HeaderMap,
     request: ChatCompletionRequest,
 ) -> Result<Response, ApiError> {
-    // Find backends for model
-    let backends = state.registry.get_backends_for_model(&request.model);
-    if backends.is_empty() {
+    // Use router to select backend
+    let requirements = RequestRequirements::from_request(&request);
+    let routing_result = state.router.select_backend(&requirements).map_err(|e| {
         let available = available_models(&state);
-        return Err(ApiError::model_not_found(&request.model, &available));
-    }
+        match e {
+            crate::routing::RoutingError::ModelNotFound { model } => {
+                ApiError::model_not_found(&model, &available)
+            }
+            crate::routing::RoutingError::FallbackChainExhausted { chain } => {
+                ApiError::model_not_found(&chain[0], &available)
+            }
+            crate::routing::RoutingError::NoHealthyBackend { model } => {
+                ApiError::service_unavailable(&format!(
+                    "No healthy backend available for model '{}'",
+                    model
+                ))
+            }
+            crate::routing::RoutingError::CapabilityMismatch { model, missing } => {
+                ApiError::bad_request(&format!(
+                    "Model '{}' lacks required capabilities: {:?}",
+                    model, missing
+                ))
+            }
+        }
+    })?;
 
-    // Filter to healthy backends only
-    let healthy: Vec<_> = backends
-        .into_iter()
-        .filter(|b| b.status == BackendStatus::Healthy)
-        .collect();
-
-    if healthy.is_empty() {
-        return Err(ApiError::service_unavailable(
-            "No healthy backends available for this model",
-        ));
-    }
-
-    // For streaming, use first healthy backend (retry not possible mid-stream)
-    let backend = healthy.into_iter().next().unwrap();
+    let backend = routing_result.backend;
+    let fallback_used = routing_result.fallback_used;
+    let actual_model = routing_result.actual_model.clone();
     let backend_id = backend.id.clone();
 
     // Increment pending requests
@@ -167,16 +199,25 @@ async fn handle_streaming(
 
     info!(backend_id = %backend_id, "Starting streaming request");
 
-    // Create SSE stream
-    let stream = create_sse_stream(state, backend, headers, request);
+    // Create SSE stream - pass cloned backend data
+    let stream = create_sse_stream(state, Arc::clone(&backend), headers, request);
 
-    Ok(Sse::new(stream).into_response())
+    // Create SSE response and add fallback header if needed
+    let mut resp = Sse::new(stream).into_response();
+    if fallback_used {
+        if let Ok(header_value) = HeaderValue::from_str(&actual_model) {
+            resp.headers_mut()
+                .insert(HeaderName::from_static(FALLBACK_HEADER), header_value);
+        }
+    }
+
+    Ok(resp)
 }
 
 /// Create an SSE stream that proxies chunks from the backend.
 fn create_sse_stream(
     state: Arc<AppState>,
-    backend: Backend,
+    backend: Arc<Backend>,
     headers: HeaderMap,
     request: ChatCompletionRequest,
 ) -> impl futures::Stream<Item = Result<Event, std::convert::Infallible>> {

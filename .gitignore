@@ -24,3 +24,19 @@ target
 # Added by cargo
 
 /target
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Editor directories
+.vscode/
+.idea/
