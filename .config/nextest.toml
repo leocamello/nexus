@@ -1,0 +1,18 @@
+# Nextest configuration for Nexus
+# https://nexte.st/docs/configuration/
+
+[profile.default]
+# Default test profile settings
+retries = 0
+fail-fast = true
+
+[profile.ci]
+# CI profile with JUnit output for Codecov Test Analytics
+retries = 2
+fail-fast = false
+
+[profile.ci.junit]
+path = "junit.xml"
+report-name = "nexus-test-results"
+store-success-output = false
+store-failure-output = true
