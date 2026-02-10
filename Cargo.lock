@@ -1308,7 +1308,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "nexus"
+name = "nexus-orchestrator"
 version = "0.1.0"
 dependencies = [
  "anyhow",
