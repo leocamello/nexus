@@ -275,8 +275,11 @@ impl MdnsDiscovery {
         }
     }
 
-    /// Handle a discovery event
-    async fn handle_event(&self, event: DiscoveryEvent) {
+    /// Handle a discovery event.
+    ///
+    /// This method processes discovery events and updates the registry accordingly.
+    /// Made public for integration testing.
+    pub async fn handle_event(&self, event: DiscoveryEvent) {
         match event {
             DiscoveryEvent::ServiceFound { .. } => {
                 self.handle_service_found(event).await;
@@ -363,8 +366,11 @@ impl MdnsDiscovery {
         );
     }
 
-    /// Cleanup stale backends past their grace period
-    async fn cleanup_stale_backends(&self) {
+    /// Cleanup stale backends past their grace period.
+    ///
+    /// Removes backends that have been in pending_removal longer than the grace period.
+    /// Made public for integration testing.
+    pub async fn cleanup_stale_backends(&self) {
         let grace_period = std::time::Duration::from_secs(self.config.grace_period_seconds);
         let now = Instant::now();
 
