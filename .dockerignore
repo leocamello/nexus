@@ -1,0 +1,36 @@
+# Build artifacts
+target/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Documentation and specs
+docs/
+specs/
+.specify/
+*.md
+!README.md
+
+# Tests and benchmarks
+tests/
+benches/
+
+# CI/CD
+.github/
+
+# Docker
+Dockerfile*
+.dockerignore
+docker-compose*.yml
+
+# Misc
+*.log
+*.tmp
+.env*
