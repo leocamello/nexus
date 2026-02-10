@@ -1,5 +1,21 @@
 # Nexus
 
+<!-- Project -->
+[![Rust](https://img.shields.io/badge/rust-1.75%2B-blue.svg)](https://www.rust-lang.org)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/leocamello/nexus/blob/main/LICENSE)
+
+<!-- Rust Ecosystem -->
+[![Crates.io](https://img.shields.io/crates/v/nexus-orchestrator.svg)](https://crates.io/crates/nexus-orchestrator)
+[![docs.rs](https://docs.rs/nexus-orchestrator/badge.svg)](https://docs.rs/nexus-orchestrator)
+
+<!-- Quality -->
+[![CI](https://github.com/leocamello/nexus/actions/workflows/ci.yml/badge.svg)](https://github.com/leocamello/nexus/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/leocamello/nexus/branch/main/graph/badge.svg)](https://codecov.io/gh/leocamello/nexus)
+
+<!-- Distribution -->
+[![GitHub Release](https://img.shields.io/github/v/release/leocamello/nexus)](https://github.com/leocamello/nexus/releases/latest)
+[![Docker](https://img.shields.io/docker/v/leocamello/nexus?label=docker&sort=semver)](https://hub.docker.com/r/leocamello/nexus)
+
 **One API endpoint. Any backend. Zero configuration.**
 
 Nexus is a distributed LLM model serving orchestrator that unifies heterogeneous inference backends behind a single, intelligent API gateway.
@@ -17,16 +33,18 @@ Nexus is a distributed LLM model serving orchestrator that unifies heterogeneous
 | Backend | Status | Notes |
 |---------|--------|-------|
 | Ollama | ✅ Supported | Auto-discovery via mDNS |
+| LM Studio | ✅ Supported | OpenAI-compatible API |
 | vLLM | ✅ Supported | Static configuration |
 | llama.cpp server | ✅ Supported | Static configuration |
 | exo | ✅ Supported | Auto-discovery via mDNS |
+| OpenAI | ✅ Supported | Cloud fallback |
 | LocalAI | 🔜 Planned | |
-| OpenAI (fallback) | 🔜 Planned | Cloud fallback |
 
 ## Quick Start
 
+### From Source
 ```bash
-# Install (from source)
+# Install
 cargo install --path .
 
 # Generate a configuration file
@@ -38,6 +56,23 @@ nexus serve
 # Or with a custom config file
 nexus serve --config nexus.toml
 ```
+
+### Docker
+```bash
+# Run with default settings
+docker run -d -p 3000:3000 leocamello/nexus
+
+# Run with custom config
+docker run -d -p 3000:3000 \
+  -v $(pwd)/nexus.toml:/home/nexus/nexus.toml \
+  leocamello/nexus serve --config nexus.toml
+
+# Run with host network (for mDNS discovery)
+docker run -d --network host leocamello/nexus
+```
+
+### From GitHub Releases
+Download pre-built binaries from [Releases](https://github.com/leocamello/nexus/releases).
 
 ## CLI Commands
 
@@ -202,6 +237,7 @@ Apache License 2.0 - see [LICENSE](LICENSE) for details.
 ## Related Projects
 
 - [exo](https://github.com/exo-explore/exo) - Distributed AI inference
+- [LM Studio](https://lmstudio.ai) - Desktop app for local LLMs
 - [Ollama](https://ollama.ai) - Easy local LLM serving
 - [vLLM](https://github.com/vllm-project/vllm) - High-throughput LLM serving
 - [LiteLLM](https://github.com/BerriAI/litellm) - Cloud LLM API router
