@@ -1,13 +1,37 @@
 [package]
-name = "nexus"
+name = "nexus-orchestrator"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.75"
 description = "Distributed LLM model serving orchestrator - unified API gateway for heterogeneous inference backends"
+authors = ["Leonardo Nascimento <leocamello@gmail.com>"]
 license = "Apache-2.0"
 repository = "https://github.com/leocamello/nexus"
+homepage = "https://github.com/leocamello/nexus"
+documentation = "https://docs.rs/nexus-orchestrator"
 readme = "README.md"
 keywords = ["llm", "ai", "orchestrator", "openai", "ollama"]
 categories = ["command-line-utilities", "web-programming"]
+exclude = [
+    ".github/",
+    ".specify/",
+    ".config/",
+    "benches/",
+    "docs/",
+    "specs/",
+    "tests/",
+    "target/",
+    "*.md",
+    "!README.md",
+]
+
+[lib]
+name = "nexus"
+path = "src/lib.rs"
+
+[[bin]]
+name = "nexus"
+path = "src/main.rs"
 
 [dependencies]
 # Web framework
@@ -65,14 +89,6 @@ predicates = "3"
 proptest = "1"
 tempfile = "3"
 criterion = { version = "0.5", features = ["html_reports"] }
-
-[[bench]]
-name = "config_parsing"
-harness = false
-
-[[bench]]
-name = "cli_startup"
-harness = false
 
 [profile.release]
 lto = true
