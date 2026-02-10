@@ -422,6 +422,12 @@ fn test_endpoint_selection_openai() {
 }
 
 #[test]
+fn test_endpoint_selection_lmstudio() {
+    let endpoint = crate::health::HealthChecker::get_health_endpoint(BackendType::LMStudio);
+    assert_eq!(endpoint, "/v1/models");
+}
+
+#[test]
 fn test_endpoint_selection_generic() {
     let endpoint = crate::health::HealthChecker::get_health_endpoint(BackendType::Generic);
     assert_eq!(endpoint, "/v1/models");
