@@ -49,10 +49,16 @@ type = "ollama"
 priority = 1
 
 # [[backends]]
+# name = "lmstudio"
+# url = "http://localhost:1234"
+# type = "lmstudio"
+# priority = 2
+
+# [[backends]]
 # name = "gpu-server"
 # url = "http://192.168.1.100:8000"
 # type = "vllm"
-# priority = 2
+# priority = 3
 
 # [[backends]]
 # name = "cloud-fallback"
