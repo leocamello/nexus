@@ -664,13 +664,135 @@ WantedBy=multi-user.target
 
 ## Security Considerations
 
-### v1.0 (Basic)
+### v0.1 (Current)
 - No authentication (trusted network assumed)
 - API key passthrough to backends
 - No TLS termination (use reverse proxy)
 
-### Future
-- Optional API key authentication
-- Rate limiting
-- Request/response logging (opt-in)
+### v0.3+ (Planned)
+- Privacy zones: structural enforcement of data boundaries
+- Cloud API keys loaded from environment variables, never in config files
+- Nexus-Transparent Protocol headers reveal routing decisions (not sensitive data)
+
+### v0.5+ (Planned)
+- Optional API key authentication (multi-tenant)
+- Per-tenant rate limiting
+- Request/response logging (opt-in, no message content by default)
 - TLS support
+
+---
+
+## Future Architecture (v0.3-v0.5)
+
+The following components are planned extensions to the current architecture. They follow the same design principles: stateless, zero-cost routing, explicit contracts.
+
+### Nexus-Transparent Protocol (v0.3)
+
+Every proxied response includes `X-Nexus-*` HTTP headers for routing observability. Headers are additive — they never modify the OpenAI-compatible JSON response body.
+
+```
+HTTP/1.1 200 OK
+X-Nexus-Backend: gpu-node-1
+X-Nexus-Backend-Type: local
+X-Nexus-Route-Reason: capability-match
+X-Nexus-Privacy-Zone: restricted
+Content-Type: application/json
+
+{"id":"chatcmpl-...","choices":[...]}
+```
+
+Error responses extend the OpenAI error envelope with an optional `context` object:
+
+```json
+{
+  "error": {
+    "type": "nexus_routing_error",
+    "code": "privacy_violation_on_failover",
+    "message": "Local backend 'gpu-node-1' is offline. Cannot failover to cloud.",
+    "context": {
+      "required_tier": 2,
+      "available_backends": ["gpu-node-2 (busy)", "gpu-node-3 (loading)"],
+      "eta_seconds": 15
+    }
+  }
+}
+```
+
+### Privacy Zone Enforcement (v0.3)
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                        Router                             │
+│                                                           │
+│  Request arrives → Check backend zone compatibility       │
+│                                                           │
+│  ┌─────────────────┐        ┌─────────────────┐         │
+│  │ Restricted Zone  │        │   Open Zone      │         │
+│  │ (local-only)     │───X───→│ (cloud-ok)       │         │
+│  │                  │ Never  │                  │         │
+│  │  gpu-node-1      │forwards│  openai-gpt4     │         │
+│  │  gpu-node-2      │context │  anthropic-claude │         │
+│  └─────────────────┘        └─────────────────┘         │
+│                                                           │
+│  If restricted backend fails → 503 + Retry-After          │
+│  If open backend overflows  → fresh context or block      │
+└──────────────────────────────────────────────────────────┘
+```
+
+### Tokenizer Registry (v0.3)
+
+Per-backend tokenizer for audit-grade token counting and budget management:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                  Tokenizer Registry                      │
+│                                                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
+│  │ OpenAI       │  │ Anthropic    │  │ Llama        │  │
+│  │ o200k_base   │  │ cl100k_base  │  │ SentencePiece│  │
+│  │ tiktoken-rs  │  │ tiktoken-rs  │  │ tokenizers   │  │
+│  └──────────────┘  └──────────────┘  └──────────────┘  │
+│                                                          │
+│  Unknown models → 1.15x conservative multiplier          │
+│                   (flagged "estimated" in metrics)        │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Speculative Router (v0.4)
+
+Zero-ML request-content routing via JSON payload inspection:
+
+```
+Request JSON ──→ Extract signals (sub-ms)
+                  │
+                  ├── messages[].content[].type == "image_url" → vision required
+                  ├── tools[] present → tool-use required
+                  ├── response_format.type == "json_object" → JSON mode required
+                  ├── token count estimate → context window requirement
+                  └── stream: true → prefer efficient streaming backends
+                  │
+                  ▼
+             Capability filter → Tier filter → Load balance → Route
+```
+
+### Fleet Intelligence (v0.5)
+
+Suggestion-based model pre-warming with VRAM awareness:
+
+```
+Request History ──→ Demand Prediction ──→ Recommendation
+                                              │
+Backend VRAM ─────→ Headroom Check ──────────→│
+                                              │
+                                              ▼
+                                    "Load CodeLlama on node-3"
+                                    "(4GB VRAM free, >30% headroom)"
+                                              │
+                                              ▼
+                                    Admin/Policy Approval
+```
+
+**Design constraints:**
+- Never evict a hot model for a prediction
+- Only use idle capacity (configurable headroom %)
+- Suggestion system, not autonomous actor
