@@ -482,18 +482,30 @@ Below are ready-to-use prompts for all Nexus features, organized by priority.
 
 ### Feature Index
 
-| ID | Feature | Priority | Prompt Section |
-|----|---------|----------|----------------|
-| F01 | Core API Gateway | P0 | [Link](#f01-core-api-gateway) |
-| F02 | Backend Registry | P0 | [Link](#f02-backend-registry) |
-| F03 | Health Checker | P0 | [Link](#f03-health-checker) |
-| F04 | CLI and Configuration | P0 | [Link](#f04-cli-and-configuration) |
-| F05 | mDNS Discovery | P1 | [Link](#f05-mdns-discovery) |
-| F06 | Intelligent Router | P1 | [Link](#f06-intelligent-router) |
-| F07 | Model Aliases | P1 | [Link](#f07-model-aliases) |
-| F08 | Fallback Chains | P1 | [Link](#f08-fallback-chains) |
-| F09 | Request Metrics | P2 | [Link](#f09-request-metrics) |
-| F10 | Web Dashboard | P2 | [Link](#f10-web-dashboard) |
+| ID | Feature | Version | Prompt Section |
+|----|---------|---------|----------------|
+| F01 | Core API Gateway | v0.1 ✅ | [Link](#f01-core-api-gateway) |
+| F02 | Backend Registry | v0.1 ✅ | [Link](#f02-backend-registry) |
+| F03 | Health Checker | v0.1 ✅ | [Link](#f03-health-checker) |
+| F04 | CLI and Configuration | v0.1 ✅ | [Link](#f04-cli-and-configuration) |
+| F05 | mDNS Discovery | v0.1 ✅ | [Link](#f05-mdns-discovery) |
+| F06 | Intelligent Router | v0.1 ✅ | [Link](#f06-intelligent-router) |
+| F07 | Model Aliases | v0.1 ✅ | [Link](#f07-model-aliases) |
+| F08 | Fallback Chains | v0.1 ✅ | [Link](#f08-fallback-chains) |
+| F09 | Request Metrics | v0.2 | [Link](#f09-request-metrics) |
+| F10 | Web Dashboard | v0.2 | [Link](#f10-web-dashboard) |
+| F11 | Structured Request Logging | v0.2 | [Link](#f11-structured-request-logging) |
+| F12 | Cloud Backend Support | v0.3 | [Link](#f12-cloud-backend-support) |
+| F13 | Privacy Zones & Capability Tiers | v0.3 | [Link](#f13-privacy-zones--capability-tiers) |
+| F14 | Inference Budget Management | v0.3 | [Link](#f14-inference-budget-management) |
+| F15 | Speculative Router | v0.4 | [Link](#f15-speculative-router) |
+| F16 | Quality Tracking & Backend Profiling | v0.4 | [Link](#f16-quality-tracking--backend-profiling) |
+| F17 | Embeddings API | v0.4 | [Link](#f17-embeddings-api) |
+| F18 | Request Queuing & Prioritization | v0.4 | [Link](#f18-request-queuing--prioritization) |
+| F19 | Pre-warming & Fleet Intelligence | v0.5 | [Link](#f19-pre-warming--fleet-intelligence) |
+| F20 | Model Lifecycle Management | v0.5 | [Link](#f20-model-lifecycle-management) |
+| F21 | Multi-Tenant Support | v0.5 | [Link](#f21-multi-tenant-support) |
+| F22 | Rate Limiting | v0.5 | [Link](#f22-rate-limiting) |
 
 ---
 
@@ -1258,21 +1270,412 @@ Embedded in the binary, no external dependencies.
 
 Follow this order for a smooth development experience:
 
-### Phase 1: MVP (Weeks 1-3)
-1. **F02: Backend Registry** - Foundation for all other features
-2. **F03: Health Checker** - Keeps registry up to date
-3. **F01: Core API Gateway** - The main user-facing interface
-4. **F04: CLI and Configuration** (basic) - Start server, list backends
+### v0.1: Foundation ✅ Released
+1. **F02: Backend Registry** ✅
+2. **F03: Health Checker** ✅
+3. **F01: Core API Gateway** ✅
+4. **F04: CLI and Configuration** ✅
+5. **F05: mDNS Discovery** ✅
+6. **F06: Intelligent Router** ✅
+7. **F07: Model Aliases** ✅
+8. **F08: Fallback Chains** ✅
 
-### Phase 2: Discovery (Weeks 4-5)
-5. **F05: mDNS Discovery** - Zero-config experience
+### v0.2: Observability (Next)
+9. **F09: Request Metrics** — Prometheus + JSON stats
+10. **F10: Web Dashboard** — Embedded monitoring UI
+11. **F11: Structured Request Logging** — Correlation IDs, JSON format
 
-### Phase 3: Intelligence (Weeks 6-7)
-6. **F06: Intelligent Router** - Smart backend selection
-7. **F07: Model Aliases** - OpenAI compatibility
-8. **F08: Fallback Chains** - Resilience
+### v0.3: Cloud Hybrid Gateway
+12. **F12: Cloud Backend Support** — OpenAI, Anthropic, Google + Nexus-Transparent Protocol
+13. **F13: Privacy Zones & Capability Tiers** — Structural privacy, quality guarantees
+14. **F14: Inference Budget Management** — Tokenizer registry, cost tracking, graceful degradation
 
-### Phase 4: Polish (Weeks 8-9)
-9. **F04: CLI and Configuration** (complete) - All commands
-10. **F09: Request Metrics** - Observability
-11. **F10: Web Dashboard** - Visual monitoring
+### v0.4: Intelligence
+15. **F15: Speculative Router** — Request-content-aware routing (zero ML)
+16. **F16: Quality Tracking** — Backend profiling, reliability scoring
+17. **F17: Embeddings API** — /v1/embeddings support
+18. **F18: Request Queuing** — Bounded queue with priorities
+
+### v0.5: Orchestration
+19. **F19: Pre-warming** — Demand prediction, VRAM-aware recommendations
+20. **F20: Model Lifecycle** — Load/unload/migrate via API
+21. **F21: Multi-Tenant** — API keys, quotas, access control
+22. **F22: Rate Limiting** — Token bucket with burst support
+
+---
+
+## v0.2 Feature Prompts
+
+### F11: Structured Request Logging
+```
+Create a spec for: Structured Request Logging (F11)
+
+## Feature Description
+Structured, queryable logs for every request passing through Nexus. Every request
+gets a correlation ID that tracks it through retries and failovers.
+
+## Constitution Alignment
+- Principle III (OpenAI-Compatible): Logs never contain response body content
+- Principle VIII (Stateless): Logs are emitted, not stored in Nexus state
+- Principle X (Precise Measurement): Log fields are accurate, not estimated
+
+## Log Fields
+- timestamp, request_id, model, backend, backend_type, status
+- latency_ms, tokens_prompt, tokens_completion, stream
+- route_reason, retry_count, fallback_chain
+
+## Requirements
+- JSON and human-readable output formats (via tracing)
+- Configurable log level per component
+- Request correlation IDs across retry/failover chains
+- No sensitive data (message content) in logs by default
+- Configurable opt-in for request content logging (debug only)
+
+## Acceptance Criteria
+- [ ] Every request produces a structured log entry
+- [ ] Request correlation ID tracks retries and failovers
+- [ ] Log format is configurable (JSON / pretty)
+- [ ] Message content is never logged by default
+- [ ] Log output compatible with common log aggregators (ELK, Loki)
+```
+
+---
+
+## v0.3 Feature Prompts
+
+### F12: Cloud Backend Support
+```
+Create a spec for: Cloud Backend Support with Nexus-Transparent Protocol (F12)
+
+## Feature Description
+Register cloud LLM APIs (OpenAI, Anthropic, Google) as backends alongside local
+inference servers. Introduce the Nexus-Transparent Protocol: X-Nexus-* response
+headers that reveal routing decisions without modifying the OpenAI-compatible
+JSON response body.
+
+## Constitution Alignment
+- Principle III (OpenAI-Compatible): Headers only, never modify response JSON
+- Principle IX (Explicit Contracts): Actionable 503s with context object
+- Principle X (Precise Measurement): Cost estimation in response headers
+
+## Cloud Backend Configuration
+```toml
+[[backends]]
+name = "openai-gpt4"
+url = "https://api.openai.com"
+backend_type = "openai"
+api_key_env = "OPENAI_API_KEY"
+zone = "open"
+tier = 4
+```
+
+## Nexus-Transparent Protocol Headers
+- X-Nexus-Backend: backend name
+- X-Nexus-Backend-Type: local | cloud
+- X-Nexus-Route-Reason: capability-match | capacity-overflow | privacy-requirement
+- X-Nexus-Cost-Estimated: per-request cost (cloud only)
+- X-Nexus-Privacy-Zone: restricted | open
+
+## Actionable Error Schema
+503 responses include context object: required_tier, available_backends, eta_seconds
+
+## API Translation
+- Anthropic API ↔ OpenAI format translation (message format, streaming format)
+- Google AI ↔ OpenAI format translation
+
+## Acceptance Criteria
+- [ ] Cloud backends registered via TOML config
+- [ ] API keys from environment variables (never in config)
+- [ ] X-Nexus-* headers on all proxied responses
+- [ ] Actionable 503 responses with context
+- [ ] Anthropic API translation works (streaming and non-streaming)
+- [ ] Cloud backends participate in standard routing and failover
+```
+
+---
+
+### F13: Privacy Zones & Capability Tiers
+```
+Create a spec for: Privacy Zones & Capability Tiers (F13)
+
+## Feature Description
+Structural enforcement of privacy boundaries and quality levels. Privacy is a
+backend property configured by the admin, NOT a request header that clients
+can forget. Capability tiers prevent silent quality downgrades during failover.
+
+## Constitution Alignment
+- Principle IX (Explicit Contracts): Privacy is structural, not opt-in
+- Principle IX: Never silently downgrade quality
+- Principle VIII (Stateless): Zone enforcement per-request, no session tracking
+
+## Privacy Zones
+- "restricted" backends: local-only, never receive cloud-overflow traffic
+- "open" backends: can receive overflow from any zone
+- Cross-zone overflow: fresh context only or block entirely (never forward history)
+- Backend affinity (sticky routing) for restricted conversations
+- If restricted backend fails → 503 with Retry-After, NOT silent cloud failover
+
+## Capability Tiers
+- Backends declare capability scores: reasoning, coding, context_window, vision, tools
+- Overflow only to same-tier-or-higher backends
+- Client controls:
+  - X-Nexus-Strict: true → only the exact requested model
+  - X-Nexus-Flexible: true → tier-equivalent alternatives acceptable
+  - Default: strict (never surprise the developer)
+
+## Acceptance Criteria
+- [ ] Privacy zones enforced at routing layer as backend property
+- [ ] Restricted backends never receive cloud-overflow traffic
+- [ ] Cross-zone overflow blocks conversation history forwarding
+- [ ] Capability tiers prevent silent quality downgrades
+- [ ] Client can opt into strict or flexible routing via header
+- [ ] 503 responses include tier/zone context for debugging
+```
+
+---
+
+### F14: Inference Budget Management
+```
+Create a spec for: Inference Budget Management (F14)
+
+## Feature Description
+Cost-aware routing with graceful degradation. Includes a tokenizer registry
+for audit-grade token counting across different providers.
+
+## Constitution Alignment
+- Principle X (Precise Measurement): Per-backend tokenizer, not generic estimates
+- Principle IX (Explicit Contracts): Budgets degrade gracefully, never hard-cut
+- Principle V (Intelligent Routing): Cost is a routing factor
+
+## Tokenizer Registry
+- OpenAI models: o200k_base / cl100k_base via tiktoken-rs
+- Anthropic models: cl100k_base approximation via tiktoken-rs
+- Llama models: SentencePiece via tokenizers crate
+- Unknown models: 1.15x conservative multiplier, flagged "estimated" in metrics
+
+## Budget Configuration
+```toml
+[budget]
+monthly_limit = 100.00
+soft_limit_percent = 80
+hard_limit_action = "local-only"  # "local-only" | "queue" | "reject"
+```
+
+## Degradation Behavior
+- 0-80%: Normal routing (local-first, cloud overflow)
+- 80-100%: Local-preferred (cloud only if no local option), emit warning
+- 100%+: hard_limit_action applies (never hard-cut production)
+
+## Acceptance Criteria
+- [ ] Per-request cost estimation using backend-specific tokenizer
+- [ ] Soft limit shifts to local-preferred routing
+- [ ] Hard limit triggers configurable action (never hard-cut)
+- [ ] Budget metrics exposed via Prometheus
+- [ ] Unknown tokenizers use 1.15x multiplier with "estimated" flag
+- [ ] Budget resets monthly with configurable billing cycle
+```
+
+---
+
+## v0.4 Feature Prompts
+
+### F15: Speculative Router
+```
+Create a spec for: Speculative Router (F15)
+
+## Feature Description
+Request-content-aware routing using JSON payload inspection only. Zero ML,
+sub-millisecond decisions. Extracts routing signals from the request structure
+without analyzing prompt content semantics.
+
+## Constitution Alignment
+- Principle V (Intelligent Routing): Match capabilities to request requirements
+- Constitution Performance Gate: Routing decision < 1ms
+- Principle III: Router reads request JSON but never modifies it
+
+## Routing Signals
+| Signal | Source | Routing Decision |
+|--------|--------|-----------------|
+| Token count estimate | messages array length | Context window requirement |
+| Image content | content[].type == "image_url" | Vision-capable backend |
+| Tool definitions | tools[] present | Tool-use-capable backend |
+| Response format | response_format.type == "json_object" | JSON-mode backend |
+| Stream flag | stream: true | Prefer efficient streaming |
+
+## Performance
+- Payload inspection: < 0.5ms
+- No external dependencies, no ML inference
+- Token estimation via character count heuristic (not full tokenization)
+
+## Acceptance Criteria
+- [ ] Routes based on vision, tools, JSON mode requirements
+- [ ] Token count estimation from message array
+- [ ] Routing overhead remains < 1ms total
+- [ ] No false negatives (never route to incapable backend)
+```
+
+---
+
+### F16: Quality Tracking & Backend Profiling
+```
+Create a spec for: Quality Tracking & Backend Profiling (F16)
+
+## Feature Description
+Build performance profiles for each model+backend combination using rolling
+window statistics. Profiles feed into the router scoring algorithm.
+
+## Constitution Alignment
+- Principle X (Precise Measurement): Track real metrics, not assumptions
+- Principle V (Intelligent Routing): Use data to improve routing decisions
+
+## Tracked Metrics
+- Response latency: P50, P95, P99 per model+backend
+- Tokens per second: throughput per model+backend
+- Error rate: errors / total per model+backend
+- Time to first token: streaming responsiveness
+
+## Acceptance Criteria
+- [ ] Rolling window statistics (1h, 24h) per model+backend
+- [ ] Quality scores integrated into router scoring
+- [ ] Degraded backends automatically deprioritized
+- [ ] Metrics exposed via Prometheus and /v1/stats
+```
+
+---
+
+### F17: Embeddings API
+```
+Create a spec for: Embeddings API (F17)
+
+## Feature Description
+Support the OpenAI Embeddings API across backends that offer embedding models.
+
+## Endpoint
+POST /v1/embeddings — OpenAI-compatible request/response format
+
+## Acceptance Criteria
+- [ ] Route embedding requests to capable backends
+- [ ] Support batch embedding requests
+- [ ] OpenAI-compatible request/response format
+- [ ] Embeddings backends tracked separately in registry
+```
+
+---
+
+### F18: Request Queuing & Prioritization
+```
+Create a spec for: Request Queuing & Prioritization (F18)
+
+## Feature Description
+When all backends are busy, queue requests with configurable timeout and priority
+instead of immediately returning 503. Priority levels allow critical requests
+to preempt best-effort ones.
+
+## Constitution Alignment
+- Principle IX (Explicit Contracts): Queued requests get actionable 503 with ETA on timeout
+- Principle VI (Resilient): Queuing is a resilience mechanism, not a bottleneck
+
+## Configuration
+```toml
+[queuing]
+enabled = true
+max_queue_size = 100
+default_timeout_seconds = 30
+priority_header = "X-Nexus-Priority"
+```
+
+## Behavior
+- Queue fills → oldest low-priority requests dropped first
+- Timeout exceeded → 503 with eta_seconds
+- Tier-equivalent fallback attempted before queuing
+
+## Acceptance Criteria
+- [ ] Bounded queue with configurable max size
+- [ ] Priority levels via X-Nexus-Priority header
+- [ ] Timeout with actionable 503 (includes ETA)
+- [ ] Queue depth exposed in Prometheus metrics
+```
+
+---
+
+## v0.5 Feature Prompts
+
+### F19: Pre-warming & Fleet Intelligence
+```
+Create a spec for: Pre-warming & Fleet Intelligence (F19)
+
+## Feature Description
+Predict model demand and proactively recommend loading models on idle nodes.
+v0.5 is a suggestion system — recommendations require admin/policy approval.
+
+## Constitution Alignment
+- Principle X (Precise Measurement): VRAM headroom is tracked, not assumed
+- Principle IX (Explicit Contracts): Pre-warming never disrupts active workloads
+
+## Design Constraints
+- Never evict a hot model for a prediction
+- Only use idle capacity (configurable headroom %)
+- Suggestion-first: recommend via API/logs, admin approves
+- Track backend VRAM usage via Ollama /api/ps and similar endpoints
+
+## Acceptance Criteria
+- [ ] Tracks model request frequency over time
+- [ ] Reports pre-warming recommendations via API and logs
+- [ ] Respects VRAM headroom budget (configurable %)
+- [ ] Never disrupts active model serving
+```
+
+---
+
+### F20: Model Lifecycle Management
+```
+Create a spec for: Model Lifecycle Management (F20)
+
+## Feature Description
+Control model loading, unloading, and migration across the fleet via Nexus API.
+
+## Acceptance Criteria
+- [ ] API to trigger model load/unload on specific backends
+- [ ] Model migration (unload from A, load on B)
+- [ ] Status tracking for loading operations
+- [ ] Integrates with pre-warming recommendations (F19)
+```
+
+---
+
+### F21: Multi-Tenant Support
+```
+Create a spec for: Multi-Tenant Support (F21)
+
+## Feature Description
+API key-based authentication with per-tenant quotas, model access control,
+and usage tracking. Authentication is optional and off by default.
+
+## Constitution Alignment
+- Principle I (Zero Configuration): Auth is opt-in, works without it
+- Principle VII (Local-First): No external auth provider required
+
+## Acceptance Criteria
+- [ ] API key authentication (optional, off by default)
+- [ ] Per-tenant usage tracking and quotas
+- [ ] Model access control lists per tenant
+- [ ] Usage reporting via metrics and API
+- [ ] Works with existing zero-config setup when auth is disabled
+```
+
+---
+
+### F22: Rate Limiting
+```
+Create a spec for: Rate Limiting (F22)
+
+## Feature Description
+Per-backend and per-tenant rate limiting using token bucket algorithm.
+
+## Acceptance Criteria
+- [ ] Per-backend request rate limits (configurable)
+- [ ] Per-tenant rate limits (when multi-tenant enabled)
+- [ ] Token bucket algorithm with burst support
+- [ ] 429 Too Many Requests with Retry-After header
+- [ ] Rate limit metrics exposed via Prometheus
+```

@@ -26,6 +26,12 @@ Strict adherence to the OpenAI Chat Completions API:
 - Error responses match OpenAI format exactly
 - Works with Claude Code, Continue.dev, and any OpenAI client without modification
 - API compatibility is non-negotiable; do not deviate from the spec
+- **Nexus-Transparent outputs**: routing metadata in `X-Nexus-*` response headers (never in JSON body)
+  - `X-Nexus-Backend-Type`: `local` | `cloud`
+  - `X-Nexus-Route-Reason`: `capacity-overflow` | `privacy-requirement` | `capability-match`
+  - `X-Nexus-Cost-Estimated`: per-request cost from tokenizer registry
+  - `X-Nexus-Privacy-Zone`: `restricted` | `open`
+- **Actionable errors**: 503 responses include `context` object with `available_nodes`, `eta_seconds`, `required_tier` — inside the standard OpenAI error envelope
 
 ### IV. Backend Agnostic
 Nexus treats all inference backends equally:
@@ -57,6 +63,26 @@ Designed for home labs and small teams, not cloud:
 - All state is in-memory (no database)
 - Works fully offline once backends are discovered
 - Privacy: no telemetry, no external calls
+
+### VIII. Stateless by Design
+Nexus routes requests, not sessions:
+- Clients own conversation history (OpenAI API contract)
+- No context checkpointing, no KV-cache management
+- Backend affinity (sticky routing) is a hint, not a guarantee
+- Operational state only: backend health, metrics, load — never user data
+
+### IX. Explicit Contracts
+Never silently degrade the user experience:
+- Privacy zones are structural (backend property), not opt-in (client header)
+- A 503 is preferred over unpredictable quality — never silently downgrade
+- Cross-zone overflow: scrub-or-block, never silently forward context
+- Budget limits degrade gracefully: warn → shift to local → queue, never hard-cut
+
+### X. Precise Measurement
+Measure what matters, with accuracy:
+- Per-backend tokenizer registry for audit-grade token counting
+- VRAM is zero-sum — pre-warming respects headroom budgets, never cannibalizes active workloads
+- Routing decisions use payload inspection only (sub-ms), not inference
 
 ## Technical Constraints
 
@@ -238,4 +264,4 @@ These are explicitly out of scope:
 - Refer to `docs/ARCHITECTURE.md` for system design
 - Refer to `docs/FEATURES.md` for feature specifications
 
-**Version**: 1.0.0 | **Ratified**: 2026-02-01 | **Last Amended**: 2026-02-03
+**Version**: 1.1.0 | **Ratified**: 2026-02-01 | **Last Amended**: 2026-02-10

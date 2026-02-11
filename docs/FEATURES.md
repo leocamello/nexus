@@ -6,25 +6,39 @@ Detailed specifications for each feature in the Nexus LLM Orchestrator.
 
 ## Feature Index
 
-| ID | Feature | Priority | Status | Spec |
-|----|---------|----------|--------|------|
-| F01 | Core API Gateway | P0 | ✅ Complete | [specs/004-api-gateway](../specs/004-api-gateway/) |
-| F02 | Backend Registry | P0 | ✅ Complete | [specs/001-backend-registry](../specs/001-backend-registry/) |
-| F03 | Health Checker | P0 | ✅ Complete | [specs/002-health-checker](../specs/002-health-checker/) |
-| F04 | CLI and Configuration | P0 | ✅ Complete | [specs/003-cli-configuration](../specs/003-cli-configuration/) |
-| F05 | mDNS Discovery | P1 | ✅ Complete | [specs/005-mdns-discovery](../specs/005-mdns-discovery/) |
-| F06 | Intelligent Router | P1 | ✅ Complete | [specs/006-intelligent-router](../specs/006-intelligent-router/) |
-| F07 | Model Aliases | P1 | ✅ Complete | [specs/007-model-aliases](../specs/007-model-aliases/) |
-| F08 | Fallback Chains | P1 | ✅ Complete | [specs/008-fallback-chains](../specs/008-fallback-chains/) |
-| F09 | Request Metrics | P2 | Planned | - |
-| F10 | Web Dashboard | P2 | Planned | - |
+| ID | Feature | Version | Status | Spec |
+|----|---------|---------|--------|------|
+| F01 | Core API Gateway | v0.1 | ✅ Complete | [specs/004-api-gateway](../specs/004-api-gateway/) |
+| F02 | Backend Registry | v0.1 | ✅ Complete | [specs/001-backend-registry](../specs/001-backend-registry/) |
+| F03 | Health Checker | v0.1 | ✅ Complete | [specs/002-health-checker](../specs/002-health-checker/) |
+| F04 | CLI and Configuration | v0.1 | ✅ Complete | [specs/003-cli-configuration](../specs/003-cli-configuration/) |
+| F05 | mDNS Discovery | v0.1 | ✅ Complete | [specs/005-mdns-discovery](../specs/005-mdns-discovery/) |
+| F06 | Intelligent Router | v0.1 | ✅ Complete | [specs/006-intelligent-router](../specs/006-intelligent-router/) |
+| F07 | Model Aliases | v0.1 | ✅ Complete | [specs/007-model-aliases](../specs/007-model-aliases/) |
+| F08 | Fallback Chains | v0.1 | ✅ Complete | [specs/008-fallback-chains](../specs/008-fallback-chains/) |
+| F09 | Request Metrics | v0.2 | Planned | - |
+| F10 | Web Dashboard | v0.2 | Planned | - |
+| F11 | Structured Request Logging | v0.2 | Planned | - |
+| F12 | Cloud Backend Support | v0.3 | Planned | - |
+| F13 | Privacy Zones & Capability Tiers | v0.3 | Planned | - |
+| F14 | Inference Budget Management | v0.3 | Planned | - |
+| F15 | Speculative Router | v0.4 | Planned | - |
+| F16 | Quality Tracking & Backend Profiling | v0.4 | Planned | - |
+| F17 | Embeddings API | v0.4 | Planned | - |
+| F18 | Request Queuing & Prioritization | v0.4 | Planned | - |
+| F19 | Pre-warming & Fleet Intelligence | v0.5 | Planned | - |
+| F20 | Model Lifecycle Management | v0.5 | Planned | - |
+| F21 | Multi-Tenant Support | v0.5 | Planned | - |
+| F22 | Rate Limiting | v0.5 | Planned | - |
 
 ### Current Status
 
-- **MVP (P0)**: ✅ Complete (4/4 features)
-- **Phase 2 (P1)**: ✅ Complete (F05, F06 with F07/F08 integrated)
-- **Phase 3 (P2)**: 🎯 Next (Metrics, Dashboard)
-- **Tests**: 297 passing
+- **v0.1 Foundation**: ✅ Released (F01-F08, 8 features)
+- **v0.2 Observability**: 🎯 Next (F09-F11)
+- **v0.3 Cloud Hybrid**: Planned (F12-F14)
+- **v0.4 Intelligence**: Planned (F15-F18)
+- **v0.5 Orchestration**: Planned (F19-F22)
+- **Tests**: 329 passing
 
 ---
 
@@ -660,18 +674,409 @@ Simple web UI for monitoring.
 
 ## Implementation Order
 
-### Phase 1: MVP ✅ Complete
+### v0.1: Foundation ✅ Released
 1. F02: Backend Registry ✅
 2. F03: Health Checker ✅
 3. F01: Core API Gateway ✅
 4. F04: CLI and Configuration ✅
-
-### Phase 2: Discovery & Intelligence ✅ Complete
 5. F05: mDNS Discovery ✅
 6. F06: Intelligent Router ✅
 7. F07: Model Aliases ✅
 8. F08: Fallback Chains ✅
 
-### Phase 3: Observability (Next)
+### v0.2: Observability (Next)
 9. F09: Request Metrics
 10. F10: Web Dashboard
+11. F11: Structured Request Logging
+
+### v0.3: Cloud Hybrid Gateway
+12. F12: Cloud Backend Support
+13. F13: Privacy Zones & Capability Tiers
+14. F14: Inference Budget Management
+
+### v0.4: Intelligence
+15. F15: Speculative Router
+16. F16: Quality Tracking & Backend Profiling
+17. F17: Embeddings API
+18. F18: Request Queuing & Prioritization
+
+### v0.5: Orchestration
+19. F19: Pre-warming & Fleet Intelligence
+20. F20: Model Lifecycle Management
+21. F21: Multi-Tenant Support
+22. F22: Rate Limiting
+
+---
+
+## v0.2 Features
+
+---
+
+## F11: Structured Request Logging (v0.2)
+
+### Overview
+Structured, queryable logs for every request passing through Nexus.
+
+### Log Fields
+
+```json
+{
+  "timestamp": "2026-02-11T12:00:00Z",
+  "request_id": "req_abc123",
+  "model": "llama3:70b",
+  "backend": "gpu-node-1",
+  "backend_type": "ollama",
+  "status": 200,
+  "latency_ms": 1234,
+  "tokens_prompt": 150,
+  "tokens_completion": 200,
+  "stream": true,
+  "route_reason": "capability-match"
+}
+```
+
+### Requirements
+- JSON and human-readable output formats (via `tracing`)
+- Configurable log level per component
+- Request correlation IDs across retry/failover chains
+- No sensitive data (message content) in logs by default
+
+### Acceptance Criteria
+- [ ] Every request produces a structured log entry
+- [ ] Request correlation ID tracks retries and failovers
+- [ ] Log format is configurable (JSON / pretty)
+- [ ] Message content is never logged by default
+
+---
+
+## v0.3 Features
+
+---
+
+## F12: Cloud Backend Support (v0.3)
+
+### Overview
+Register cloud LLM APIs (OpenAI, Anthropic, Google) as backends alongside local inference servers. Includes the Nexus-Transparent Protocol for routing observability.
+
+### Cloud Backend Configuration
+
+```toml
+[[backends]]
+name = "openai-gpt4"
+url = "https://api.openai.com"
+backend_type = "openai"
+api_key_env = "OPENAI_API_KEY"
+zone = "cloud"
+tier = 4
+
+[[backends]]
+name = "anthropic-claude"
+url = "https://api.anthropic.com"
+backend_type = "anthropic"
+api_key_env = "ANTHROPIC_API_KEY"
+zone = "cloud"
+tier = 4
+```
+
+### Nexus-Transparent Protocol
+
+Response headers added to every proxied response:
+
+| Header | Values | Description |
+|--------|--------|-------------|
+| `X-Nexus-Backend` | Backend name | Which backend served the request |
+| `X-Nexus-Backend-Type` | `local` \| `cloud` | Backend location |
+| `X-Nexus-Route-Reason` | `capability-match` \| `capacity-overflow` \| `privacy-requirement` | Why this backend was chosen |
+| `X-Nexus-Cost-Estimated` | `$0.0042` | Estimated cost (cloud backends only) |
+| `X-Nexus-Privacy-Zone` | `restricted` \| `open` | Privacy zone of the backend used |
+
+### Actionable Error Responses
+
+```json
+{
+  "error": {
+    "type": "nexus_routing_error",
+    "code": "no_capable_backend",
+    "message": "No healthy backend available for model 'gpt-4o'",
+    "context": {
+      "required_tier": 4,
+      "available_backends": ["gpu-node-2 (busy)", "gpu-node-3 (loading)"],
+      "eta_seconds": 15
+    }
+  }
+}
+```
+
+### Acceptance Criteria
+- [ ] Cloud backends can be registered via TOML config
+- [ ] API keys loaded from environment variables (never in config files)
+- [ ] X-Nexus-* response headers on all proxied responses
+- [ ] Actionable error responses with context object
+- [ ] Cloud backends participate in standard routing and failover
+- [ ] Anthropic API translated to/from OpenAI format
+
+---
+
+## F13: Privacy Zones & Capability Tiers (v0.3)
+
+### Overview
+Structural enforcement of privacy boundaries and quality levels for routing decisions. Privacy is a backend property (admin-configured), not a request header.
+
+### Privacy Zones
+
+```toml
+[[backends]]
+name = "gpu-node-1"
+zone = "restricted"    # Local-only, never receives cloud-overflow traffic
+
+[[backends]]
+name = "openai-gpt4"
+zone = "open"          # Cloud, can receive overflow from open-zone conversations
+```
+
+**Zone enforcement rules:**
+1. `restricted` backends never receive requests that could overflow to `open` backends
+2. If a conversation started on a `restricted` backend and that backend fails → 503 with `Retry-After`, not silent failover to cloud
+3. Cross-zone overflow: fresh context only (no conversation history forwarded) or block entirely
+4. Backend affinity (sticky routing) for `restricted` conversations
+
+### Capability Tiers
+
+```toml
+[[backends]]
+name = "gpu-node-1"
+tier = 2
+capabilities = { reasoning = 3, coding = 2, context_window = 32768, vision = false }
+
+[[backends]]
+name = "openai-gpt4"
+tier = 4
+capabilities = { reasoning = 5, coding = 4, context_window = 128000, vision = true }
+```
+
+**Tier enforcement rules:**
+1. Overflow only to same-tier-or-higher backends (never silently downgrade)
+2. Client control via request headers:
+   - `X-Nexus-Strict: true` — only the exact requested model
+   - `X-Nexus-Flexible: true` — tier-equivalent alternatives acceptable
+3. If no suitable backend available → 503 with tier requirement info
+
+### Acceptance Criteria
+- [ ] Privacy zones enforced at routing layer (backend property)
+- [ ] Restricted backends never receive cloud-overflow traffic
+- [ ] Capability tiers prevent silent quality downgrades
+- [ ] Client can opt into strict or flexible routing
+- [ ] 503 responses include tier/zone context
+
+---
+
+## F14: Inference Budget Management (v0.3)
+
+### Overview
+Cost-aware routing with graceful degradation. Includes a tokenizer registry for audit-grade token counting.
+
+### Budget Configuration
+
+```toml
+[budget]
+monthly_limit = 100.00        # USD
+soft_limit_percent = 80       # Shift to local-preferred at 80%
+hard_limit_action = "local-only"  # Options: "local-only", "queue", "reject"
+
+[budget.pricing]
+openai-gpt4 = { prompt = 0.03, completion = 0.06 }  # per 1K tokens
+anthropic-claude = { prompt = 0.015, completion = 0.075 }
+```
+
+### Tokenizer Registry
+
+| Backend/Model | Tokenizer | Source |
+|---------------|-----------|--------|
+| OpenAI (GPT-4, GPT-4o) | `o200k_base` | `tiktoken-rs` |
+| OpenAI (GPT-3.5) | `cl100k_base` | `tiktoken-rs` |
+| Anthropic (Claude) | `cl100k_base` (approximate) | `tiktoken-rs` |
+| Llama models | SentencePiece | `tokenizers` crate |
+| Unknown | 1.15x conservative multiplier | Flagged "estimated" |
+
+### Degradation Behavior
+
+| Budget Level | Routing Behavior | Metrics |
+|-------------|-----------------|---------|
+| 0-80% | Normal (local-first, cloud overflow) | `budget_usage_percent` gauge |
+| 80-100% | Local-preferred (cloud only if no local option) | Warning emitted |
+| 100%+ | `hard_limit_action` applies | Alert emitted |
+
+### Acceptance Criteria
+- [ ] Per-request cost estimation using tokenizer registry
+- [ ] Soft limit triggers local-preferred routing
+- [ ] Hard limit triggers configurable action (never hard-cut production)
+- [ ] Budget metrics exposed via Prometheus
+- [ ] Token counts are per-backend-tokenizer, not generic estimates
+- [ ] Unknown tokenizers use conservative multiplier with "estimated" flag
+
+---
+
+## v0.4 Features
+
+---
+
+## F15: Speculative Router (v0.4)
+
+### Overview
+Request-content-aware routing using JSON payload inspection. Zero ML — sub-millisecond decisions based on request structure.
+
+### Routing Signals (extracted from request JSON)
+
+| Signal | Source | Routing Decision |
+|--------|--------|-----------------|
+| Prompt token count | `messages` array | Route to backend with sufficient context window |
+| Image content | `messages[].content[].type == "image_url"` | Route to vision-capable backend |
+| Tool definitions | `tools` array present | Route to tool-use-capable backend |
+| Response format | `response_format.type == "json_object"` | Route to JSON-mode-capable backend |
+| Stream flag | `stream: true` | Prefer backends with efficient streaming |
+
+### Performance Target
+- Payload inspection: < 0.5ms
+- No ML inference, no embedding computation
+- Consider classifier only for future "auto-tier" feature, and only for prompts > 10K tokens
+
+### Acceptance Criteria
+- [ ] Routes based on detected request capabilities (vision, tools, JSON mode)
+- [ ] Token count estimation from message array (pre-tokenization fast path)
+- [ ] Routing overhead remains < 1ms total
+- [ ] No external dependencies for routing decisions
+
+---
+
+## F16: Quality Tracking & Backend Profiling (v0.4)
+
+### Overview
+Build performance profiles for each model+backend combination to inform routing decisions over time.
+
+### Tracked Metrics
+
+| Metric | Granularity | Purpose |
+|--------|-------------|---------|
+| Response latency (P50, P95, P99) | Per model+backend | Latency-aware routing |
+| Tokens per second | Per model+backend | Throughput-aware routing |
+| Error rate | Per model+backend | Reliability scoring |
+| Time to first token (streaming) | Per model+backend | Streaming quality |
+
+### Acceptance Criteria
+- [ ] Rolling window statistics (last 1h, 24h) per model+backend
+- [ ] Quality scores feed into router scoring algorithm
+- [ ] Degraded backends automatically deprioritized
+- [ ] Metrics exposed via Prometheus and /v1/stats
+
+---
+
+## F17: Embeddings API (v0.4)
+
+### Overview
+Support the OpenAI Embeddings API across backends.
+
+### Endpoint
+
+```
+POST /v1/embeddings
+```
+
+### Acceptance Criteria
+- [ ] Route embedding requests to capable backends
+- [ ] Support batch embedding requests
+- [ ] OpenAI-compatible request/response format
+
+---
+
+## F18: Request Queuing & Prioritization (v0.4)
+
+### Overview
+When all backends are busy, queue requests with configurable timeout and priority levels rather than immediately returning 503.
+
+### Configuration
+
+```toml
+[queuing]
+enabled = true
+max_queue_size = 100
+default_timeout_seconds = 30
+priority_header = "X-Nexus-Priority"  # "high", "normal", "low"
+```
+
+### Behavior
+- Queue fills → oldest low-priority requests dropped first
+- Timeout exceeded → 503 with `eta_seconds` if backend is loading
+- Tier-equivalent fallback attempted before queuing
+
+### Acceptance Criteria
+- [ ] Bounded queue with configurable max size
+- [ ] Priority levels via request header
+- [ ] Timeout with actionable 503 (includes ETA)
+- [ ] Queue depth exposed in metrics
+
+---
+
+## v0.5 Features
+
+---
+
+## F19: Pre-warming & Fleet Intelligence (v0.5)
+
+### Overview
+Predict model demand and proactively load models on idle nodes before capacity is exhausted. Suggestion-first: Nexus recommends, admin/policy approves.
+
+### Design Constraints (from Constitution)
+- Never evict a hot model for a prediction
+- Use idle capacity only
+- VRAM headroom awareness: only pre-warm if > configurable % headroom
+- Recommendation system, not autonomous actor (v0.5)
+
+### Data Sources
+- Request history patterns (time of day, model popularity)
+- Backend VRAM usage (from Ollama `/api/ps` and similar endpoints)
+- Current model loading state
+
+### Acceptance Criteria
+- [ ] Tracks model request frequency over time
+- [ ] Reports pre-warming recommendations via API/logs
+- [ ] Respects VRAM headroom budget
+- [ ] Never disrupts active model serving
+
+---
+
+## F20: Model Lifecycle Management (v0.5)
+
+### Overview
+Control model loading, unloading, and migration across the fleet via Nexus API.
+
+### Acceptance Criteria
+- [ ] API to trigger model load/unload on specific backends
+- [ ] Model migration (unload from A, load on B)
+- [ ] Status tracking for loading operations
+- [ ] Integrates with pre-warming recommendations (F19)
+
+---
+
+## F21: Multi-Tenant Support (v0.5)
+
+### Overview
+API key-based authentication with per-tenant quotas, model access control, and usage tracking.
+
+### Acceptance Criteria
+- [ ] API key authentication (optional, off by default)
+- [ ] Per-tenant usage tracking and quotas
+- [ ] Model access control lists per tenant
+- [ ] Usage reporting via metrics and API
+
+---
+
+## F22: Rate Limiting (v0.5)
+
+### Overview
+Per-backend and per-tenant rate limiting to prevent resource exhaustion.
+
+### Acceptance Criteria
+- [ ] Per-backend request rate limits
+- [ ] Per-tenant rate limits
+- [ ] Token bucket algorithm with burst support
+- [ ] 429 responses with `Retry-After` header

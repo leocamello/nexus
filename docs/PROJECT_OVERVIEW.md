@@ -1,16 +1,16 @@
-# LLM Orchestrator Project Overview
+# Nexus — Project Overview
 
-## Project Codename: **Nexus** (working title)
-
-A distributed model serving orchestrator that unifies heterogeneous LLM backends behind a single, intelligent API gateway.
+A distributed LLM orchestrator that unifies heterogeneous inference backends behind a single, intelligent API gateway. The smart load balancer for the generative era.
 
 ---
 
 ## Vision
 
-**One API endpoint. Any backend. Zero configuration.**
+**One API endpoint. Any backend. Local first, cloud when needed. Zero configuration.**
 
-Nexus automatically discovers LLM inference servers on your network, understands their capabilities, and intelligently routes requests to the best available model based on the request requirements and current system load.
+Nexus automatically discovers LLM inference servers on your network, understands their capabilities, and intelligently routes requests to the best available backend. When local capacity is exhausted, it seamlessly overflows to cloud APIs — with structural privacy guarantees and cost-aware budget management.
+
+Nexus is a **control plane**, not a data plane. It routes requests and enforces policies; backends handle the heavy lifting.
 
 ---
 
@@ -41,14 +41,22 @@ Running local LLMs at home or in a small team involves:
    - Continue.dev needs configuration per model
    - Every tool needs manual setup
 
+5. **Cloud overflow is all-or-nothing**
+   - Local cluster handles 80% of requests, but spikes need cloud
+   - No way to transparently overflow without switching endpoints
+   - No cost controls when cloud APIs are involved
+   - No privacy guarantees about which data leaves the network
+
 ### The Solution
 
 Nexus provides:
 - **Single endpoint** for all clients (OpenAI-compatible API)
-- **Auto-discovery** of backends via mDNS/libp2p
-- **Intelligent routing** based on model capabilities and load
+- **Auto-discovery** of backends via mDNS
+- **Intelligent routing** based on model capabilities, load, and request requirements
 - **Transparent failover** when backends go down
+- **Local-first, cloud-overflow** with privacy zones and budget management
 - **Zero configuration** for basic usage
+- **Nexus-transparent outputs** — `X-Nexus-*` headers reveal routing decisions without breaking compatibility
 
 ---
 
@@ -69,6 +77,11 @@ Nexus provides:
 - Local inference preferred
 - Cloud fallback for capacity
 
+### Emerging: Compliance-Sensitive Teams
+- Need privacy guarantees (PII never leaves local network)
+- Cost controls on cloud API spend
+- Audit-grade token tracking
+
 ---
 
 ## Key Differentiators
@@ -79,6 +92,8 @@ Nexus provides:
 | Zero-config | ✅ mDNS discovery | ❌ Config required | ✅ | ❌ Complex |
 | Multi-backend | ✅ Ollama, vLLM, etc. | ✅ Cloud APIs | ❌ Ollama only | ✅ |
 | Capability-aware | ✅ | ❌ | ❌ | ❌ |
+| Hybrid local+cloud | ✅ Planned (v0.3) | ✅ Cloud-native | ❌ | ❌ |
+| Privacy zones | ✅ Planned (v0.3) | ❌ | ❌ | ❌ |
 | Lightweight | ✅ Single binary | ❌ Python | ✅ | ❌ |
 
 ---
@@ -87,7 +102,6 @@ Nexus provides:
 
 ### 1. Backend Discovery
 - mDNS/Bonjour for local network
-- libp2p for P2P (future)
 - Static configuration fallback
 - Periodic health checks
 
@@ -101,17 +115,29 @@ Nexus provides:
 - Load balancing across capable models
 - Priority/preference rules
 - Latency-aware selection
+- Model aliases and fallback chains
 
 ### 4. Unified API
-- OpenAI Chat Completions API
-- Streaming support
+- OpenAI Chat Completions API (streaming and non-streaming)
 - Model listing endpoint
 - Health/status endpoints
+- Nexus-Transparent Protocol (`X-Nexus-*` response headers)
 
 ### 5. Resilience
 - Automatic failover on backend failure
-- Request retry with fallback
-- Graceful degradation
+- Request retry with fallback chains
+- Graceful degradation (503 with actionable context, never silent downgrade)
+
+### 6. Hybrid Cloud Gateway (Planned — v0.3)
+- Local-first routing with cloud overflow
+- Privacy zones: structural enforcement (backend property, not client header)
+- Capability tiers: overflow only to same-or-higher tier
+- Inference budget management with graceful degradation
+
+### 7. Fleet Intelligence (Planned — v0.5)
+- Model pre-warming based on demand prediction
+- VRAM headroom awareness
+- Model lifecycle management (load, unload, migrate)
 
 ---
 
@@ -129,29 +155,45 @@ Nexus provides:
 
 ---
 
-## Supported Backends (Initial)
+## Supported Backends
 
-| Backend | API Type | Discovery | Priority |
-|---------|----------|-----------|----------|
-| Ollama | Ollama API | mDNS | P0 |
-| vLLM | OpenAI-compatible | Static | P0 |
-| llama.cpp server | OpenAI-compatible | Static | P1 |
-| exo | OpenAI-compatible | mDNS | P1 |
-| LocalAI | OpenAI-compatible | Static | P2 |
-| OpenAI (cloud) | OpenAI API | Static | P2 (fallback) |
+| Backend | API Type | Discovery | Status |
+|---------|----------|-----------|--------|
+| Ollama | Ollama API | mDNS | ✅ Supported |
+| vLLM | OpenAI-compatible | Static | ✅ Supported |
+| llama.cpp server | OpenAI-compatible | Static | ✅ Supported |
+| exo | OpenAI-compatible | mDNS | ✅ Supported |
+| LM Studio | OpenAI-compatible | Static | ✅ Supported |
+| OpenAI (cloud) | OpenAI API | Static | ✅ Supported (via Generic) |
+| LocalAI | OpenAI-compatible | Static | 🔜 Planned (v0.3) |
+| Anthropic (cloud) | Anthropic API | Static | 🔜 Planned (v0.3) |
+| Google AI (cloud) | Google API | Static | 🔜 Planned (v0.3) |
+| Llamafile | OpenAI-compatible | Static | 🔜 Planned |
+| PowerInfer | Needs wrapper | Static | 🔬 Research |
 
 ---
 
-## Non-Goals (v1.0)
+## Non-Goals
 
-These are explicitly out of scope for the initial version:
+These remain permanently out of scope:
 
-1. **Distributed inference** - That's exo's job; Nexus routes to backends that handle this
-2. **Model serving** - Nexus doesn't run models, it routes to servers that do
-3. **Model management** - No model downloads, conversions, or storage
-4. **Authentication/multi-tenancy** - Single-user/team assumed
-5. **GPU scheduling** - Backends manage their own resources
-6. **Training/fine-tuning** - Inference only
+1. **Distributed inference** — That's exo's job; Nexus routes to backends that handle this
+2. **Model serving** — Nexus doesn't run models, it routes to servers that do
+3. **Model management** — No model downloads, conversions, or storage
+4. **GPU scheduling** — Backends manage their own resources
+5. **Training/fine-tuning** — Inference only
+6. **Stateful session management** — Clients own conversation history (OpenAI API contract)
+
+### Evolving Scope
+
+These were originally non-goals but are now planned for future versions:
+
+| Capability | Originally | Now | Version |
+|-----------|-----------|-----|---------|
+| Authentication | Out of scope | Multi-tenant API keys | v0.5 |
+| Cloud backends | Fallback only | Full hybrid gateway | v0.3 |
+| Metrics | Not planned | Prometheus + dashboard | v0.2 |
+| Rate limiting | Out of scope | Per-backend and per-tenant | v0.5 |
 
 ---
 
@@ -174,43 +216,42 @@ These are explicitly out of scope for the initial version:
 
 ---
 
-## Project Timeline (Rough Estimate)
+## Product Roadmap
 
-| Phase | Duration | Outcome |
-|-------|----------|---------|
-| MVP | 3 weeks | Static routing, OpenAI API, basic health |
-| Discovery | 2 weeks | mDNS auto-discovery |
-| Smart Routing | 2 weeks | Capability-aware routing |
-| Polish | 2 weeks | CLI, config, docs |
-| **Total** | **~9 weeks** | Production-ready v1.0 |
+| Version | Theme | Features | Status |
+|---------|-------|----------|--------|
+| **v0.1** | Foundation | Registry, Health, Router, mDNS, CLI, Aliases, Fallbacks, LM Studio | ✅ Released |
+| **v0.2** | Observability | Prometheus metrics, Web Dashboard, Structured request logging | 🎯 Next |
+| **v0.3** | Cloud Hybrid | Cloud backends, Privacy zones, Capability tiers, Budget management, Nexus-Transparent Protocol | Planned |
+| **v0.4** | Intelligence | Speculative router, Quality tracking, Embeddings API, Request queuing | Planned |
+| **v0.5** | Orchestration | Pre-warming, Model lifecycle, Multi-tenant, Rate limiting | Planned |
+
+See [FEATURES.md](FEATURES.md) for detailed feature specifications (F01-F22).
 
 ---
 
 ## Related Projects
 
-- **exo** - Distributed inference (Nexus can route TO exo)
-- **LiteLLM** - Cloud API router (inspiration for API design)
-- **Traefik/Nginx** - Reverse proxy patterns
-- **Consul/etcd** - Service discovery patterns
+- **exo** — Distributed inference across Apple Silicon (Nexus can route TO exo)
+- **LiteLLM** — Cloud API router (inspiration for API design)
+- **LocalAI** — Multi-backend local inference server (planned as supported backend)
+- **PowerInfer** — "Hot neuron" preloading for large models on consumer GPUs (research)
+- **Llamafile** — Single-file LLM executable with built-in OpenAI API (planned backend)
+- **Traefik/Nginx** — Reverse proxy patterns (architectural inspiration)
+- **Consul/etcd** — Service discovery patterns
 
 ---
 
-## Open Questions
+## Architectural Principles
 
-1. **Naming**: Is "Nexus" good? Other options: Relay, Prism, Arbiter, Forge
-2. **Scope**: Should v1 include any authentication?
-3. **Metrics**: Should we expose Prometheus metrics?
-4. **UI**: Should there be a simple web dashboard?
+Nexus follows 10 core principles defined in the [Constitution](.specify/memory/constitution.md) (v1.1.0). Key highlights:
 
----
-
-## Next Steps
-
-1. Review spec-kit prompts document
-2. Run constitution phase with spec-kit
-3. Create initial Rust project structure
-4. Implement MVP (static routing)
-5. Iterate based on real usage
+1. **Zero Configuration** — mDNS discovery, sensible defaults, "just run it"
+2. **Single Binary** — Rust, no runtime dependencies, < 20 MB
+3. **OpenAI-Compatible** — Strict API adherence; Nexus-transparent via response headers only
+4. **Stateless by Design** — Route requests, not sessions; clients own conversation history
+5. **Explicit Contracts** — Never silently downgrade; 503 is preferred over unpredictable quality
+6. **Precise Measurement** — Per-backend tokenizer registry; VRAM-aware fleet management
 
 ---
 
@@ -218,7 +259,8 @@ These are explicitly out of scope for the initial version:
 
 | Document | Purpose |
 |----------|---------|
-| `orchestrator-project-overview.md` | This file - vision and goals |
-| `orchestrator-spec-kit-prompts.md` | Prompts for GitHub spec-kit workflow |
-| `orchestrator-architecture.md` | Technical architecture and design |
-| `orchestrator-features.md` | Detailed feature specifications |
+| [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) | This file — vision, roadmap, and positioning |
+| [FEATURES.md](FEATURES.md) | Feature specifications (F01-F22) |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Technical architecture and design |
+| [SPEC_KIT_PROMPTS.md](SPEC_KIT_PROMPTS.md) | Spec-kit workflow and feature prompts |
+| [constitution.md](../.specify/memory/constitution.md) | Core principles and constraints |
