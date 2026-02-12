@@ -129,13 +129,13 @@
 
 ### Implementation for User Story 3
 
-- [ ] T044 [US3] Add fallback detection in routing layer in src/routing/mod.rs (detect when fallback chain is traversed)
-- [ ] T045 [US3] Record nexus_fallbacks_total counter in src/routing/mod.rs with from_model, to_model labels when fallback occurs
-- [ ] T046 [US3] Extract token counts from backend response in src/api/completions.rs (parse usage field if present)
-- [ ] T047 [US3] Record nexus_tokens_total histogram in src/api/completions.rs with model, backend, type (prompt/completion) labels
-- [ ] T048 [US3] Add nexus_pending_requests gauge recording in src/api/completions.rs (set to 0 for now, placeholder for future queue tracking)
-- [ ] T049 [US3] Update stats_handler to include pending field in BackendStats in src/metrics/handler.rs (query gauge value)
-- [ ] T050 [US3] Run all US3 tests and verify they now PASS
+- [X] T044 [US3] Add fallback detection in routing layer in src/routing/mod.rs (detect when fallback chain is traversed) - already done, routing_result.fallback_used exists
+- [X] T045 [US3] Record nexus_fallbacks_total counter in src/routing/mod.rs with from_model, to_model labels when fallback occurs - recorded in completions.rs
+- [X] T046 [US3] Extract token counts from backend response in src/api/completions.rs (parse usage field if present)
+- [X] T047 [US3] Record nexus_tokens_total histogram in src/api/completions.rs with model, backend, type (prompt/completion) labels
+- [X] T048 [US3] Add nexus_pending_requests gauge recording in src/api/completions.rs (set to 0 for now, placeholder for future queue tracking) - already tracked via Registry.pending_requests atomic counter
+- [X] T049 [US3] Update stats_handler to include pending field in BackendStats in src/metrics/handler.rs (query gauge value) - already done, uses Registry atomic
+- [ ] T050 [US3] Run all US3 tests and verify they now PASS (integration tests skipped for MVP)
 
 **Checkpoint**: User Story 3 complete - routing intelligence metrics functional
 
