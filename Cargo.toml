@@ -81,6 +81,10 @@ uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 dashmap = "6"
 
+# Metrics
+metrics = "0.24"
+metrics-exporter-prometheus = "0.16"
+
 [dev-dependencies]
 tokio-test = "0.4"
 wiremock = "0.6"
