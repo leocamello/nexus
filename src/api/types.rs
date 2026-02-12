@@ -427,4 +427,81 @@ mod tests {
         let response = error.into_response();
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
+
+    #[test]
+    fn test_api_error_model_not_found_empty_available() {
+        let error = ApiError::model_not_found("gpt-4", &[]);
+        let json = serde_json::to_value(&error).unwrap();
+        assert!(json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("No models available"));
+    }
+
+    #[test]
+    fn test_api_error_gateway_timeout() {
+        let error = ApiError::gateway_timeout();
+        let json = serde_json::to_value(&error).unwrap();
+        assert_eq!(json["error"]["code"], "gateway_timeout");
+        assert!(json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("timed out"));
+    }
+
+    #[test]
+    fn test_api_error_status_codes() {
+        assert_eq!(
+            ApiError::bad_request("x").into_response().status(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            ApiError::model_not_found("x", &[]).into_response().status(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            ApiError::bad_gateway("x").into_response().status(),
+            StatusCode::BAD_GATEWAY
+        );
+        assert_eq!(
+            ApiError::gateway_timeout().into_response().status(),
+            StatusCode::GATEWAY_TIMEOUT
+        );
+        assert_eq!(
+            ApiError::service_unavailable("x").into_response().status(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+    }
+
+    #[test]
+    fn test_api_error_unknown_code_returns_500() {
+        let error = ApiError {
+            error: ApiErrorBody {
+                message: "Unknown".to_string(),
+                r#type: "server_error".to_string(),
+                param: None,
+                code: Some("unknown_code".to_string()),
+            },
+        };
+        assert_eq!(
+            error.into_response().status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    #[test]
+    fn test_api_error_no_code_returns_500() {
+        let error = ApiError {
+            error: ApiErrorBody {
+                message: "Unknown".to_string(),
+                r#type: "server_error".to_string(),
+                param: None,
+                code: None,
+            },
+        };
+        assert_eq!(
+            error.into_response().status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
 }
