@@ -44,8 +44,9 @@ pub async fn stats_handler(State(state): State<Arc<AppState>>) -> impl IntoRespo
 
 /// Compute aggregate request statistics from Prometheus metrics.
 fn compute_request_stats() -> RequestStats {
-    // TODO: Query Prometheus handle for actual counter values
-    // For now, return zeros (will be implemented in US1)
+    // For now, we return zeros since we need to implement proper Prometheus parsing
+    // This will be enhanced in later implementation
+    // TODO: Parse prometheus metrics to get actual counts
     RequestStats {
         total: 0,
         success: 0,
@@ -61,12 +62,16 @@ fn compute_backend_stats(registry: &crate::registry::Registry) -> Vec<BackendSta
     backends
         .into_iter()
         .map(|backend| {
-            // TODO: Query Prometheus for actual request counts and latencies
-            // For now, return zeros (will be implemented in US1/US2)
+            // TODO: Parse Prometheus for actual request counts and latencies
+            // For now, return current state from registry
             BackendStats {
                 id: backend.id.clone(),
-                requests: 0,
-                average_latency_ms: 0.0,
+                requests: backend
+                    .total_requests
+                    .load(std::sync::atomic::Ordering::SeqCst),
+                average_latency_ms: backend
+                    .avg_latency_ms
+                    .load(std::sync::atomic::Ordering::SeqCst) as f64,
                 pending: backend
                     .pending_requests
                     .load(std::sync::atomic::Ordering::SeqCst) as usize,
@@ -77,8 +82,8 @@ fn compute_backend_stats(registry: &crate::registry::Registry) -> Vec<BackendSta
 
 /// Compute per-model statistics from Prometheus metrics.
 fn compute_model_stats() -> Vec<ModelStats> {
-    // TODO: Query Prometheus for per-model request counts and durations
-    // For now, return empty (will be implemented in US1/US2)
+    // TODO: Parse Prometheus metrics for per-model request counts and durations
+    // For now, return empty until we implement proper parsing
     Vec::new()
 }
 

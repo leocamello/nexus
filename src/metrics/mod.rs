@@ -31,6 +31,9 @@ pub mod types;
 
 pub use types::*;
 
+// Re-export PrometheusBuilder for test compatibility
+pub use metrics_exporter_prometheus::PrometheusBuilder;
+
 use crate::registry::{BackendStatus, Registry};
 use dashmap::DashMap;
 use std::sync::Arc;
@@ -83,7 +86,7 @@ impl MetricsCollector {
         if sanitized
             .chars()
             .next()
-            .map_or(false, |c| c.is_ascii_digit())
+            .is_some_and(|c| c.is_ascii_digit())
         {
             sanitized.insert(0, '_');
         }
@@ -167,29 +170,27 @@ pub fn setup_metrics(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Once;
+    use std::sync::{Mutex, Once};
 
     static INIT: Once = Once::new();
-    static mut TEST_HANDLE: Option<metrics_exporter_prometheus::PrometheusHandle> = None;
+    static TEST_HANDLE: Mutex<Option<metrics_exporter_prometheus::PrometheusHandle>> =
+        Mutex::new(None);
 
     fn get_test_handle() -> metrics_exporter_prometheus::PrometheusHandle {
-        unsafe {
-            INIT.call_once(|| {
-                // Use build_recorder which doesn't need a runtime
-                let recorder = metrics_exporter_prometheus::PrometheusBuilder::new()
-                    .build_recorder();
-                
-                // Get the handle from the recorder
-                let handle = recorder.handle();
-                TEST_HANDLE = Some(handle);
-                
-                // Install the recorder globally (only once for all tests)
-                metrics::set_global_recorder(Box::new(recorder)).ok();
-            });
-            
-            // Return a clone of the handle
-            TEST_HANDLE.as_ref().unwrap().clone()
-        }
+        INIT.call_once(|| {
+            // Use build_recorder which doesn't need a runtime
+            let recorder = metrics_exporter_prometheus::PrometheusBuilder::new().build_recorder();
+
+            // Get the handle from the recorder
+            let handle = recorder.handle();
+            *TEST_HANDLE.lock().unwrap() = Some(handle);
+
+            // Install the recorder globally (only once for all tests)
+            metrics::set_global_recorder(Box::new(recorder)).ok();
+        });
+
+        // Return a clone of the handle
+        TEST_HANDLE.lock().unwrap().as_ref().unwrap().clone()
     }
 
     #[test]

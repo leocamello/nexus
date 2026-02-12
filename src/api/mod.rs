@@ -117,9 +117,15 @@ impl AppState {
             config.routing.fallbacks.clone(),
         ));
 
-        // Initialize metrics and create collector
-        let prometheus_handle = crate::metrics::setup_metrics()
-            .expect("Failed to initialize Prometheus metrics exporter");
+        // Initialize metrics (safe to call multiple times - will reuse existing if already set)
+        let prometheus_handle = crate::metrics::setup_metrics().unwrap_or_else(|e| {
+            // If metrics are already initialized (e.g., in tests), create a new handle
+            // by building a recorder without installing it globally
+            tracing::debug!("Metrics already initialized, creating new handle: {}", e);
+            crate::metrics::PrometheusBuilder::new()
+                .build_recorder()
+                .handle()
+        });
         
         let metrics_collector = Arc::new(MetricsCollector::new(
             Arc::clone(&registry),
