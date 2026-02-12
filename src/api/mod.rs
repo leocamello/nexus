@@ -68,6 +68,7 @@ pub mod types;
 pub use types::*;
 
 use crate::config::NexusConfig;
+use crate::metrics::MetricsCollector;
 use crate::registry::Registry;
 use crate::routing;
 use axum::{
@@ -90,6 +91,8 @@ pub struct AppState {
     pub router: Arc<routing::Router>,
     /// Server startup time for uptime tracking
     pub start_time: Instant,
+    /// Metrics collector for observability
+    pub metrics_collector: Arc<MetricsCollector>,
 }
 
 impl AppState {
@@ -103,6 +106,8 @@ impl AppState {
             .build()
             .expect("Failed to create HTTP client");
 
+        let start_time = Instant::now();
+
         // Create router from config
         let router = Arc::new(routing::Router::with_aliases_and_fallbacks(
             Arc::clone(&registry),
@@ -112,12 +117,29 @@ impl AppState {
             config.routing.fallbacks.clone(),
         ));
 
+        // Initialize metrics (safe to call multiple times - will reuse existing if already set)
+        let prometheus_handle = crate::metrics::setup_metrics().unwrap_or_else(|e| {
+            // If metrics are already initialized (e.g., in tests), create a new handle
+            // by building a recorder without installing it globally
+            tracing::debug!("Metrics already initialized, creating new handle: {}", e);
+            crate::metrics::PrometheusBuilder::new()
+                .build_recorder()
+                .handle()
+        });
+
+        let metrics_collector = Arc::new(MetricsCollector::new(
+            Arc::clone(&registry),
+            start_time,
+            prometheus_handle,
+        ));
+
         Self {
             registry,
             config,
             http_client,
             router,
-            start_time: Instant::now(),
+            start_time,
+            metrics_collector,
         }
     }
 }
@@ -128,6 +150,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/v1/chat/completions", post(completions::handle))
         .route("/v1/models", get(models::handle))
         .route("/health", get(health::handle))
+        .route("/metrics", get(crate::metrics::handler::metrics_handler))
+        .route("/v1/stats", get(crate::metrics::handler::stats_handler))
         .layer(RequestBodyLimitLayer::new(MAX_BODY_SIZE))
         .with_state(state)
 }
