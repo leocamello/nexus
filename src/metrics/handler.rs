@@ -44,9 +44,10 @@ pub async fn stats_handler(State(state): State<Arc<AppState>>) -> impl IntoRespo
 
 /// Compute aggregate request statistics from Prometheus metrics.
 fn compute_request_stats() -> RequestStats {
-    // For now, we return zeros since we need to implement proper Prometheus parsing
-    // This will be enhanced in later implementation
-    // TODO: Parse prometheus metrics to get actual counts
+    // Request stats require parsing Prometheus text format to extract counter values.
+    // The `metrics` crate records metrics but doesn't provide a query API.
+    // Use GET /metrics (Prometheus format) for accurate request counts.
+    // Enhancement: parse PrometheusHandle::render() output to populate this.
     RequestStats {
         total: 0,
         success: 0,
@@ -62,8 +63,7 @@ fn compute_backend_stats(registry: &crate::registry::Registry) -> Vec<BackendSta
     backends
         .into_iter()
         .map(|backend| {
-            // TODO: Parse Prometheus for actual request counts and latencies
-            // For now, return current state from registry
+            // Backend stats sourced from Registry atomics (real-time values)
             BackendStats {
                 id: backend.id.clone(),
                 requests: backend
@@ -71,7 +71,8 @@ fn compute_backend_stats(registry: &crate::registry::Registry) -> Vec<BackendSta
                     .load(std::sync::atomic::Ordering::SeqCst),
                 average_latency_ms: backend
                     .avg_latency_ms
-                    .load(std::sync::atomic::Ordering::SeqCst) as f64,
+                    .load(std::sync::atomic::Ordering::SeqCst)
+                    as f64,
                 pending: backend
                     .pending_requests
                     .load(std::sync::atomic::Ordering::SeqCst) as usize,
@@ -82,8 +83,9 @@ fn compute_backend_stats(registry: &crate::registry::Registry) -> Vec<BackendSta
 
 /// Compute per-model statistics from Prometheus metrics.
 fn compute_model_stats() -> Vec<ModelStats> {
-    // TODO: Parse Prometheus metrics for per-model request counts and durations
-    // For now, return empty until we implement proper parsing
+    // Per-model stats require parsing Prometheus text format to extract histogram data.
+    // Use GET /metrics (Prometheus format) for per-model request counts and durations.
+    // Enhancement: parse PrometheusHandle::render() output to populate this.
     Vec::new()
 }
 

@@ -126,7 +126,7 @@ impl AppState {
                 .build_recorder()
                 .handle()
         });
-        
+
         let metrics_collector = Arc::new(MetricsCollector::new(
             Arc::clone(&registry),
             start_time,
@@ -150,10 +150,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/v1/chat/completions", post(completions::handle))
         .route("/v1/models", get(models::handle))
         .route("/health", get(health::handle))
-        .route(
-            "/metrics",
-            get(crate::metrics::handler::metrics_handler),
-        )
+        .route("/metrics", get(crate::metrics::handler::metrics_handler))
         .route("/v1/stats", get(crate::metrics::handler::stats_handler))
         .layer(RequestBodyLimitLayer::new(MAX_BODY_SIZE))
         .with_state(state)

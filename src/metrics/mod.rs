@@ -79,20 +79,23 @@ impl MetricsCollector {
         // Sanitize: replace non-alphanumeric (except underscore) with underscore
         let mut sanitized = label
             .chars()
-            .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+            .map(|c| {
+                if c.is_alphanumeric() || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect::<String>();
 
         // Ensure first character is not a digit
-        if sanitized
-            .chars()
-            .next()
-            .is_some_and(|c| c.is_ascii_digit())
-        {
+        if sanitized.chars().next().is_some_and(|c| c.is_ascii_digit()) {
             sanitized.insert(0, '_');
         }
 
         // Cache and return
-        self.label_cache.insert(label.to_string(), sanitized.clone());
+        self.label_cache
+            .insert(label.to_string(), sanitized.clone());
         sanitized
     }
 
@@ -143,25 +146,36 @@ impl MetricsCollector {
 /// Initialize Prometheus metrics exporter with custom histogram buckets.
 ///
 /// Buckets are optimized for LLM inference latency patterns (seconds, not milliseconds).
-/// Buckets: [0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300] seconds.
+/// Buckets: [0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300] seconds for durations.
+/// Token buckets: [10, 50, 100, 500, 1000, 2000, 4000, 8000, 16000, 32000, 64000, 128000].
 ///
 /// Returns a PrometheusHandle that can be used to render metrics.
 pub fn setup_metrics(
 ) -> Result<metrics_exporter_prometheus::PrometheusHandle, Box<dyn std::error::Error>> {
     use metrics_exporter_prometheus::{Matcher, PrometheusBuilder};
 
-    let buckets = &[0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0];
+    let duration_buckets = &[
+        0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0,
+    ];
+
+    let token_buckets = &[
+        10.0, 50.0, 100.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0, 16000.0, 32000.0, 64000.0,
+        128000.0,
+    ];
 
     let handle = PrometheusBuilder::new()
         .set_buckets_for_metric(
             Matcher::Full("nexus_request_duration_seconds".to_string()),
-            buckets,
+            duration_buckets,
         )?
         .set_buckets_for_metric(
             Matcher::Full("nexus_backend_latency_seconds".to_string()),
-            buckets,
+            duration_buckets,
         )?
-        .set_buckets_for_metric(Matcher::Full("nexus_tokens_total".to_string()), buckets)?
+        .set_buckets_for_metric(
+            Matcher::Full("nexus_tokens_total".to_string()),
+            token_buckets,
+        )?
         .install_recorder()?;
 
     Ok(handle)
@@ -198,7 +212,7 @@ mod tests {
         let registry = Arc::new(Registry::new());
         let start_time = Instant::now();
         let handle = get_test_handle();
-        
+
         let collector = MetricsCollector::new(Arc::clone(&registry), start_time, handle);
 
         assert!(collector.uptime_seconds() < 1); // Should be very small

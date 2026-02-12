@@ -96,7 +96,7 @@ impl HealthChecker {
         {
             Ok(response) => {
                 let latency_ms = start.elapsed().as_millis() as u32;
-                
+
                 // Record backend latency histogram (convert ms to seconds for Prometheus)
                 let latency_seconds = latency_ms as f64 / 1000.0;
                 metrics::histogram!("nexus_backend_latency_seconds",
