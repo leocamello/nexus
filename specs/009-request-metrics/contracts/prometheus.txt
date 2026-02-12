@@ -1,0 +1,383 @@
+# Prometheus Metrics Contract
+
+This document defines the Prometheus-compatible metrics exposed at `GET /metrics`.
+
+## Endpoint
+
+**URL**: `GET /metrics`  
+**Content-Type**: `text/plain; version=0.0.4`  
+**Authentication**: None (trusted network)
+
+---
+
+## Metric Definitions
+
+### Counters
+
+#### nexus_requests_total
+
+**Type**: Counter  
+**Description**: Total number of requests processed by the gateway.  
+**Labels**:
+- `model` (string): Requested model name (sanitized)
+- `backend` (string): Backend ID that served the request (sanitized)
+- `status` (string): HTTP status code (e.g., "200", "503")
+
+**Example**:
+```
+# HELP nexus_requests_total Total number of requests processed by the gateway
+# TYPE nexus_requests_total counter
+nexus_requests_total{model="llama3_70b",backend="ollama_local",status="200"} 1234
+nexus_requests_total{model="gpt_4",backend="openai_cloud",status="200"} 567
+nexus_requests_total{model="llama3_70b",backend="ollama_local",status="503"} 12
+```
+
+---
+
+#### nexus_errors_total
+
+**Type**: Counter  
+**Description**: Total number of errors encountered.  
+**Labels**:
+- `error_type` (string): Error classification - one of:
+  - `timeout`: Request timed out
+  - `backend_error`: Backend returned error response
+  - `no_backend`: No backend available for model
+  - `no_healthy_backend`: All backends for model are unhealthy
+  - `parse_error`: Failed to parse backend response
+  - `other`: Unclassified error
+- `model` (string): Model associated with the error
+
+**Example**:
+```
+# HELP nexus_errors_total Total number of errors encountered
+# TYPE nexus_errors_total counter
+nexus_errors_total{error_type="timeout",model="llama3_70b"} 5
+nexus_errors_total{error_type="no_healthy_backend",model="gpt_4"} 2
+nexus_errors_total{error_type="backend_error",model="llama3_70b"} 8
+```
+
+---
+
+#### nexus_fallbacks_total
+
+**Type**: Counter  
+**Description**: Total number of fallback routing events.  
+**Labels**:
+- `from_model` (string): Original requested model
+- `to_model` (string): Fallback model used
+
+**Example**:
+```
+# HELP nexus_fallbacks_total Total number of fallback routing events
+# TYPE nexus_fallbacks_total counter
+nexus_fallbacks_total{from_model="gpt_4",to_model="llama3_70b"} 15
+nexus_fallbacks_total{from_model="claude_3",to_model="gpt_4"} 3
+```
+
+---
+
+### Histograms
+
+#### nexus_request_duration_seconds
+
+**Type**: Histogram  
+**Description**: Request duration from handler entry to response (seconds).  
+**Labels**:
+- `model` (string): Requested model name
+- `backend` (string): Backend that served the request
+
+**Buckets**: [0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, +Inf]
+
+**Example**:
+```
+# HELP nexus_request_duration_seconds Request duration from handler entry to response
+# TYPE nexus_request_duration_seconds histogram
+nexus_request_duration_seconds_bucket{model="llama3_70b",backend="ollama_local",le="0.1"} 0
+nexus_request_duration_seconds_bucket{model="llama3_70b",backend="ollama_local",le="0.25"} 5
+nexus_request_duration_seconds_bucket{model="llama3_70b",backend="ollama_local",le="0.5"} 12
+nexus_request_duration_seconds_bucket{model="llama3_70b",backend="ollama_local",le="1"} 45
+nexus_request_duration_seconds_bucket{model="llama3_70b",backend="ollama_local",le="2.5"} 120
+nexus_request_duration_seconds_bucket{model="llama3_70b",backend="ollama_local",le="5"} 200
+nexus_request_duration_seconds_bucket{model="llama3_70b",backend="ollama_local",le="10"} 250
+nexus_request_duration_seconds_bucket{model="llama3_70b",backend="ollama_local",le="30"} 300
+nexus_request_duration_seconds_bucket{model="llama3_70b",backend="ollama_local",le="60"} 310
+nexus_request_duration_seconds_bucket{model="llama3_70b",backend="ollama_local",le="120"} 315
+nexus_request_duration_seconds_bucket{model="llama3_70b",backend="ollama_local",le="300"} 320
+nexus_request_duration_seconds_bucket{model="llama3_70b",backend="ollama_local",le="+Inf"} 320
+nexus_request_duration_seconds_sum{model="llama3_70b",backend="ollama_local"} 1600.5
+nexus_request_duration_seconds_count{model="llama3_70b",backend="ollama_local"} 320
+```
+
+**Derivations**:
+- Average duration: `nexus_request_duration_seconds_sum / nexus_request_duration_seconds_count`
+- P95 latency: Computed from bucket distribution
+- P99 latency: Computed from bucket distribution
+
+---
+
+#### nexus_backend_latency_seconds
+
+**Type**: Histogram  
+**Description**: Backend health check latency (round-trip time in seconds).  
+**Labels**:
+- `backend` (string): Backend ID
+
+**Buckets**: [0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, +Inf]
+
+**Example**:
+```
+# HELP nexus_backend_latency_seconds Backend health check latency
+# TYPE nexus_backend_latency_seconds histogram
+nexus_backend_latency_seconds_bucket{backend="ollama_local",le="0.1"} 45
+nexus_backend_latency_seconds_bucket{backend="ollama_local",le="0.25"} 50
+nexus_backend_latency_seconds_bucket{backend="ollama_local",le="0.5"} 50
+nexus_backend_latency_seconds_bucket{backend="ollama_local",le="+Inf"} 50
+nexus_backend_latency_seconds_sum{backend="ollama_local"} 5.2
+nexus_backend_latency_seconds_count{backend="ollama_local"} 50
+```
+
+---
+
+#### nexus_tokens_total
+
+**Type**: Histogram  
+**Description**: Token counts from backend responses.  
+**Labels**:
+- `model` (string): Model used
+- `backend` (string): Backend that served the request
+- `type` (string): Token type - `prompt` or `completion`
+
+**Buckets**: [10, 50, 100, 500, 1000, 2000, 4000, 8000, 16000, 32000, 64000, 128000, +Inf]
+
+**Example**:
+```
+# HELP nexus_tokens_total Token counts from backend responses
+# TYPE nexus_tokens_total histogram
+nexus_tokens_total_bucket{model="llama3_70b",backend="ollama_local",type="prompt",le="100"} 50
+nexus_tokens_total_bucket{model="llama3_70b",backend="ollama_local",type="prompt",le="500"} 120
+nexus_tokens_total_bucket{model="llama3_70b",backend="ollama_local",type="prompt",le="+Inf"} 150
+nexus_tokens_total_sum{model="llama3_70b",backend="ollama_local",type="prompt"} 12500
+nexus_tokens_total_count{model="llama3_70b",backend="ollama_local",type="prompt"} 150
+```
+
+**Note**: Only recorded if backend provides token counts in response (OpenAI-compatible format).
+
+---
+
+### Gauges
+
+#### nexus_backends_total
+
+**Type**: Gauge  
+**Description**: Total number of registered backends.  
+**Labels**: None
+
+**Example**:
+```
+# HELP nexus_backends_total Total number of registered backends
+# TYPE nexus_backends_total gauge
+nexus_backends_total 5
+```
+
+---
+
+#### nexus_backends_healthy
+
+**Type**: Gauge  
+**Description**: Number of healthy backends (status = Healthy).  
+**Labels**: None
+
+**Example**:
+```
+# HELP nexus_backends_healthy Number of healthy backends
+# TYPE nexus_backends_healthy gauge
+nexus_backends_healthy 4
+```
+
+---
+
+#### nexus_models_available
+
+**Type**: Gauge  
+**Description**: Number of distinct models available across all healthy backends.  
+**Labels**: None
+
+**Example**:
+```
+# HELP nexus_models_available Number of distinct models available
+# TYPE nexus_models_available gauge
+nexus_models_available 12
+```
+
+---
+
+#### nexus_pending_requests
+
+**Type**: Gauge  
+**Description**: Number of requests currently queued or in-flight per backend.  
+**Labels**:
+- `backend` (string): Backend ID
+
+**Example**:
+```
+# HELP nexus_pending_requests Number of requests currently pending per backend
+# TYPE nexus_pending_requests gauge
+nexus_pending_requests{backend="ollama_local"} 3
+nexus_pending_requests{backend="openai_cloud"} 0
+```
+
+**Note**: This metric requires request queue tracking which may be implemented in a future phase. For F09, it will always be 0.
+
+---
+
+## Response Format
+
+The `/metrics` endpoint returns plain text in Prometheus exposition format.
+
+### Success Response
+
+**Status**: `200 OK`  
+**Content-Type**: `text/plain; version=0.0.4; charset=utf-8`
+
+**Body**:
+```
+# HELP nexus_requests_total Total number of requests processed by the gateway
+# TYPE nexus_requests_total counter
+nexus_requests_total{model="llama3_70b",backend="ollama_local",status="200"} 1234
+
+# HELP nexus_request_duration_seconds Request duration from handler entry to response
+# TYPE nexus_request_duration_seconds histogram
+nexus_request_duration_seconds_bucket{model="llama3_70b",backend="ollama_local",le="0.1"} 0
+nexus_request_duration_seconds_bucket{model="llama3_70b",backend="ollama_local",le="+Inf"} 320
+nexus_request_duration_seconds_sum{model="llama3_70b",backend="ollama_local"} 1600.5
+nexus_request_duration_seconds_count{model="llama3_70b",backend="ollama_local"} 320
+
+# HELP nexus_backends_total Total number of registered backends
+# TYPE nexus_backends_total gauge
+nexus_backends_total 5
+```
+
+### Error Response
+
+If metrics collection is not initialized (should not happen in production):
+
+**Status**: `503 Service Unavailable`  
+**Content-Type**: `application/json`
+
+**Body**:
+```json
+{
+  "error": {
+    "message": "Metrics collection not initialized",
+    "type": "service_unavailable",
+    "code": "metrics_unavailable"
+  }
+}
+```
+
+---
+
+## Label Sanitization Rules
+
+All label values are sanitized to comply with Prometheus naming requirements:
+
+1. Replace any character that is not `[a-zA-Z0-9_]` with underscore `_`
+2. If the first character is a digit, prepend with underscore `_`
+3. Result must match regex: `[a-zA-Z_][a-zA-Z0-9_]*`
+
+**Examples**:
+- `ollama-local:11434` → `ollama_local_11434`
+- `gpt-4` → `gpt_4`
+- `123model` → `_123model`
+- `backend/prod` → `backend_prod`
+
+---
+
+## Prometheus Queries
+
+### Example PromQL Queries
+
+**Request rate per model (last 5 minutes)**:
+```promql
+rate(nexus_requests_total[5m])
+```
+
+**Error rate**:
+```promql
+sum(rate(nexus_errors_total[5m])) / sum(rate(nexus_requests_total[5m]))
+```
+
+**P95 request duration**:
+```promql
+histogram_quantile(0.95, rate(nexus_request_duration_seconds_bucket[5m]))
+```
+
+**Average backend health check latency**:
+```promql
+rate(nexus_backend_latency_seconds_sum[5m]) / rate(nexus_backend_latency_seconds_count[5m])
+```
+
+**Fallback rate for a specific model**:
+```promql
+rate(nexus_fallbacks_total{from_model="gpt_4"}[5m]) / rate(nexus_requests_total{model="gpt_4"}[5m])
+```
+
+---
+
+## Performance Guarantees
+
+- **Scrape latency**: `/metrics` endpoint responds in < 1ms (p95) for typical workloads (< 100 backends)
+- **Cardinality**: Limited to `O(models × backends)` which is typically < 1000 time series
+- **Memory overhead**: ~100 bytes per unique label combination
+- **Recording overhead**: < 0.1ms per request (< 100ns per metric)
+
+---
+
+## Scraping Configuration
+
+### Recommended Prometheus Config
+
+```yaml
+scrape_configs:
+  - job_name: 'nexus-gateway'
+    scrape_interval: 15s
+    scrape_timeout: 5s
+    static_configs:
+      - targets: ['localhost:8000']
+    metrics_path: '/metrics'
+```
+
+### Alerting Rules Example
+
+```yaml
+groups:
+  - name: nexus_alerts
+    rules:
+      - alert: HighErrorRate
+        expr: rate(nexus_errors_total[5m]) / rate(nexus_requests_total[5m]) > 0.05
+        for: 5m
+        annotations:
+          summary: "High error rate detected (> 5%)"
+      
+      - alert: AllBackendsUnhealthy
+        expr: nexus_backends_healthy == 0 and nexus_backends_total > 0
+        for: 1m
+        annotations:
+          summary: "All backends are unhealthy"
+      
+      - alert: SlowRequests
+        expr: histogram_quantile(0.95, rate(nexus_request_duration_seconds_bucket[5m])) > 30
+        for: 5m
+        annotations:
+          summary: "P95 request duration > 30s"
+```
+
+---
+
+## Notes
+
+- All timestamps are implicit (Prometheus adds them during scrape)
+- Metrics survive backend registration changes (cumulative counts continue)
+- Metrics reset to zero on gateway restart (no persistent storage)
+- Gauge values are computed on-demand from Registry state at scrape time
