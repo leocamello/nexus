@@ -74,16 +74,16 @@
 
 - [X] T019 [US1] Implement update_fleet_gauges() method in src/metrics/mod.rs (query Registry, compute backends_total, backends_healthy, models_available gauges)
 - [X] T020 [US1] Implement metrics_handler in src/metrics/handler.rs (call update_fleet_gauges(), render Prometheus text format)
-- [ ] T021 [US1] Implement compute_request_stats() helper in src/metrics/handler.rs (aggregate total, success, error counts from Prometheus data)
-- [ ] T022 [US1] Implement compute_backend_stats() helper in src/metrics/handler.rs (per-backend request counts and average latency)
-- [ ] T023 [US1] Implement compute_model_stats() helper in src/metrics/handler.rs (per-model request counts and average duration)
-- [ ] T024 [US1] Implement stats_handler in src/metrics/handler.rs (compute all stats, serialize to JSON)
+- [X] T021 [US1] Implement compute_request_stats() helper in src/metrics/handler.rs (aggregate total, success, error counts from Prometheus data)
+- [X] T022 [US1] Implement compute_backend_stats() helper in src/metrics/handler.rs (per-backend request counts and average latency)
+- [X] T023 [US1] Implement compute_model_stats() helper in src/metrics/handler.rs (per-model request counts and average duration)
+- [X] T024 [US1] Implement stats_handler in src/metrics/handler.rs (compute all stats, serialize to JSON)
 - [X] T025 [US1] Add request timer start at entry of completions handler in src/api/completions.rs
 - [X] T026 [US1] Record nexus_requests_total counter on success path in src/api/completions.rs with model, backend, status labels
 - [X] T027 [US1] Record nexus_request_duration_seconds histogram on success path in src/api/completions.rs with model, backend labels
 - [X] T028 [US1] Record nexus_errors_total counter on error paths in src/api/completions.rs with error_type, model labels
 - [X] T029 [US1] Add error type mapping (NoHealthyBackend → no_healthy_backend, Timeout → timeout, etc.) in src/api/completions.rs
-- [ ] T030 [US1] Run all US1 tests and verify they now PASS
+- [ ] T030 [US1] Run all US1 tests and verify they now PASS (integration tests skipped for MVP)
 
 **Checkpoint**: User Story 1 complete - basic request tracking working, both /metrics and /v1/stats endpoints functional
 
