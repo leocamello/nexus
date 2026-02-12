@@ -1,119 +1,160 @@
 # Copilot Instructions for Nexus
 
-You are an expert Rust developer building **Nexus**, a distributed LLM orchestrator that unifies heterogeneous inference backends (Ollama, vLLM, llama.cpp, exo) behind an OpenAI-compatible API gateway. Your goal is to maintain a high-performance, single-binary service.
+You are an expert Rust developer building **Nexus**, a distributed LLM orchestrator — the control plane for heterogeneous LLM inference. It unifies local and cloud inference backends (Ollama, vLLM, llama.cpp, exo, LM Studio, OpenAI) behind a single OpenAI-compatible API gateway with mDNS auto-discovery, intelligent capability-aware routing, and privacy-zone enforcement.
 
 > **Note**: The project constitution (`.specify/memory/constitution.md`) is the authoritative source for principles, constraints, and standards. This file provides implementation guidance.
+
+## Product Vision
+
+**"Local first, cloud when needed."** Nexus solves the capacity and availability problem for developers with heterogeneous LLM backends — not the speed problem. It pools multiple machines and providers into one endpoint with zero configuration.
+
+### Core Value Proposition
+- **One URL, zero config**: mDNS discovers backends automatically
+- **Capability-aware routing**: Routes by model features (vision, tools, context length), not just load
+- **Backend-agnostic**: Ollama, vLLM, llama.cpp, exo, LM Studio, OpenAI — all normalized to one API
+- **Honest failures**: 503 with actionable context over silent quality downgrades
+
+### Product Roadmap
+
+| Version | Theme | Status |
+|---------|-------|--------|
+| v0.1 | Foundation — Registry, Health, Router, mDNS, CLI, Aliases, Fallbacks | ✅ Released |
+| v0.2 | Observability — Prometheus metrics, Web Dashboard, Structured logging | Next |
+| v0.3 | Cloud Hybrid — Cloud backends, Privacy zones, Budget management | Planned |
+| v0.4 | Intelligence — Speculative router, Quality tracking, Embeddings, Queuing | Planned |
+| v0.5 | Orchestration — Pre-warming, Model lifecycle, Multi-tenant, Rate limiting | Planned |
+
+See `docs/FEATURES.md` for detailed feature specs (F01-F22).
 
 ## Build, Test, and Lint
 
 ```bash
-# Build
-cargo build
-
-# Run tests
-cargo test
-
-# Run a single test
-cargo test <test_name>
-
-# Run tests in a specific module
-cargo test <module>::
-
-# Lint (all-targets catches test and example code too)
-cargo clippy --all-targets -- -D warnings
-
-# Format check
-cargo fmt --all -- --check
-
-# Run with debug logging
-RUST_LOG=debug cargo run -- serve
+cargo build                                        # Build
+cargo test                                         # Run all tests
+cargo test <test_name>                             # Single test
+cargo test <module>::                              # Module tests
+cargo clippy --all-targets -- -D warnings          # Lint
+cargo fmt --all -- --check                         # Format check
+RUST_LOG=debug cargo run -- serve                  # Run with debug logging
 ```
 
 ## Tech Stack & Patterns
 
-- **Runtime**: Use `tokio` for the async runtime (full features).
-- **Web Framework**: Use `axum` for all HTTP layers.
-- **Client**: Use `reqwest` for backend communication with connection pooling.
-- **State Management**: Use `Arc<T>` for shared state and `DashMap` for concurrent maps.
-- **Error Handling**: Use `thiserror` for internal errors. HTTP responses must match the OpenAI Error format.
-- **Logging**: Use the `tracing` crate for structured logging. Avoid `println!`.
-- **Configuration**: TOML format (see `nexus.example.toml`).
+- **Runtime**: `tokio` (full features)
+- **Web Framework**: `axum` for all HTTP layers
+- **HTTP Client**: `reqwest` with connection pooling
+- **State Management**: `Arc<T>` for shared state, `DashMap` for concurrent maps, `AtomicU32`/`AtomicU64` for counters
+- **Error Handling**: `thiserror` for internal errors; HTTP responses match OpenAI error format exactly
+- **Logging**: `tracing` crate only — no `println!`
+- **Configuration**: TOML format (see `nexus.example.toml`), precedence: CLI args > env vars > config file > defaults
+- **CLI**: `clap` with derive feature
 
 ## Architecture
 
-### Core Components
+### Module Structure
 
-1. **API Layer** (`src/api/`) - Axum-based HTTP server exposing:
-   - `POST /v1/chat/completions` - Chat completion (streaming supported)
-   - `GET /v1/models` - List available models
-   - `GET /health` - System health
+```
+src/
+├── api/          # Axum HTTP server (completions, models, health)
+├── cli/          # Clap CLI (serve, backends, models, health, config, completions)
+├── config/       # TOML config loading with env override (NEXUS_*)
+├── discovery/    # mDNS auto-discovery via mdns-sd
+├── health/       # Background health checker with backend-specific endpoints
+├── registry/     # In-memory backend/model registry (DashMap, source of truth)
+├── routing/      # Intelligent request routing (strategies, scoring, requirements)
+├── lib.rs        # Module declarations
+└── main.rs       # Entry point
+```
 
-2. **Router Layer** (`src/routing/`) - Intelligent request routing:
-   - Matches models to capable backends
-   - Scores backends by priority, load, and latency
-   - Supports strategies: `smart`, `round_robin`, `priority_only`, `random`
-   - **Always consider context length, vision support, and tool-use capabilities before load or latency**
+### API Endpoints
 
-3. **Backend Registry** (`src/registry/`) - In-memory storage (source of truth):
-   - Tracks backends and their health status
-   - Maintains model-to-backend index
-   - Uses `DashMap` for concurrent access
-   - All backend status and model metadata live here
-
-4. **Health Checker** (`src/health/`) - Background service:
-   - Polls backends every 30s
-   - Updates model capabilities on each check
-   - Uses backend-specific endpoints (Ollama: `/api/tags`, others: `/v1/models`)
-
-5. **mDNS Discovery** (`src/discovery/`) - Auto-discovery:
-   - Listens for `_ollama._tcp.local` and `_llm._tcp.local`
-   - Automatically registers/removes backends
-
-### Request Flow
-
-1. Request arrives at API layer
-2. Router selects best healthy backend for the requested model
-3. Request is proxied to backend
-4. On failure: retry with next backend (configurable max retries)
-5. Stream response back to client
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/chat/completions` | Chat completion (streaming and non-streaming) |
+| `GET` | `/v1/models` | List available models from healthy backends |
+| `GET` | `/health` | System health with backend/model counts |
 
 ### Key Types
 
-- `BackendType`: Ollama, VLLM, LlamaCpp, Exo, OpenAI, Generic
-- `BackendStatus`: Healthy, Unhealthy, Unknown
-- `DiscoverySource`: Static (config), MDNS (auto), Manual (CLI)
-- `Model`: Must include context length and feature flags (vision, tools)
+| Type | Location | Description |
+|------|----------|-------------|
+| `BackendType` | `registry/backend.rs` | Ollama, VLLM, LlamaCpp, Exo, OpenAI, LMStudio, Generic |
+| `BackendStatus` | `registry/backend.rs` | Healthy, Unhealthy, Unknown, Draining |
+| `DiscoverySource` | `registry/backend.rs` | Static (config), MDNS (auto), Manual (CLI) |
+| `Backend` | `registry/backend.rs` | Thread-safe registry entry with atomic counters (pending, total, latency EMA) |
+| `Model` | `registry/backend.rs` | id, name, context_length, vision, tools, json_mode, max_output_tokens |
+| `Registry` | `registry/mod.rs` | DashMap-based concurrent storage with model-to-backend index |
+| `RoutingStrategy` | `routing/strategies.rs` | Smart (default), RoundRobin, PriorityOnly, Random |
+| `Router` | `routing/mod.rs` | Alias resolution (max 3-level chaining), fallback chains, scoring |
+| `RequestRequirements` | `routing/requirements.rs` | Vision, tools, context window requirements extracted from request |
+| `AppState` | `api/mod.rs` | Registry, config, HTTP client, router, startup time |
+| `NexusConfig` | `config/mod.rs` | Aggregates server, discovery, health_check, routing, backends, logging |
 
 ### Key Patterns
 
-**View Models for Output**: Separate internal types from display/serialization types:
+**Atomic Metrics**: Backend load tracking uses lock-free atomics, not mutexes:
 ```rust
-// Internal type (complex, atomics, business logic)
-pub struct Backend { /* ... */ }
+// Latency tracked via EMA: new = (sample + 4×old) / 5 (α=0.2)
+backend.update_latency(elapsed_ms);
+backend.increment_pending();
+backend.decrement_pending();
+```
 
-// Display type (simple, serializable, no atomics)
-pub struct BackendView { /* ... */ }
-
+**View Models for Output**: Separate internal types from serialization types:
+```rust
+pub struct Backend { /* atomics, DashMap, business logic */ }
+pub struct BackendView { /* simple, serializable, no atomics */ }
 impl From<&Backend> for BackendView { /* ... */ }
 ```
 
-**Graceful Shutdown**: Use `CancellationToken` from `tokio_util` for clean shutdown:
+**Graceful Shutdown**: Use `CancellationToken` from `tokio_util`:
 ```rust
 let cancel_token = CancellationToken::new();
-// Pass to background tasks
 let handle = health_checker.start(cancel_token.clone());
-// Wait for shutdown signal
 shutdown_signal(cancel_token).await;
-// Cleanup
 handle.await?;
 ```
 
-## Architectural Rules
+**Capability Routing**: Router reads request payload to match backend capabilities:
+```rust
+// Request with image_url → requires vision-capable backend
+// Request with tools[] → requires tool-use-capable backend
+// Token count estimate → requires sufficient context window
+```
 
-- **Registry Source of Truth**: All backend status and model metadata live in `src/registry/mod.rs`.
-- **Zero-Config Philosophy**: Prioritize mDNS discovery (`mdns-sd`) and auto-detection over manual user input.
-- **OpenAI Compatibility**: Strict adherence to the OpenAI Chat Completions API (streaming and non-streaming) is mandatory.
-- **Intelligent Routing**: When implementing the Router, always consider context length, vision support, and tool-use capabilities before load or latency.
+## Architectural Principles
+
+1. **Registry Source of Truth**: All backend status and model metadata live in `src/registry/mod.rs`
+2. **Zero-Config Philosophy**: Prioritize mDNS discovery and auto-detection over manual input
+3. **OpenAI Compatibility**: Strict adherence to OpenAI API; metadata in `X-Nexus-*` headers only (never modify response JSON body)
+4. **Intelligent Routing**: Match capabilities to request requirements before considering load or latency
+5. **Stateless by Design**: Route requests, not sessions — clients own conversation history
+6. **Explicit Contracts**: 503 with actionable context is preferred over silent quality downgrades
+7. **Precise Measurement**: Per-backend tokenizer registry, VRAM-aware pre-warming, sub-ms payload inspection
+
+### What Nexus Is
+
+- A **control plane** for heterogeneous LLM inference
+- A **stateless request router** with capability matching
+- A **policy enforcement layer** (privacy zones, budgets, capability tiers)
+
+### What Nexus Is NOT
+
+- **Not an inference engine** — routes to backends, doesn't run models
+- **Not a GPU scheduler** — backends manage their own VRAM/compute
+- **Not for training** — inference routing only
+- **Not a session manager** — no KV-cache, no conversation state
+
+### Evolving Scope
+
+These capabilities were originally out of scope but are now planned:
+
+| Capability | Version | Rationale |
+|-----------|---------|-----------|
+| Cloud backends | v0.3 | Hybrid local+cloud gateway with privacy enforcement |
+| Multi-tenant auth | v0.5 | API keys and quotas for team/enterprise use |
+| Model lifecycle | v0.5 | Load/unload/migrate via API (orchestration, not management) |
+| Rate limiting | v0.5 | Per-backend and per-tenant protection |
 
 ## Git Workflow
 
@@ -126,7 +167,7 @@ handle.await?;
 |  1. SPEC PHASE                                                          |
 |     a) Write spec.md, plan.md, tasks.md                                 |
 |     b) Copy requirements-validation.md to feature folder                |
-|     c) Complete requirements-quality checklist (spec quality gate)      |
+|     c) Complete requirements-quality checklist (spec quality gate)       |
 |     d) Run speckit.analyze (early check for spec issues)                |
 |     e) Create GitHub issues via speckit.taskstoissues                   |
 +-------------------------------------------------------------------------+
@@ -181,28 +222,6 @@ grep -c "\- \[ \]" specs/XXX-feature/tasks.md         # Should be 0
 
 **Quick Reference**: See `.specify/QUICK-REFERENCE.md` for top critical items.
 
-
-```bash
-# 1. Create feature branch BEFORE implementing
-git checkout -b feature/f05-intelligent-router
-
-# 2. Implement the feature (commits go to feature branch)
-git add .
-git commit -m "feat: implement Intelligent Router (F05)"
-
-# 3. Push feature branch
-git push -u origin feature/f05-intelligent-router
-
-# 4. Create Pull Request
-gh pr create \
-  --title "feat: Intelligent Router (F05)" \
-  --body "..." \
-  --label "enhancement"
-
-# 5. Merge PR (this closes linked issues automatically)
-gh pr merge --squash
-```
-
 ### Commit Message Format
 
 Use conventional commits with issue references:
@@ -216,61 +235,69 @@ Closes #124
 Closes #125
 ```
 
-**Note**: Use separate `Closes #X` lines for each issue. Comma-separated syntax (`Closes #1, #2, #3`) may not close all issues reliably.
+**Note**: Use separate `Closes #X` lines for each issue.
 
-### Why This Matters
+```bash
+# 1. Create feature branch BEFORE implementing
+git checkout -b feature/f09-request-metrics
 
-- PRs provide a review checkpoint before merging to main
-- PR history documents feature implementations (see [closed PRs](https://github.com/leocamello/nexus/pulls?q=is%3Apr+is%3Aclosed))
-- Issues are automatically closed when PR is merged
-- Easier to revert if needed (single PR vs hunting commits)
+# 2. Implement the feature (commits go to feature branch)
+git add .
+git commit -m "feat: implement Request Metrics (F09)"
+
+# 3. Push feature branch and create PR
+git push -u origin feature/f09-request-metrics
+gh pr create --title "feat: Request Metrics (F09)" --body "..." --label "enhancement"
+
+# 4. Merge PR (closes linked issues automatically)
+gh pr merge --squash
+```
 
 ### Task Completion Checklist
 
 When completing a task, **always update the tasks.md file**:
 
-1. **After implementing each task**: Check off acceptance criteria as you verify them
-2. **Before committing**: Ensure all `- [ ]` items for the task are now `- [x]`
-3. **Use speckit.analyze**: Run analysis before PR to catch gaps
+1. Check off acceptance criteria as you verify them
+2. Ensure all `- [ ]` items are now `- [x]` before committing
+3. Run `speckit.analyze` before PR to catch gaps
 
 ```bash
-# Verify no unchecked items remain in ALL feature docs
+# Verify no unchecked items remain
 grep -c "\- \[ \]" specs/XXX-feature/tasks.md         # Should be 0
 grep -c "\- \[ \]" specs/XXX-feature/verification.md  # Should be 0
 ```
 
-**Why**: Acceptance criteria checkboxes document what was actually delivered. Unchecked boxes create confusion about implementation status.
-
 ## Coding Standards
 
 - Line width: 100 characters (see `rustfmt.toml`)
-- Routing decision: < 1ms; total request overhead: < 5ms (see constitution for full latency budget)
+- Routing decision: < 1ms; total request overhead: < 5ms (see constitution latency budget)
+- Memory baseline: < 50 MB; per backend: < 10 KB
 - Prefer memory-safe Rust patterns; minimize `unsafe` blocks
-- Ensure the `Model` struct includes context length and feature flags (vision, tools)
-- No `println!` - use `tracing` macros for all output
-- No panics on backend errors - always return proper HTTP response
+- `Model` struct must include context_length and feature flags (vision, tools, json_mode)
+- No `println!` — use `tracing` macros for all output
+- No panics on backend errors — always return proper HTTP response
+- Comment the "why", not the "what"; no commented-out code in main branch
 
 ## Testing Strategy
 
-### TDD Workflow
+### TDD Workflow (Non-Negotiable)
 
-When asked to implement a feature, **always suggest the test cases first**.
+When asked to implement a feature, **always suggest the test cases first**:
+1. Write tests → 2. Confirm they fail (Red) → 3. Implement (Green) → 4. Refactor
 
-### Unit Tests
+### Test Structure
 
-- Place in the same file or a `tests.rs` module for registry and routing logic
-- Every logic file (e.g., `src/routing/mod.rs`) must contain a `mod tests` block at the bottom guarded by `#[cfg(test)]`
+| Scope | Location | Focus |
+|-------|----------|-------|
+| Unit tests | `mod tests` in each logic file | Registry data integrity, Router scoring |
+| Integration tests | `tests/` directory | End-to-end API flows with mock backends |
+| Property tests | `proptest` in scoring modules | Router `score()` function edge cases |
+| Doc tests | Doc comments on public types | Executable examples stay accurate |
+
+### Rules
+
+- Every logic file must contain a `mod tests` block guarded by `#[cfg(test)]`
 - Focus unit tests on the Registry's data integrity and the Router's scoring logic
-
-### Integration Tests
-
-- Use the `tests/` directory for end-to-end API flows
 - Use mock HTTP backends to simulate OpenAI-compatible responses
-
-### Property Testing
-
-- For complex logic like the `score()` function in `src/routing/mod.rs`, prefer property-based testing (via `proptest`) over static values
-
-### Documentation Tests
-
-- Write executable examples in doc comments for public traits and structs to ensure documentation stays accurate
+- For complex scoring logic, prefer property-based testing (`proptest`) over static values
+- Write executable examples in doc comments for public traits and structs
