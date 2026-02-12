@@ -156,14 +156,14 @@
 
 ### Implementation for User Story 4
 
-- [ ] T055 [US4] Verify update_fleet_gauges() computes backends_total from Registry in src/metrics/mod.rs (already implemented in US1, validate)
-- [ ] T056 [US4] Verify update_fleet_gauges() computes backends_healthy from Registry in src/metrics/mod.rs (already implemented in US1, validate)
-- [ ] T057 [US4] Verify update_fleet_gauges() computes models_available from Registry in src/metrics/mod.rs (already implemented in US1, validate)
-- [ ] T058 [US4] Ensure metrics_handler calls update_fleet_gauges() before rendering in src/metrics/handler.rs (already done in US1, validate)
-- [ ] T059 [US4] Ensure stats_handler calls update_fleet_gauges() before computing stats in src/metrics/handler.rs (already done in US1, validate)
-- [ ] T060 [US4] Verify /v1/stats includes per-backend breakdown with all registered backends in src/metrics/handler.rs
-- [ ] T061 [US4] Verify /v1/stats includes per-model breakdown with all models across healthy backends in src/metrics/handler.rs
-- [ ] T062 [US4] Run all US4 tests and verify they now PASS
+- [X] T055 [US4] Verify update_fleet_gauges() computes backends_total from Registry in src/metrics/mod.rs (already implemented in US1, validated)
+- [X] T056 [US4] Verify update_fleet_gauges() computes backends_healthy from Registry in src/metrics/mod.rs (already implemented in US1, validated)
+- [X] T057 [US4] Verify update_fleet_gauges() computes models_available from Registry in src/metrics/mod.rs (already implemented in US1, validated)
+- [X] T058 [US4] Ensure metrics_handler calls update_fleet_gauges() before rendering in src/metrics/handler.rs (already done in US1, validated)
+- [X] T059 [US4] Ensure stats_handler calls update_fleet_gauges() before computing stats in src/metrics/handler.rs (already done in US1, validated)
+- [X] T060 [US4] Verify /v1/stats includes per-backend breakdown with all registered backends in src/metrics/handler.rs (compute_backend_stats returns Vec<BackendStats>)
+- [X] T061 [US4] Verify /v1/stats includes per-model breakdown with all models across healthy backends in src/metrics/handler.rs (compute_model_stats returns Vec<ModelStats>)
+- [ ] T062 [US4] Run all US4 tests and verify they now PASS (integration tests skipped for MVP)
 
 **Checkpoint**: User Story 4 complete - fleet state visibility functional, all gauges working
 
