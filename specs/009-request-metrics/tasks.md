@@ -19,10 +19,10 @@
 
 **Purpose**: Project initialization and dependencies
 
-- [ ] T001 Add metrics crate (0.23) dependency to Cargo.toml
-- [ ] T002 Add metrics-exporter-prometheus (0.15) dependency to Cargo.toml
-- [ ] T003 Create src/metrics/ module directory structure
-- [ ] T004 Verify dependencies compile with cargo check
+- [X] T001 Add metrics crate (0.23) dependency to Cargo.toml
+- [X] T002 Add metrics-exporter-prometheus (0.15) dependency to Cargo.toml
+- [X] T003 Create src/metrics/ module directory structure
+- [X] T004 Verify dependencies compile with cargo check
 
 ---
 
@@ -36,22 +36,22 @@
 
 ### Foundational Tests (Write FIRST, ensure they FAIL)
 
-- [ ] T005a [P] Write unit test for MetricsCollector construction in src/metrics/mod.rs (verify struct creation with registry reference and start_time)
-- [ ] T005b [P] Write unit test for label sanitization in src/metrics/mod.rs (valid names, special chars, leading digits → underscore replacement)
-- [ ] T005c [P] Write unit test for StatsResponse serialization in src/metrics/types.rs (verify JSON output matches contract schema)
+- [X] T005a [P] Write unit test for MetricsCollector construction in src/metrics/mod.rs (verify struct creation with registry reference and start_time)
+- [X] T005b [P] Write unit test for label sanitization in src/metrics/mod.rs (valid names, special chars, leading digits → underscore replacement)
+- [X] T005c [P] Write unit test for StatsResponse serialization in src/metrics/types.rs (verify JSON output matches contract schema)
 
 ### Foundational Implementation (Make tests PASS)
 
-- [ ] T005 Create MetricsCollector struct in src/metrics/mod.rs with registry reference, start_time, and label_cache
-- [ ] T006 [P] Implement label sanitization function in src/metrics/mod.rs (replace invalid chars with underscore)
-- [ ] T007 [P] Create metrics types module in src/metrics/types.rs (StatsResponse, RequestStats, BackendStats, ModelStats)
-- [ ] T008 Implement setup_metrics() function in src/metrics/mod.rs to initialize PrometheusBuilder with custom histogram buckets
-- [ ] T009 Add metrics_collector field to AppState in src/api/mod.rs
-- [ ] T010 Initialize MetricsCollector and install Prometheus recorder in src/main.rs at gateway startup
-- [ ] T011 Create metrics_handler stub in src/metrics/handler.rs for GET /metrics endpoint
-- [ ] T012 Create stats_handler stub in src/metrics/handler.rs for GET /v1/stats endpoint
-- [ ] T013 Register /metrics route in src/api/mod.rs router
-- [ ] T014 Register /v1/stats route in src/api/mod.rs router
+- [X] T005 Create MetricsCollector struct in src/metrics/mod.rs with registry reference, start_time, and label_cache
+- [X] T006 [P] Implement label sanitization function in src/metrics/mod.rs (replace invalid chars with underscore)
+- [X] T007 [P] Create metrics types module in src/metrics/types.rs (StatsResponse, RequestStats, BackendStats, ModelStats)
+- [X] T008 Implement setup_metrics() function in src/metrics/mod.rs to initialize PrometheusBuilder with custom histogram buckets
+- [X] T009 Add metrics_collector field to AppState in src/api/mod.rs
+- [X] T010 Initialize MetricsCollector and install Prometheus recorder in src/main.rs at gateway startup
+- [X] T011 Create metrics_handler stub in src/metrics/handler.rs for GET /metrics endpoint
+- [X] T012 Create stats_handler stub in src/metrics/handler.rs for GET /v1/stats endpoint
+- [X] T013 Register /metrics route in src/api/mod.rs router
+- [X] T014 Register /v1/stats route in src/api/mod.rs router
 
 **Checkpoint**: Foundation ready - metrics infrastructure initialized, endpoints registered, user story implementation can now begin
 
@@ -72,17 +72,17 @@
 
 ### Implementation for User Story 1
 
-- [ ] T019 [US1] Implement update_fleet_gauges() method in src/metrics/mod.rs (query Registry, compute backends_total, backends_healthy, models_available gauges)
-- [ ] T020 [US1] Implement metrics_handler in src/metrics/handler.rs (call update_fleet_gauges(), render Prometheus text format)
+- [X] T019 [US1] Implement update_fleet_gauges() method in src/metrics/mod.rs (query Registry, compute backends_total, backends_healthy, models_available gauges)
+- [X] T020 [US1] Implement metrics_handler in src/metrics/handler.rs (call update_fleet_gauges(), render Prometheus text format)
 - [ ] T021 [US1] Implement compute_request_stats() helper in src/metrics/handler.rs (aggregate total, success, error counts from Prometheus data)
 - [ ] T022 [US1] Implement compute_backend_stats() helper in src/metrics/handler.rs (per-backend request counts and average latency)
 - [ ] T023 [US1] Implement compute_model_stats() helper in src/metrics/handler.rs (per-model request counts and average duration)
 - [ ] T024 [US1] Implement stats_handler in src/metrics/handler.rs (compute all stats, serialize to JSON)
-- [ ] T025 [US1] Add request timer start at entry of completions handler in src/api/completions.rs
-- [ ] T026 [US1] Record nexus_requests_total counter on success path in src/api/completions.rs with model, backend, status labels
-- [ ] T027 [US1] Record nexus_request_duration_seconds histogram on success path in src/api/completions.rs with model, backend labels
-- [ ] T028 [US1] Record nexus_errors_total counter on error paths in src/api/completions.rs with error_type, model labels
-- [ ] T029 [US1] Add error type mapping (NoHealthyBackend → no_healthy_backend, Timeout → timeout, etc.) in src/api/completions.rs
+- [X] T025 [US1] Add request timer start at entry of completions handler in src/api/completions.rs
+- [X] T026 [US1] Record nexus_requests_total counter on success path in src/api/completions.rs with model, backend, status labels
+- [X] T027 [US1] Record nexus_request_duration_seconds histogram on success path in src/api/completions.rs with model, backend labels
+- [X] T028 [US1] Record nexus_errors_total counter on error paths in src/api/completions.rs with error_type, model labels
+- [X] T029 [US1] Add error type mapping (NoHealthyBackend → no_healthy_backend, Timeout → timeout, etc.) in src/api/completions.rs
 - [ ] T030 [US1] Run all US1 tests and verify they now PASS
 
 **Checkpoint**: User Story 1 complete - basic request tracking working, both /metrics and /v1/stats endpoints functional

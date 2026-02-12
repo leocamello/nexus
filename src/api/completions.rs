@@ -28,6 +28,10 @@ pub async fn handle(
     headers: HeaderMap,
     Json(request): Json<ChatCompletionRequest>,
 ) -> Result<Response, ApiError> {
+    // Start timer for request duration tracking
+    let start_time = std::time::Instant::now();
+    let requested_model = request.model.clone();
+    
     info!(model = %request.model, stream = request.stream, "Chat completion request");
 
     // For streaming requests, use streaming handler
@@ -39,6 +43,22 @@ pub async fn handle(
     let requirements = RequestRequirements::from_request(&request);
     let routing_result = state.router.select_backend(&requirements).map_err(|e| {
         let available = available_models(&state);
+        
+        // Record error metrics
+        let error_type = match &e {
+            crate::routing::RoutingError::ModelNotFound { .. } => "model_not_found",
+            crate::routing::RoutingError::FallbackChainExhausted { .. } => "fallback_exhausted",
+            crate::routing::RoutingError::NoHealthyBackend { .. } => "no_healthy_backend",
+            crate::routing::RoutingError::CapabilityMismatch { .. } => "capability_mismatch",
+        };
+        
+        let sanitized_model = state.metrics_collector.sanitize_label(&requested_model);
+        metrics::counter!("nexus_errors_total",
+            "error_type" => error_type,
+            "model" => sanitized_model.clone()
+        )
+        .increment(1);
+        
         match e {
             crate::routing::RoutingError::ModelNotFound { model } => {
                 ApiError::model_not_found(&model, &available)
@@ -79,6 +99,26 @@ pub async fn handle(
             Ok(response) => {
                 let _ = state.registry.decrement_pending(&backend.id);
                 info!(backend_id = %backend.id, "Request succeeded");
+                
+                // Record success metrics
+                let duration = start_time.elapsed().as_secs_f64();
+                let sanitized_model = state.metrics_collector.sanitize_label(&actual_model);
+                let sanitized_backend = state.metrics_collector.sanitize_label(&backend.id);
+                
+                // Increment request counter
+                metrics::counter!("nexus_requests_total",
+                    "model" => sanitized_model.clone(),
+                    "backend" => sanitized_backend.clone(),
+                    "status" => "200"
+                )
+                .increment(1);
+                
+                // Record request duration
+                metrics::histogram!("nexus_request_duration_seconds",
+                    "model" => sanitized_model.clone(),
+                    "backend" => sanitized_backend.clone()
+                )
+                .record(duration);
 
                 // Create response with fallback header if applicable
                 let mut resp = Json(response).into_response();
@@ -93,6 +133,21 @@ pub async fn handle(
             Err(e) => {
                 let _ = state.registry.decrement_pending(&backend.id);
                 warn!(backend_id = %backend.id, error = %e.error.message, "Backend request failed");
+                
+                // Record backend error
+                let sanitized_model = state.metrics_collector.sanitize_label(&requested_model);
+                let error_type = if e.error.code.as_deref() == Some("gateway_timeout") {
+                    "timeout"
+                } else {
+                    "backend_error"
+                };
+                
+                metrics::counter!("nexus_errors_total",
+                    "error_type" => error_type,
+                    "model" => sanitized_model
+                )
+                .increment(1);
+                
                 last_error = Some(e);
             }
         }
