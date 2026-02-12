@@ -1,0 +1,163 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Nexus Stats API Response",
+  "description": "JSON statistics response from GET /v1/stats endpoint",
+  "type": "object",
+  "required": [
+    "uptime_seconds",
+    "requests",
+    "backends",
+    "models"
+  ],
+  "properties": {
+    "uptime_seconds": {
+      "type": "integer",
+      "description": "Gateway uptime in seconds since startup",
+      "minimum": 0,
+      "example": 3600
+    },
+    "requests": {
+      "type": "object",
+      "description": "Aggregate request statistics",
+      "required": [
+        "total",
+        "success",
+        "errors"
+      ],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "description": "Total number of requests processed",
+          "minimum": 0,
+          "example": 1000
+        },
+        "success": {
+          "type": "integer",
+          "description": "Number of successful requests (HTTP 2xx)",
+          "minimum": 0,
+          "example": 950
+        },
+        "errors": {
+          "type": "integer",
+          "description": "Number of failed requests (HTTP 4xx, 5xx)",
+          "minimum": 0,
+          "example": 50
+        }
+      }
+    },
+    "backends": {
+      "type": "array",
+      "description": "Per-backend statistics",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "requests",
+          "average_latency_ms",
+          "pending"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Backend identifier",
+            "example": "ollama-local"
+          },
+          "requests": {
+            "type": "integer",
+            "description": "Number of requests served by this backend",
+            "minimum": 0,
+            "example": 500
+          },
+          "average_latency_ms": {
+            "type": "number",
+            "description": "Average request latency in milliseconds",
+            "minimum": 0,
+            "example": 1250.5
+          },
+          "pending": {
+            "type": "integer",
+            "description": "Number of requests currently pending for this backend",
+            "minimum": 0,
+            "example": 2
+          }
+        }
+      }
+    },
+    "models": {
+      "type": "array",
+      "description": "Per-model statistics",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "requests",
+          "average_duration_ms"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Model name",
+            "example": "llama3:70b"
+          },
+          "requests": {
+            "type": "integer",
+            "description": "Number of requests for this model",
+            "minimum": 0,
+            "example": 300
+          },
+          "average_duration_ms": {
+            "type": "number",
+            "description": "Average request duration in milliseconds",
+            "minimum": 0,
+            "example": 5000.0
+          }
+        }
+      }
+    }
+  },
+  "example": {
+    "uptime_seconds": 3600,
+    "requests": {
+      "total": 1000,
+      "success": 950,
+      "errors": 50
+    },
+    "backends": [
+      {
+        "id": "ollama-local",
+        "requests": 500,
+        "average_latency_ms": 1250.5,
+        "pending": 2
+      },
+      {
+        "id": "vllm-gpu-1",
+        "requests": 300,
+        "average_latency_ms": 850.2,
+        "pending": 0
+      },
+      {
+        "id": "openai-cloud",
+        "requests": 200,
+        "average_latency_ms": 2100.8,
+        "pending": 1
+      }
+    ],
+    "models": [
+      {
+        "name": "llama3:70b",
+        "requests": 300,
+        "average_duration_ms": 5000.0
+      },
+      {
+        "name": "gpt-4",
+        "requests": 400,
+        "average_duration_ms": 3500.0
+      },
+      {
+        "name": "mixtral:8x7b",
+        "requests": 300,
+        "average_duration_ms": 2200.0
+      }
+    ]
+  }
+}
