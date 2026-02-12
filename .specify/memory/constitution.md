@@ -236,16 +236,32 @@ Templates are in `.specify/templates/`. See `.specify/INDEX.md` for details.
 - Comment the "why", not the "what"
 - No commented-out code in main branch
 
+## What Nexus Is
+
+1. **A control plane** for heterogeneous LLM inference — routes, observes, enforces policy
+2. **A stateless request router** with capability matching and privacy enforcement
+3. **A policy enforcement layer** for privacy zones, budgets, and capability tiers
+4. **Backend-agnostic** — the value exists above any single inference engine
+
 ## What Nexus Is NOT
 
-These are explicitly out of scope:
+These are permanently out of scope:
 
 1. **Not an inference engine** - Nexus routes to backends; it doesn't run models
-2. **Not a model manager** - No model downloads, conversions, or storage
-3. **Not multi-tenant** - Single user/team assumed; no authentication
-4. **Not a GPU scheduler** - Backends manage their own resources
-5. **Not for training** - Inference routing only
-6. **Not cloud-first** - Designed for local networks
+2. **Not a GPU scheduler** - Backends manage their own VRAM and compute resources
+3. **Not for training** - Inference routing only
+4. **Not a session manager** - No KV-cache, no conversation state (clients own history)
+
+### Evolving Scope
+
+These capabilities were originally out of scope but are now planned features:
+
+| Capability | Version | Rationale |
+|-----------|---------|-----------|
+| Cloud backends | v0.3 | Hybrid local+cloud gateway with privacy enforcement |
+| Multi-tenant auth | v0.5 | API keys and quotas for team/enterprise use |
+| Model lifecycle | v0.5 | Load/unload/migrate via API (orchestration, not storage) |
+| Rate limiting | v0.5 | Per-backend and per-tenant protection |
 
 ## Governance
 
