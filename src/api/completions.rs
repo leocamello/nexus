@@ -119,6 +119,33 @@ pub async fn handle(
                     "backend" => sanitized_backend.clone()
                 )
                 .record(duration);
+                
+                // Record fallback usage if applicable
+                if fallback_used {
+                    let sanitized_requested = state.metrics_collector.sanitize_label(&requested_model);
+                    metrics::counter!("nexus_fallbacks_total",
+                        "from_model" => sanitized_requested,
+                        "to_model" => sanitized_model.clone()
+                    )
+                    .increment(1);
+                }
+                
+                // Record token usage if available in response
+                if let Some(ref usage) = response.usage {
+                    metrics::histogram!("nexus_tokens_total",
+                        "model" => sanitized_model.clone(),
+                        "backend" => sanitized_backend.clone(),
+                        "type" => "prompt"
+                    )
+                    .record(usage.prompt_tokens as f64);
+                    
+                    metrics::histogram!("nexus_tokens_total",
+                        "model" => sanitized_model.clone(),
+                        "backend" => sanitized_backend.clone(),
+                        "type" => "completion"
+                    )
+                    .record(usage.completion_tokens as f64);
+                }
 
                 // Create response with fallback header if applicable
                 let mut resp = Json(response).into_response();

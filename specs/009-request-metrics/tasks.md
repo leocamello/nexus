@@ -103,13 +103,13 @@
 
 ### Implementation for User Story 2
 
-- [ ] T034 [US2] Verify nexus_request_duration_seconds histogram recording in src/api/completions.rs (already done in US1, validate buckets configured)
-- [ ] T035 [US2] Add health check timer in src/health/mod.rs at start of check_backend() method
-- [ ] T036 [US2] Record nexus_backend_latency_seconds histogram in src/health/mod.rs after successful health check with backend label
-- [ ] T037 [US2] Convert health check latency from milliseconds to seconds before recording in src/health/mod.rs
-- [ ] T038 [US2] Update stats_handler to include average_latency_ms in BackendStats (convert seconds to milliseconds) in src/metrics/handler.rs
-- [ ] T039 [US2] Update stats_handler to include average_duration_ms in ModelStats (convert seconds to milliseconds) in src/metrics/handler.rs
-- [ ] T040 [US2] Run all US2 tests and verify they now PASS
+- [X] T034 [US2] Verify nexus_request_duration_seconds histogram recording in src/api/completions.rs (already done in US1, validate buckets configured)
+- [X] T035 [US2] Add health check timer in src/health/mod.rs at start of check_backend() method
+- [X] T036 [US2] Record nexus_backend_latency_seconds histogram in src/health/mod.rs after successful health check with backend label
+- [X] T037 [US2] Convert health check latency from milliseconds to seconds before recording in src/health/mod.rs
+- [X] T038 [US2] Update stats_handler to include average_latency_ms in BackendStats (convert seconds to milliseconds) in src/metrics/handler.rs
+- [X] T039 [US2] Update stats_handler to include average_duration_ms in ModelStats (convert seconds to milliseconds) in src/metrics/handler.rs
+- [ ] T040 [US2] Run all US2 tests and verify they now PASS (integration tests skipped for MVP)
 
 **Checkpoint**: User Story 2 complete - performance histograms working, latency tracking functional
 
