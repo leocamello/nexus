@@ -443,6 +443,28 @@ mod tests {
     fn routing_strategy_from_str_invalid() {
         assert!("invalid".parse::<RoutingStrategy>().is_err());
     }
+
+    #[test]
+    fn routing_strategy_display() {
+        assert_eq!(RoutingStrategy::Smart.to_string(), "smart");
+        assert_eq!(RoutingStrategy::RoundRobin.to_string(), "round_robin");
+        assert_eq!(RoutingStrategy::PriorityOnly.to_string(), "priority_only");
+        assert_eq!(RoutingStrategy::Random.to_string(), "random");
+    }
+
+    #[test]
+    fn routing_strategy_display_roundtrips() {
+        for strategy in &[
+            RoutingStrategy::Smart,
+            RoutingStrategy::RoundRobin,
+            RoutingStrategy::PriorityOnly,
+            RoutingStrategy::Random,
+        ] {
+            let s = strategy.to_string();
+            let parsed: RoutingStrategy = s.parse().unwrap();
+            assert_eq!(*strategy, parsed);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -647,6 +669,128 @@ mod filter_tests {
 
         let candidates = router.filter_candidates("nonexistent", &requirements);
         assert!(candidates.is_empty());
+    }
+
+    #[test]
+    fn filters_by_tools_capability() {
+        let backends = vec![
+            create_test_backend(
+                "backend_a",
+                "Backend A",
+                BackendStatus::Healthy,
+                vec![create_test_model("llama3:8b", 4096, false, false)],
+            ),
+            create_test_backend(
+                "backend_b",
+                "Backend B",
+                BackendStatus::Healthy,
+                vec![create_test_model("llama3:8b", 4096, false, true)],
+            ),
+        ];
+
+        let router = create_test_router(backends);
+        let requirements = RequestRequirements {
+            model: "llama3:8b".to_string(),
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: true,
+            needs_json_mode: false,
+        };
+
+        let candidates = router.filter_candidates("llama3:8b", &requirements);
+        assert_eq!(candidates.len(), 1);
+        assert!(candidates[0].models[0].supports_tools);
+    }
+
+    #[test]
+    fn filters_by_json_mode_capability() {
+        let model_no_json = Model {
+            id: "llama3:8b".to_string(),
+            name: "llama3:8b".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+        };
+        let model_with_json = Model {
+            id: "llama3:8b".to_string(),
+            name: "llama3:8b".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: true,
+            max_output_tokens: None,
+        };
+
+        let backends = vec![
+            create_test_backend(
+                "backend_a",
+                "Backend A",
+                BackendStatus::Healthy,
+                vec![model_no_json],
+            ),
+            create_test_backend(
+                "backend_b",
+                "Backend B",
+                BackendStatus::Healthy,
+                vec![model_with_json],
+            ),
+        ];
+
+        let router = create_test_router(backends);
+        let requirements = RequestRequirements {
+            model: "llama3:8b".to_string(),
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: true,
+        };
+
+        let candidates = router.filter_candidates("llama3:8b", &requirements);
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].name, "Backend B");
+    }
+
+    #[test]
+    fn filters_by_multiple_capabilities() {
+        let full_model = Model {
+            id: "llama3:8b".to_string(),
+            name: "llama3:8b".to_string(),
+            context_length: 128000,
+            supports_vision: true,
+            supports_tools: true,
+            supports_json_mode: true,
+            max_output_tokens: None,
+        };
+
+        let backends = vec![
+            create_test_backend(
+                "backend_a",
+                "Backend A",
+                BackendStatus::Healthy,
+                vec![create_test_model("llama3:8b", 4096, false, false)],
+            ),
+            create_test_backend(
+                "backend_b",
+                "Backend B",
+                BackendStatus::Healthy,
+                vec![full_model],
+            ),
+        ];
+
+        let router = create_test_router(backends);
+        let requirements = RequestRequirements {
+            model: "llama3:8b".to_string(),
+            estimated_tokens: 50000,
+            needs_vision: true,
+            needs_tools: true,
+            needs_json_mode: true,
+        };
+
+        let candidates = router.filter_candidates("llama3:8b", &requirements);
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].name, "Backend B");
     }
 }
 

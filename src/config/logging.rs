@@ -60,4 +60,18 @@ mod tests {
         let json = serde_json::to_string(&format).unwrap();
         assert_eq!(json, "\"json\"");
     }
+
+    #[test]
+    fn test_log_format_from_str() {
+        assert_eq!(LogFormat::from_str("pretty").unwrap(), LogFormat::Pretty);
+        assert_eq!(LogFormat::from_str("json").unwrap(), LogFormat::Json);
+        assert_eq!(LogFormat::from_str("PRETTY").unwrap(), LogFormat::Pretty);
+        assert_eq!(LogFormat::from_str("JSON").unwrap(), LogFormat::Json);
+    }
+
+    #[test]
+    fn test_log_format_from_str_invalid() {
+        assert!(LogFormat::from_str("xml").is_err());
+        assert!(LogFormat::from_str("").is_err());
+    }
 }

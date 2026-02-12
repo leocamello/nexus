@@ -310,4 +310,106 @@ mod tests {
         // Validation should pass
         assert!(config.validate().is_ok());
     }
+
+    #[test]
+    fn test_config_env_override_log_format() {
+        // Test valid format
+        std::env::set_var("NEXUS_LOG_FORMAT", "json");
+        let config = NexusConfig::default().with_env_overrides();
+        assert_eq!(
+            config.logging.format,
+            crate::config::logging::LogFormat::Json
+        );
+
+        // Test invalid format keeps default
+        std::env::set_var("NEXUS_LOG_FORMAT", "xml");
+        let config = NexusConfig::default().with_env_overrides();
+        std::env::remove_var("NEXUS_LOG_FORMAT");
+        assert_eq!(
+            config.logging.format,
+            crate::config::logging::LogFormat::Pretty
+        );
+    }
+
+    #[test]
+    fn test_config_env_override_discovery() {
+        std::env::set_var("NEXUS_DISCOVERY", "false");
+        let config = NexusConfig::default().with_env_overrides();
+        std::env::remove_var("NEXUS_DISCOVERY");
+
+        assert!(!config.discovery.enabled);
+    }
+
+    #[test]
+    fn test_config_env_override_health_check() {
+        std::env::set_var("NEXUS_HEALTH_CHECK", "false");
+        let config = NexusConfig::default().with_env_overrides();
+        std::env::remove_var("NEXUS_HEALTH_CHECK");
+
+        assert!(!config.health_check.enabled);
+    }
+
+    #[test]
+    fn test_config_validation_zero_port() {
+        let mut config = NexusConfig::default();
+        config.server.port = 0;
+
+        let result = config.validate();
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ConfigError::Validation { field, .. } => {
+                assert_eq!(field, "server.port");
+            }
+            _ => panic!("Expected Validation error"),
+        }
+    }
+
+    #[test]
+    fn test_config_validation_empty_backend_url() {
+        let mut config = NexusConfig::default();
+        config.backends.push(crate::config::backend::BackendConfig {
+            name: "test".to_string(),
+            url: "".to_string(),
+            backend_type: crate::registry::BackendType::Ollama,
+            priority: 1,
+            api_key_env: None,
+        });
+
+        let result = config.validate();
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ConfigError::Validation { field, .. } => {
+                assert!(field.contains("url"));
+            }
+            _ => panic!("Expected Validation error"),
+        }
+    }
+
+    #[test]
+    fn test_config_validation_empty_backend_name() {
+        let mut config = NexusConfig::default();
+        config.backends.push(crate::config::backend::BackendConfig {
+            name: "".to_string(),
+            url: "http://localhost:11434".to_string(),
+            backend_type: crate::registry::BackendType::Ollama,
+            priority: 1,
+            api_key_env: None,
+        });
+
+        let result = config.validate();
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ConfigError::Validation { field, .. } => {
+                assert!(field.contains("name"));
+            }
+            _ => panic!("Expected Validation error"),
+        }
+    }
+
+    #[test]
+    fn test_config_load_none_returns_defaults() {
+        let config = NexusConfig::load(None).unwrap();
+        assert_eq!(config.server.port, 8000);
+        assert_eq!(config.server.host, "0.0.0.0");
+    }
 }
