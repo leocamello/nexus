@@ -18,7 +18,7 @@ specs/
 *.md
 !README.md
 
-# Tests and benchmarks
+# Tests and benchmarks (bench stubs created in Dockerfile for Cargo.toml parsing)
 tests/
 benches/
 
