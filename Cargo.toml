@@ -94,6 +94,18 @@ proptest = "1"
 tempfile = "3"
 criterion = { version = "0.5", features = ["html_reports"] }
 
+[[bench]]
+name = "cli_startup"
+harness = false
+
+[[bench]]
+name = "config_parsing"
+harness = false
+
+[[bench]]
+name = "metrics"
+harness = false
+
 [profile.release]
 lto = true
 codegen-units = 1

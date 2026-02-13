@@ -12,7 +12,7 @@
 
 - [x] VER-001: All acceptance criteria in `tasks.md` are checked `[x]` or `[-]` (deferred)
 - [x] VER-002: Each checked criterion has corresponding passing test(s)
-- [-] VER-003: N/A — 23 items deferred (integration tests, benchmarks, README) as post-MVP
+- [x] VER-003: 20 of 23 deferred items now completed (integration tests, benchmarks, property tests, README). 3 low-value items remain deferred (T068, T073, T074)
 - [x] VER-004: All 4 user stories implemented (US1-US4)
 
 - [x] VER-005: Each acceptance criterion maps to at least one test case
