@@ -328,6 +328,8 @@ harness = false
 
 **All 3 benchmark files** (cli_startup, config_parsing, metrics) were silently not executing before this fix.
 
+**Docker caveat**: `[[bench]]` entries make Cargo require bench files to exist even for `cargo build`. Since `.dockerignore` excludes `benches/`, the Dockerfile must create stub bench files (`echo "fn main() {}" > benches/X.rs`) in the dependency-cache layer.
+
 #### 3. Label Sanitization with DashMap Caching
 Prometheus labels must be alphanumeric + underscore. Model names like `llama3:70b` or `my-backend` need sanitizing. A `DashMap` cache prevents re-sanitizing the same label on every request:
 
