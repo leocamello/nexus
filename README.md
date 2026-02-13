@@ -168,6 +168,22 @@ response = client.chat.completions.create(
 print(response.choices[0].message.content)
 ```
 
+### Observability
+
+Nexus exposes metrics for monitoring and debugging:
+
+```bash
+# Prometheus metrics (for Grafana, Prometheus, etc.)
+curl http://localhost:8000/metrics
+
+# JSON stats (for dashboards and debugging)
+curl http://localhost:8000/v1/stats | jq
+```
+
+**Prometheus metrics** include request counters, duration histograms, error rates, backend latency, token usage, and fleet state gauges. Configure your Prometheus scraper to target `http://<nexus-host>:8000/metrics`.
+
+**JSON stats** provide an at-a-glance view with uptime, per-backend request counts, latency, and pending request depth.
+
 ## Configuration
 
 ```toml

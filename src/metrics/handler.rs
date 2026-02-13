@@ -10,13 +10,19 @@ use std::sync::Arc;
 /// Handler for GET /metrics endpoint (Prometheus text format).
 ///
 /// Returns metrics in Prometheus exposition format for scraping.
+/// Always returns 200 with the correct Content-Type for Prometheus scrapers,
+/// even if no metrics have been recorded yet (returns empty text).
 pub async fn metrics_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     // Update fleet gauges before rendering
     state.metrics_collector.update_fleet_gauges();
 
     // Get Prometheus text format from collector
     let metrics = state.metrics_collector.render_metrics();
-    (StatusCode::OK, metrics)
+    (
+        StatusCode::OK,
+        [("content-type", "text/plain; version=0.0.4; charset=utf-8")],
+        metrics,
+    )
 }
 
 /// Handler for GET /v1/stats endpoint (JSON format).

@@ -15,8 +15,8 @@ This guide helps developers understand and implement the Request Metrics feature
 
 **Dependencies**:
 ```toml
-metrics = "0.23"
-metrics-exporter-prometheus = "0.15"
+metrics = "0.24"
+metrics-exporter-prometheus = "0.16"
 ```
 
 ---
@@ -66,10 +66,9 @@ metrics-exporter-prometheus = "0.15"
 
 ```
 src/metrics/
-├── mod.rs          # Public API: MetricsCollector, setup_metrics()
-├── collector.rs    # MetricsCollector implementation (gauge computation)
+├── mod.rs          # Public API: MetricsCollector, setup_metrics(), label sanitization
 ├── handler.rs      # Axum handlers for /metrics and /v1/stats
-└── types.rs        # StatsResponse, BackendStats, ModelStats
+└── types.rs        # StatsResponse, BackendStats, ModelStats, RequestStats
 ```
 
 ---
@@ -83,8 +82,8 @@ src/metrics/
 ```toml
 [dependencies]
 # ... existing dependencies ...
-metrics = "0.23"
-metrics-exporter-prometheus = "0.15"
+metrics = "0.24"
+metrics-exporter-prometheus = "0.16"
 ```
 
 **Verify**:
@@ -101,33 +100,39 @@ cargo check
 ```rust
 //! Metrics collection and export module.
 
-mod collector;
 mod handler;
 mod types;
 
-pub use collector::MetricsCollector;
 pub use handler::{metrics_handler, stats_handler};
-pub use types::{StatsResponse, BackendStats, ModelStats};
+pub use types::{BackendStats, ModelStats, RequestStats, StatsResponse};
 
-use metrics_exporter_prometheus::{PrometheusBuilder, Matcher};
+use crate::registry::{BackendStatus, Registry};
+use dashmap::DashMap;
+use metrics_exporter_prometheus::{Matcher, PrometheusBuilder, PrometheusHandle};
 use std::sync::Arc;
+use std::time::Instant;
 
 /// Initialize Prometheus exporter with custom histogram buckets.
-pub fn setup_metrics() -> Result<Arc<MetricsCollector>, Box<dyn std::error::Error>> {
-    let buckets = vec![0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0];
-    
-    PrometheusBuilder::new()
+pub fn setup_metrics() -> Result<PrometheusHandle, Box<dyn std::error::Error>> {
+    let duration_buckets = vec![0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0];
+    let token_buckets = vec![10.0, 50.0, 100.0, 500.0, 1000.0, 4000.0, 8000.0, 16000.0, 32000.0, 64000.0, 128000.0];
+
+    let handle = PrometheusBuilder::new()
         .set_buckets_for_metric(
             Matcher::Full("nexus_request_duration_seconds".to_string()),
-            &buckets
+            &duration_buckets,
         )?
         .set_buckets_for_metric(
             Matcher::Full("nexus_backend_latency_seconds".to_string()),
-            &buckets
+            &duration_buckets,
+        )?
+        .set_buckets_for_metric(
+            Matcher::Full("nexus_tokens_total".to_string()),
+            &token_buckets,
         )?
         .install_recorder()?;
-    
-    Ok(Arc::new(MetricsCollector::new()))
+
+    Ok(handle)
 }
 ```
 
@@ -135,47 +140,44 @@ pub fn setup_metrics() -> Result<Arc<MetricsCollector>, Box<dyn std::error::Erro
 
 ### Step 3: Implement MetricsCollector
 
-**File**: `src/metrics/collector.rs`
+**File**: `src/metrics/mod.rs` (same file as Step 2)
 
 ```rust
-use crate::registry::Registry;
-use dashmap::DashMap;
-use std::sync::Arc;
-use std::time::Instant;
-
 pub struct MetricsCollector {
     registry: Arc<Registry>,
     start_time: Instant,
     label_cache: DashMap<String, String>,
+    prometheus_handle: PrometheusHandle,
 }
 
 impl MetricsCollector {
-    pub fn new(registry: Arc<Registry>) -> Self {
+    pub fn new(
+        registry: Arc<Registry>,
+        start_time: Instant,
+        prometheus_handle: PrometheusHandle,
+    ) -> Self {
         Self {
             registry,
-            start_time: Instant::now(),
+            start_time,
             label_cache: DashMap::new(),
+            prometheus_handle,
         }
     }
     
     /// Sanitize label for Prometheus compatibility.
     pub fn sanitize_label(&self, s: &str) -> String {
-        // Check cache first
         if let Some(cached) = self.label_cache.get(s) {
             return cached.clone();
         }
         
-        // Sanitize: replace invalid chars with underscore
         let mut result: String = s.chars()
             .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
             .collect();
         
-        // Ensure first char is not a digit
         if result.chars().next().map_or(false, |c| c.is_ascii_digit()) {
             result.insert(0, '_');
         }
         
-        // Cache and return
         self.label_cache.insert(s.to_string(), result.clone());
         result
     }
@@ -187,20 +189,30 @@ impl MetricsCollector {
         metrics::gauge!("nexus_backends_total").set(backends.len() as f64);
         
         let healthy_count = backends.iter()
-            .filter(|b| b.is_healthy())
+            .filter(|b| b.status == BackendStatus::Healthy)
             .count();
         metrics::gauge!("nexus_backends_healthy").set(healthy_count as f64);
         
-        let unique_models: std::collections::HashSet<_> = backends.iter()
-            .filter(|b| b.is_healthy())
-            .flat_map(|b| &b.models)
+        let unique_models: std::collections::HashSet<String> = backends.iter()
+            .filter(|b| b.status == BackendStatus::Healthy)
+            .flat_map(|b| b.models.iter().map(|m| m.id.clone()))
             .collect();
         metrics::gauge!("nexus_models_available").set(unique_models.len() as f64);
+    }
+    
+    /// Render Prometheus metrics in text format.
+    pub fn render_metrics(&self) -> String {
+        self.prometheus_handle.render()
     }
     
     /// Get uptime in seconds.
     pub fn uptime_seconds(&self) -> u64 {
         self.start_time.elapsed().as_secs()
+    }
+    
+    /// Get a reference to the registry.
+    pub fn registry(&self) -> &Registry {
+        &self.registry
     }
 }
 ```
@@ -290,8 +302,8 @@ pub async fn check_backend(&self, backend: &Backend) -> HealthCheckResult {
 
 ```rust
 use crate::api::AppState;
-use crate::metrics::types::{StatsResponse, BackendStats, ModelStats, RequestStats};
-use axum::{extract::State, response::IntoResponse, http::StatusCode};
+use super::{BackendStats, ModelStats, RequestStats, StatsResponse};
+use axum::{extract::State, response::IntoResponse, http::StatusCode, Json};
 use std::sync::Arc;
 
 /// GET /metrics - Prometheus exposition format
@@ -301,50 +313,34 @@ pub async fn metrics_handler(
     // Update gauges before scrape
     state.metrics_collector.update_fleet_gauges();
     
-    // Render Prometheus metrics
-    match metrics_exporter_prometheus::render() {
-        Ok(body) => (
-            StatusCode::OK,
-            [("Content-Type", "text/plain; version=0.0.4; charset=utf-8")],
-            body
-        ).into_response(),
-        Err(_) => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            axum::Json(serde_json::json!({
-                "error": {
-                    "message": "Metrics collection not initialized",
-                    "type": "service_unavailable",
-                    "code": "metrics_unavailable"
-                }
-            }))
-        ).into_response(),
-    }
+    // Render Prometheus metrics from the collector's handle
+    let metrics = state.metrics_collector.render_metrics();
+    (
+        StatusCode::OK,
+        [("content-type", "text/plain; version=0.0.4; charset=utf-8")],
+        metrics,
+    )
 }
 
 /// GET /v1/stats - JSON statistics
 pub async fn stats_handler(
     State(state): State<Arc<AppState>>,
-) -> Result<axum::Json<StatsResponse>, StatusCode> {
+) -> impl IntoResponse {
     // Update gauges
     state.metrics_collector.update_fleet_gauges();
     
-    // Compute stats from Prometheus data
+    // Compute stats from Registry atomics
     let uptime_seconds = state.metrics_collector.uptime_seconds();
+    let requests = compute_request_stats();
+    let backends = compute_backend_stats(state.metrics_collector.registry());
+    let models = compute_model_stats();
     
-    // TODO: Query Prometheus handle for counter/histogram data
-    // For now, return placeholder
-    let stats = StatsResponse {
+    Json(StatsResponse {
         uptime_seconds,
-        requests: RequestStats {
-            total: 0,
-            success: 0,
-            errors: 0,
-        },
-        backends: vec![],
-        models: vec![],
-    };
-    
-    Ok(axum::Json(stats))
+        requests,
+        backends,
+        models,
+    })
 }
 ```
 
@@ -362,9 +358,9 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/v1/chat/completions", post(completions::handle))
         .route("/v1/models", get(models::handle))
         .route("/health", get(health::handle))
-        // NEW: Metrics endpoints
-        .route("/metrics", get(crate::metrics::metrics_handler))
-        .route("/v1/stats", get(crate::metrics::stats_handler))
+        // Metrics endpoints
+        .route("/metrics", get(crate::metrics::handler::metrics_handler))
+        .route("/v1/stats", get(crate::metrics::handler::stats_handler))
         .layer(RequestBodyLimitLayer::new(MAX_BODY_SIZE))
         .with_state(state)
 }
@@ -394,22 +390,19 @@ pub struct AppState {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ... existing setup ...
     
-    // Initialize metrics
-    let metrics_collector = crate::metrics::setup_metrics()?;
-    
-    // Create app state
-    let state = Arc::new(AppState {
-        registry: Arc::clone(&registry),
-        config: Arc::clone(&config),
-        http_client,
-        router,
-        start_time: Instant::now(),
-        metrics_collector,  // NEW
-    });
+    // Create app state (metrics are initialized automatically inside AppState::new)
+    let state = Arc::new(AppState::new(
+        Arc::clone(&registry),
+        Arc::clone(&config),
+    ));
     
     // ... start server ...
 }
 ```
+
+> **Note**: `AppState::new()` calls `setup_metrics()` internally and stores the
+> `PrometheusHandle` in the `MetricsCollector`. If the global recorder is already
+> installed (e.g., in tests), it falls back to creating a local handle.
 
 ---
 
@@ -417,17 +410,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ### Unit Test: Label Sanitization
 
-**File**: `src/metrics/collector.rs`
+**File**: `src/metrics/mod.rs`
 
 ```rust
 #[cfg(test)]
 mod tests {
     use super::*;
     
+    fn get_test_handle() -> PrometheusHandle {
+        PrometheusBuilder::new().build_recorder().handle()
+    }
+    
     #[test]
     fn test_sanitize_label() {
         let registry = Arc::new(Registry::new());
-        let collector = MetricsCollector::new(registry);
+        let collector = MetricsCollector::new(
+            registry,
+            Instant::now(),
+            get_test_handle(),
+        );
         
         assert_eq!(collector.sanitize_label("valid_name"), "valid_name");
         assert_eq!(collector.sanitize_label("gpt-4"), "gpt_4");
@@ -437,45 +438,59 @@ mod tests {
 }
 ```
 
-### Integration Test: Request Tracking
+### Integration Test: Endpoint Contracts
 
-**File**: `tests/integration/metrics_test.rs`
+**File**: `tests/metrics_integration.rs`
 
 ```rust
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use tower::ServiceExt;
+use tower::Service;
 
 #[tokio::test]
-async fn test_metrics_request_tracking() {
-    let app = create_test_app().await;
-    
-    // Send a request
-    let request = Request::builder()
-        .method("POST")
-        .uri("/v1/chat/completions")
-        .header("content-type", "application/json")
-        .body(Body::from(r#"{"model":"test-model","messages":[]}"#))
+async fn test_metrics_endpoint_returns_200() {
+    let mut app = create_app_empty();
+    let response = app
+        .call(
+            Request::builder()
+                .uri("/metrics")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
         .unwrap();
     
-    let response = app.clone().oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    
-    // Query metrics
-    let metrics_request = Request::builder()
-        .uri("/metrics")
-        .body(Body::empty())
+}
+
+#[tokio::test]
+async fn test_stats_endpoint_json_schema() {
+    let mut app = create_app_empty();
+    let response = app
+        .call(
+            Request::builder()
+                .uri("/v1/stats")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
         .unwrap();
     
-    let metrics_response = app.oneshot(metrics_request).await.unwrap();
-    let body = hyper::body::to_bytes(metrics_response.into_body()).await.unwrap();
-    let metrics_text = String::from_utf8(body.to_vec()).unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = get_body_string(response).await;
+    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
     
-    // Verify counter incremented
-    assert!(metrics_text.contains("nexus_requests_total"));
-    assert!(metrics_text.contains(r#"model="test_model""#));
+    assert!(json.get("uptime_seconds").is_some());
+    assert!(json.get("requests").is_some());
+    assert!(json.get("backends").is_some());
+    assert!(json.get("models").is_some());
 }
 ```
+
+> **Note**: Integration tests use `tower::Service` with `app.call()` pattern
+> (not `tower::ServiceExt::oneshot`). The `metrics` crate's global recorder
+> means tests verify behaviour through HTTP status codes and JSON schemas rather
+> than asserting specific Prometheus counter values.
 
 ---
 
