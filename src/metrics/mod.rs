@@ -265,4 +265,53 @@ mod tests {
         assert_eq!(first, second);
         assert_eq!(first, "test_label");
     }
+
+    mod proptests {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            /// T067: Property test — sanitized labels always match Prometheus label regex.
+            #[test]
+            fn prop_sanitized_label_is_valid_prometheus(input in "[\\x00-\\x7F]{1,50}") {
+                let registry = Arc::new(Registry::new());
+                let handle = get_test_handle();
+                let collector = MetricsCollector::new(registry, Instant::now(), handle);
+
+                let sanitized = collector.sanitize_label(&input);
+
+                // Must not be empty
+                prop_assert!(!sanitized.is_empty(), "Sanitized label should never be empty");
+
+                // First character must be letter or underscore
+                let first = sanitized.chars().next().unwrap();
+                prop_assert!(
+                    first.is_ascii_alphabetic() || first == '_',
+                    "First char '{}' must be letter or underscore",
+                    first
+                );
+
+                // All characters must be alphanumeric or underscore
+                for c in sanitized.chars() {
+                    prop_assert!(
+                        c.is_alphanumeric() || c == '_',
+                        "Character '{}' is invalid in Prometheus label",
+                        c
+                    );
+                }
+            }
+
+            /// Property: sanitize_label is idempotent.
+            #[test]
+            fn prop_sanitize_is_idempotent(input in "[a-zA-Z0-9_:\\-\\./@]{1,30}") {
+                let registry = Arc::new(Registry::new());
+                let handle = get_test_handle();
+                let collector = MetricsCollector::new(registry, Instant::now(), handle);
+
+                let once = collector.sanitize_label(&input);
+                let twice = collector.sanitize_label(&once);
+                prop_assert_eq!(once, twice, "Sanitization should be idempotent");
+            }
+        }
+    }
 }

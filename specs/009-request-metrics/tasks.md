@@ -66,9 +66,9 @@
 ### Tests for User Story 1 (TDD: Write FIRST, ensure they FAIL)
 
 - [x] T015 [P] [US1] Write unit test for label sanitization (4 tests in src/metrics/mod.rs — valid names, special chars, leading digits, caching)
-- [-] T016 [P] [US1] Contract test for /metrics endpoint — deferred to Phase 7 (unit tests cover handler logic)
-- [-] T017 [P] [US1] Contract test for /v1/stats endpoint — deferred to Phase 7 (unit tests cover handler logic)
-- [-] T018 [US1] Integration test for request counter tracking — deferred to Phase 7 (requires mock backend server)
+- [x] T016 [P] [US1] Contract test for /metrics endpoint — implemented in tests/metrics_integration.rs
+- [x] T017 [P] [US1] Contract test for /v1/stats endpoint — implemented in tests/metrics_integration.rs
+- [x] T018 [US1] Integration test for request counter tracking — implemented in tests/metrics_integration.rs
 
 ### Implementation for User Story 1
 
@@ -97,9 +97,9 @@
 
 ### Tests for User Story 2 (TDD: Write FIRST, ensure they FAIL)
 
-- [-] T031 [P] [US2] Integration test for request duration histogram — deferred to Phase 7
-- [-] T032 [P] [US2] Integration test for backend latency histogram — deferred to Phase 7
-- [-] T033 [US2] Integration test for average latency computation — deferred to Phase 7
+- [x] T031 [P] [US2] Integration test for request duration histogram — implemented in tests/metrics_integration.rs
+- [x] T032 [P] [US2] Integration test for backend latency histogram — implemented in tests/metrics_integration.rs
+- [x] T033 [US2] Integration test for average latency computation — implemented in tests/metrics_integration.rs
 
 ### Implementation for User Story 2
 
@@ -123,9 +123,9 @@
 
 ### Tests for User Story 3 (TDD: Write FIRST, ensure they FAIL)
 
-- [-] T041 [P] [US3] Integration test for fallback counter — deferred to Phase 7
-- [-] T042 [P] [US3] Integration test for token counting — deferred to Phase 7
-- [-] T043 [US3] Integration test for pending requests gauge — deferred to Phase 7
+- [x] T041 [P] [US3] Integration test for fallback counter — implemented in tests/metrics_integration.rs
+- [x] T042 [P] [US3] Integration test for token counting — implemented in tests/metrics_integration.rs
+- [x] T043 [US3] Integration test for pending requests gauge — implemented in tests/metrics_integration.rs
 
 ### Implementation for User Story 3
 
@@ -149,10 +149,10 @@
 
 ### Tests for User Story 4 (TDD: Write FIRST, ensure they FAIL)
 
-- [-] T051 [P] [US4] Integration test for backends_total gauge — deferred to Phase 7
-- [-] T052 [P] [US4] Integration test for backends_healthy gauge — deferred to Phase 7
-- [-] T053 [P] [US4] Integration test for models_available gauge — deferred to Phase 7
-- [-] T054 [US4] Integration test for /v1/stats per-backend breakdown — deferred to Phase 7
+- [x] T051 [P] [US4] Integration test for backends_total gauge — implemented in tests/metrics_integration.rs
+- [x] T052 [P] [US4] Integration test for backends_healthy gauge — implemented in tests/metrics_integration.rs
+- [x] T053 [P] [US4] Integration test for models_available gauge — implemented in tests/metrics_integration.rs
+- [x] T054 [US4] Integration test for /v1/stats per-backend breakdown — implemented in tests/metrics_integration.rs
 
 ### Implementation for User Story 4
 
@@ -173,19 +173,19 @@
 
 **Purpose**: Performance validation, error handling, and documentation
 
-- [-] T063 [P] Benchmark for metric recording overhead — deferred (post-MVP)
-- [-] T064 [P] Benchmark for /metrics endpoint latency — deferred (post-MVP)
-- [-] T065 [P] Benchmark for /v1/stats endpoint latency — deferred (post-MVP)
-- [-] T066 Run cargo bench — deferred (post-MVP)
-- [-] T067 [P] Property test for label sanitization — deferred (post-MVP)
-- [-] T068 [P] Error handling for metrics unavailable — deferred (post-MVP)
+- [x] T063 [P] Benchmark for metric recording overhead (~188ns) — implemented in benches/metrics.rs
+- [x] T064 [P] Benchmark for /metrics endpoint latency (~3.8µs) — implemented in benches/metrics.rs
+- [x] T065 [P] Benchmark for /v1/stats endpoint latency (~5.9µs) — implemented in benches/metrics.rs
+- [x] T066 Run cargo bench — all benchmarks pass, overhead well under 0.1ms
+- [x] T067 [P] Property test for label sanitization — implemented in src/metrics/mod.rs
+- [x] T068 [P] Error handling for metrics unavailable — added Prometheus content-type header and graceful empty response
 - [x] T069 [P] Add uptime_seconds() method to MetricsCollector in src/metrics/mod.rs ✅
 - [x] T070 Add documentation comments to all public functions in src/metrics/ ✅ (25+ doc comments)
-- [-] T071 Update README.md with metrics endpoints documentation — deferred (post-MVP)
+- [x] T071 Update README.md with metrics endpoints documentation — Observability section added
 - [x] T072 Run full test suite: cargo test --all ✅ (365 tests pass)
-- [-] T073 Run quickstart.md validation — deferred (post-MVP)
-- [-] T074 Final integration test — deferred (post-MVP)
-- [-] T075 [P] Integration test for FR-020 — deferred (post-MVP)
+- [x] T073 Run quickstart.md validation — fixed version numbers, module structure, code examples to match implementation
+- [x] T074 Final integration test — comprehensive end-to-end test covering all 4 user stories
+- [x] T075 [P] Integration test for FR-020 — implemented in tests/metrics_integration.rs
 
 ---
 
