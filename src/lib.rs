@@ -9,6 +9,7 @@ pub mod config;
 pub mod dashboard;
 pub mod discovery;
 pub mod health;
+pub mod logging;
 pub mod metrics;
 pub mod registry;
 pub mod routing;

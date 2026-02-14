@@ -1,6 +1,7 @@
 //! Logging configuration
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::str::FromStr;
 
 /// Log output format
@@ -32,6 +33,14 @@ impl FromStr for LogFormat {
 pub struct LoggingConfig {
     pub level: String,
     pub format: LogFormat,
+    /// Component-specific log levels (e.g., {"routing": "debug", "api": "info"})
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub component_levels: Option<HashMap<String, String>>,
+    /// Enable debug content logging (opt-in, defaults to false)
+    /// WARNING: When true, request/response message content will be logged
+    /// which may include sensitive data. Use only for debugging.
+    #[serde(default)]
+    pub enable_content_logging: bool,
 }
 
 impl Default for LoggingConfig {
@@ -39,6 +48,8 @@ impl Default for LoggingConfig {
         Self {
             level: "info".to_string(),
             format: LogFormat::Pretty,
+            component_levels: None,
+            enable_content_logging: false,
         }
     }
 }

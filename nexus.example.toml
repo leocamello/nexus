@@ -68,6 +68,22 @@ priority = 1
 # api_key_env = "OPENAI_API_KEY"
 
 [logging]
+# Global log level: trace | debug | info | warn | error
 level = "info"
-# format: pretty | json
+
+# Log format: pretty (human-readable) | json (for log aggregators)
+# Use json for production with ELK, Loki, Splunk, CloudWatch, etc.
 format = "pretty"
+
+# Component-specific log levels (optional)
+# Useful for debugging specific parts of the system without noise
+# [logging.component_levels]
+# routing = "debug"    # Detailed routing decisions
+# api = "info"         # API request handling
+# health = "warn"      # Health check results
+
+# Content logging (opt-in, defaults to false)
+# WARNING: When true, request message content will be logged (privacy risk!)
+# Only enable for local debugging. Never in production with user data.
+# enable_content_logging = false
+
