@@ -345,9 +345,9 @@ DEBUG routing: Final model after alias resolution model="llama3:70b" original="g
 
 - [x] AC-01: Aliases configured in `[routing.aliases]` section
 - [x] AC-02: Transparent to client (response shows requested model)
-- [ ] AC-03: Alias resolution logged at DEBUG level
-- [ ] AC-04: Circular alias detection at config load
-- [ ] AC-05: Max 3 levels of chaining
+- [x] AC-03: Alias resolution logged at DEBUG level
+- [x] AC-04: Circular alias detection at config load
+- [x] AC-05: Max 3 levels of chaining
 - [x] AC-06: Direct matches preferred over aliases
 - [x] AC-07: Works with fallback chains
 

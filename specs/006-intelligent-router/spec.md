@@ -531,22 +531,22 @@ src/
 
 ## Acceptance Criteria Summary
 
-- [ ] AC-01: Routes to backend with exact model match
-- [ ] AC-02: Filters candidates by health status (Healthy only)
-- [ ] AC-03: Filters by vision capability when request has images
-- [ ] AC-04: Filters by tools capability when request has tools
-- [ ] AC-05: Filters by context length (estimated tokens vs model limit)
-- [ ] AC-06: Scores backends using priority, load, latency
-- [ ] AC-07: Resolves model aliases transparently
-- [ ] AC-08: Traverses fallback chain when model unavailable
-- [ ] AC-09: Detects and prevents circular aliases
-- [ ] AC-10: Returns descriptive errors for all failure cases
-- [ ] AC-11: Smart strategy selects highest-scoring backend
-- [ ] AC-12: Round-robin distributes evenly
-- [ ] AC-13: Priority-only always selects lowest priority number
-- [ ] AC-14: Random strategy provides approximate even distribution
-- [ ] AC-15: Routing decision completes in < 1ms
-- [ ] AC-16: Thread-safe concurrent routing decisions
+- [x] AC-01: Routes to backend with exact model match
+- [x] AC-02: Filters candidates by health status (Healthy only)
+- [x] AC-03: Filters by vision capability when request has images
+- [x] AC-04: Filters by tools capability when request has tools
+- [x] AC-05: Filters by context length (estimated tokens vs model limit)
+- [x] AC-06: Scores backends using priority, load, latency
+- [x] AC-07: Resolves model aliases transparently
+- [x] AC-08: Traverses fallback chain when model unavailable
+- [x] AC-09: Detects and prevents circular aliases
+- [x] AC-10: Returns descriptive errors for all failure cases
+- [x] AC-11: Smart strategy selects highest-scoring backend
+- [x] AC-12: Round-robin distributes evenly
+- [x] AC-13: Priority-only always selects lowest priority number
+- [x] AC-14: Random strategy provides approximate even distribution
+- [x] AC-15: Routing decision completes in < 1ms
+- [x] AC-16: Thread-safe concurrent routing decisions
 
 ---
 

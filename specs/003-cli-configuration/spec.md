@@ -696,24 +696,24 @@ Tip: Use 'nexus config init' to generate a valid config template.
 
 ## Acceptance Criteria
 
-- [ ] AC-01: `nexus serve` starts server with all options working
-- [ ] AC-02: `nexus serve` works without any config file (zero-config mode)
-- [ ] AC-03: `nexus backends` lists backends with pretty table
-- [ ] AC-04: `nexus backends --json` outputs valid JSON
-- [ ] AC-05: `nexus backends --status healthy` filters correctly
-- [ ] AC-06: `nexus backends add <URL>` adds backend and triggers health check
-- [ ] AC-07: `nexus backends remove <ID>` removes backend
-- [ ] AC-08: `nexus models` lists all models with capabilities
-- [ ] AC-09: `nexus models --json` outputs valid JSON
-- [ ] AC-10: `nexus health` shows system status
-- [ ] AC-11: `nexus health --json` outputs valid JSON
-- [ ] AC-12: `nexus config init` generates valid template
-- [ ] AC-13: Config file parses correctly
-- [ ] AC-14: Environment variables override config
-- [ ] AC-15: CLI arguments override environment and config
-- [ ] AC-16: Graceful shutdown on SIGINT/SIGTERM
-- [ ] AC-17: Exit code 1 on startup errors with helpful message
-- [ ] AC-18: `nexus --version` and `nexus --help` work
+- [x] AC-01: `nexus serve` starts server with all options working
+- [x] AC-02: `nexus serve` works without any config file (zero-config mode)
+- [x] AC-03: `nexus backends` lists backends with pretty table
+- [x] AC-04: `nexus backends --json` outputs valid JSON
+- [x] AC-05: `nexus backends --status healthy` filters correctly
+- [x] AC-06: `nexus backends add <URL>` adds backend and triggers health check
+- [x] AC-07: `nexus backends remove <ID>` removes backend
+- [x] AC-08: `nexus models` lists all models with capabilities
+- [x] AC-09: `nexus models --json` outputs valid JSON
+- [x] AC-10: `nexus health` shows system status
+- [x] AC-11: `nexus health --json` outputs valid JSON
+- [x] AC-12: `nexus config init` generates valid template
+- [x] AC-13: Config file parses correctly
+- [x] AC-14: Environment variables override config
+- [x] AC-15: CLI arguments override environment and config
+- [x] AC-16: Graceful shutdown on SIGINT/SIGTERM
+- [x] AC-17: Exit code 1 on startup errors with helpful message
+- [x] AC-18: `nexus --version` and `nexus --help` work
 
 ---
 
