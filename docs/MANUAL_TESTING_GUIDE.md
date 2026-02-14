@@ -1,15 +1,16 @@
 # Nexus Manual Testing Guide
 
-This guide walks you through testing all MVP features of Nexus. Each section covers a specific feature with step-by-step commands and expected outputs.
+A hands-on walkthrough of every Nexus feature — from first install to real-time dashboard monitoring. Follow this guide to see exactly what Nexus can do.
 
 ## Prerequisites
 
 Before testing, ensure you have:
 
-1. **Rust toolchain** installed (`cargo` available)
-2. **At least one LLM backend** running (e.g., Ollama)
+1. **Rust 1.87+** toolchain installed (`cargo` available)
+2. **At least one LLM backend** running (e.g., [Ollama](https://ollama.com))
 3. **curl** for HTTP requests
-4. **jq** (optional) for JSON formatting
+4. **jq** for JSON formatting
+5. **wscat** (optional) for WebSocket testing — `npm install -g wscat`
 
 ### Quick Setup
 
@@ -17,128 +18,128 @@ Before testing, ensure you have:
 # Build Nexus
 cargo build --release
 
-# Verify installation
-./target/release/nexus --version
+# Add to PATH for convenience
+alias nexus="./target/release/nexus"
 
-# If using Ollama, ensure it's running
-ollama serve  # or systemctl start ollama
+# Verify installation
+nexus --version
+# nexus-orchestrator 0.2.0
+
+# If using Ollama, ensure it's running with at least one model
+ollama serve &              # or: systemctl start ollama
+ollama pull llama3.2:latest # download a model if needed
+ollama list                 # verify models are available
 ```
+
+> **Tip**: For the best experience, open **two terminals** — one for the Nexus server and one for running commands.
 
 ---
 
 ## Table of Contents
 
-1. [F04: CLI and Configuration](#f04-cli-and-configuration)
-2. [F02: Backend Registry](#f02-backend-registry)
-3. [F03: Health Checker](#f03-health-checker)
-4. [F01: Core API Gateway](#f01-core-api-gateway)
-5. [F05: mDNS Discovery](#f05-mdns-discovery)
-
-> **Note**: Features are listed in testing order, not feature number order, because CLI/Config is needed first to set up backends.
+| # | Feature | What You'll Test |
+|---|---------|------------------|
+| 1 | [CLI and Configuration](#1-cli-and-configuration-f04) | Config files, env vars, CLI overrides, shell completions |
+| 2 | [Backend Registry](#2-backend-registry-f02) | Add/remove/list backends, dynamic management |
+| 3 | [Health Checker](#3-health-checker-f03) | Health status, failure detection, recovery |
+| 4 | [Core API Gateway](#4-core-api-gateway-f01) | Chat completions (streaming + non-streaming), models, errors |
+| 5 | [mDNS Discovery](#5-mdns-discovery-f05) | Auto-discovery, grace period, fallback |
+| 6 | [Intelligent Router](#6-intelligent-router-f06) | Smart routing, strategies, scoring |
+| 7 | [Model Aliases](#7-model-aliases-f07) | Name mapping, alias chaining |
+| 8 | [Fallback Chains](#8-fallback-chains-f08) | Automatic model failover |
+| 9 | [Request Metrics](#9-request-metrics-f09) | Prometheus metrics, JSON stats |
+| 10 | [Web Dashboard](#10-web-dashboard-f10) | Live UI, WebSocket updates |
+| 11 | [Structured Logging](#11-structured-logging-f11) | JSON logs, component levels, correlation IDs |
+| — | [E2E Test Script](#e2e-test-script) | Automated smoke test |
+| — | [Troubleshooting](#troubleshooting) | Common issues and solutions |
 
 ---
 
-## F04: CLI and Configuration
+## 1. CLI and Configuration (F04)
 
-### 4.1 Generate Configuration File
+### 1.1 Generate Configuration File
 
 ```bash
-# Initialize default configuration
 nexus config init
-
-# Verify file was created
 cat nexus.toml
 ```
 
-**Expected**: A `nexus.toml` file with default settings:
+**Expected**: A `nexus.toml` file with all default sections:
+
 ```toml
 [server]
 host = "0.0.0.0"
 port = 8000
-...
+request_timeout_seconds = 300
+
+[discovery]
+enabled = true
+
+[health_check]
+enabled = true
+interval_seconds = 30
+
+[routing]
+strategy = "smart"
+
+[logging]
+level = "info"
+format = "pretty"
 ```
 
-### 4.2 Generate Configuration with Custom Path
+### 1.2 Custom Output Path
 
 ```bash
-# Initialize with custom path
 nexus config init --output /tmp/my-nexus.toml
-
-# Verify
 cat /tmp/my-nexus.toml
 ```
 
-**Expected**: Configuration file created at specified path.
-
-### 4.3 Test Configuration Validation
+### 1.3 Environment Variable Overrides
 
 ```bash
-# Create an invalid config
-echo "invalid_key = true" > /tmp/bad.toml
-
-# Try to use it (should fail gracefully)
-nexus serve -c /tmp/bad.toml
-```
-
-**Expected**: Error message indicating invalid configuration.
-
-### 4.4 Environment Variable Overrides
-
-```bash
-# Override port via environment
+# Override port via environment variable
 NEXUS_PORT=9000 nexus serve &
 SERVER_PID=$!
 sleep 2
 
-# Verify port
-curl http://localhost:9000/health
+curl -s http://localhost:9000/health | jq .
+# {"status":"healthy","uptime_seconds":2,"backends":{"total":0,...},"models":0}
 
-# Cleanup
 kill $SERVER_PID
 ```
 
-**Expected**: Server runs on port 9000 instead of default 8000.
+**Supported env vars**: `NEXUS_PORT`, `NEXUS_HOST`, `NEXUS_LOG_LEVEL`, `NEXUS_LOG_FORMAT`, `NEXUS_DISCOVERY`, `NEXUS_HEALTH_CHECK`.
 
-### 4.5 Command-Line Overrides
+### 1.4 CLI Overrides (Highest Priority)
 
 ```bash
-# Override via CLI (highest priority)
 nexus serve --port 9001 --host 127.0.0.1 &
 SERVER_PID=$!
 sleep 2
 
-# Verify
-curl http://127.0.0.1:9001/health
-
-# Cleanup
+curl -s http://127.0.0.1:9001/health | jq .
 kill $SERVER_PID
 ```
 
-**Expected**: Server runs on 127.0.0.1:9001.
+**Config precedence**: CLI args > env vars > config file > defaults.
 
-### 4.6 Shell Completions
+### 1.5 Shell Completions
 
 ```bash
-# Generate bash completions
 nexus completions bash > /tmp/nexus.bash
-cat /tmp/nexus.bash | head -20
-
-# Generate zsh completions
-nexus completions zsh > /tmp/nexus.zsh
-
-# Generate fish completions
+nexus completions zsh  > /tmp/nexus.zsh
 nexus completions fish > /tmp/nexus.fish
-```
 
-**Expected**: Valid shell completion scripts generated.
+# Install for current session (bash example)
+source /tmp/nexus.bash
+nexus <TAB><TAB>  # shows: serve, backends, models, health, config, completions
+```
 
 ---
 
-## F02: Backend Registry
+## 2. Backend Registry (F02)
 
-### 2.1 Setup Configuration with Static Backend
-
-First, create a configuration with your backend:
+### 2.1 Create Configuration with a Backend
 
 ```bash
 cat > nexus.toml << 'EOF'
@@ -153,6 +154,10 @@ enabled = false
 enabled = true
 interval_seconds = 30
 
+[logging]
+level = "info"
+format = "pretty"
+
 [[backends]]
 name = "local-ollama"
 url = "http://localhost:11434"
@@ -164,12 +169,10 @@ EOF
 ### 2.2 Start Server and List Backends
 
 ```bash
-# Start Nexus in background
-nexus serve &
-SERVER_PID=$!
-sleep 3
+# Terminal 1: Start the server
+nexus serve
 
-# List backends via CLI
+# Terminal 2: Query backends
 nexus backends list
 ```
 
@@ -183,61 +186,37 @@ Backends:
     Models: llama3.2:latest, ...
 ```
 
-### 2.3 List Backends as JSON
+### 2.3 JSON Output
 
 ```bash
-nexus backends list --json | jq .
+nexus backends list --json | jq '.[0] | {name, status, models: [.models[].id]}'
 ```
-
-**Expected**: JSON array of backend objects with all metadata.
 
 ### 2.4 Add Backend Dynamically
 
 ```bash
-# Add a new backend
-nexus backends add gpu-server http://192.168.1.100:8000 --type vllm --priority 2
-
-# Verify it appears
+nexus backends add http://192.168.1.100:11434 --name gpu-server --backend-type ollama --priority 2
 nexus backends list
 ```
 
-**Expected**: New backend "gpu-server" appears in list.
-
-### 2.5 Remove Backend
+### 2.5 Filter by Status
 
 ```bash
-# Remove the backend
+nexus backends list --status healthy
+```
+
+### 2.6 Remove Backend
+
+```bash
 nexus backends remove gpu-server
-
-# Verify it's gone
-nexus backends list
+nexus backends list  # gpu-server is gone
 ```
-
-**Expected**: Backend "gpu-server" no longer in list.
-
-### 2.6 Backend Persistence
-
-```bash
-# Add backend, then restart server
-nexus backends add test-backend http://localhost:9999 --type generic
-
-# Stop and restart
-kill $SERVER_PID
-nexus serve &
-SERVER_PID=$!
-sleep 3
-
-# Check if static backends are preserved
-nexus backends list
-```
-
-**Expected**: Static backends from config are present. Dynamically added backends may not persist (depending on implementation).
 
 ---
 
-## F03: Health Checker
+## 3. Health Checker (F03)
 
-### 3.1 Check System Health via CLI
+### 3.1 CLI Health Check
 
 ```bash
 nexus health
@@ -253,28 +232,7 @@ Backends:
     Response time: 45ms
 ```
 
-### 3.2 Health Check JSON Output
-
-```bash
-nexus health --json | jq .
-```
-
-**Expected**:
-```json
-{
-  "status": "healthy",
-  "backends": [
-    {
-      "id": "local-ollama",
-      "status": "healthy",
-      "last_check": "2026-02-03T23:00:00Z",
-      "response_time_ms": 45
-    }
-  ]
-}
-```
-
-### 3.3 Health Endpoint via HTTP
+### 3.2 HTTP Health Endpoint
 
 ```bash
 curl -s http://localhost:8000/health | jq .
@@ -283,46 +241,32 @@ curl -s http://localhost:8000/health | jq .
 **Expected**:
 ```json
 {
-  "status": "healthy"
+  "status": "healthy",
+  "uptime_seconds": 42,
+  "backends": {
+    "total": 1,
+    "healthy": 1,
+    "unhealthy": 0
+  },
+  "models": 3
 }
 ```
 
-### 3.4 Simulate Backend Failure
+### 3.3 Simulate Backend Failure
 
 ```bash
-# Stop your Ollama backend temporarily
-# (or point to non-existent backend)
+# Add an unreachable backend
+nexus backends add http://localhost:99999 --name dead-backend --backend-type generic
 
-# Add unreachable backend
-nexus backends add dead-backend http://localhost:99999 --type generic
-
-# Wait for health check cycle
+# Wait for health check cycle (30s default)
 sleep 35
 
-# Check health
 nexus health
 ```
 
-**Expected**:
-```
-System Health: Degraded
+**Expected**: System shows `Degraded` with `dead-backend` marked `Unhealthy`.
 
-Backends:
-  ✓ local-ollama (Healthy)
-  ✗ dead-backend (Unhealthy)
-    Error: Connection refused
-```
-
-### 3.5 Health Check Interval Verification
-
-```bash
-# Watch logs for health check activity
-RUST_LOG=debug nexus serve 2>&1 | grep -i "health"
-```
-
-**Expected**: Health check logs appearing at configured interval (default 30s).
-
-### 3.6 Cleanup
+### 3.4 Cleanup
 
 ```bash
 nexus backends remove dead-backend
@@ -330,52 +274,27 @@ nexus backends remove dead-backend
 
 ---
 
-## F01: Core API Gateway
+## 4. Core API Gateway (F01)
 
-### 1.1 List Models Endpoint
+### 4.1 List Models (OpenAI-Compatible)
 
 ```bash
-curl -s http://localhost:8000/v1/models | jq .
+curl -s http://localhost:8000/v1/models | jq '.data[] | {id, owned_by}'
 ```
 
-**Expected**:
+**Expected**: OpenAI-format model list:
 ```json
-{
-  "object": "list",
-  "data": [
-    {
-      "id": "llama3.2:latest",
-      "object": "model",
-      "created": 1706900000,
-      "owned_by": "local-ollama"
-    }
-  ]
-}
+{"id": "llama3.2:latest", "owned_by": "local-ollama"}
 ```
 
-### 1.2 List Models via CLI
+### 4.2 List Models via CLI
 
 ```bash
 nexus models
+nexus models --backend local-ollama  # filter by backend
 ```
 
-**Expected**:
-```
-Available Models:
-  llama3.2:latest (local-ollama)
-  mistral:7b (local-ollama)
-  ...
-```
-
-### 1.3 Filter Models by Backend
-
-```bash
-nexus models --backend local-ollama
-```
-
-**Expected**: Only models from specified backend.
-
-### 1.4 Non-Streaming Chat Completion
+### 4.3 Non-Streaming Chat Completion
 
 ```bash
 curl -s http://localhost:8000/v1/chat/completions \
@@ -384,64 +303,27 @@ curl -s http://localhost:8000/v1/chat/completions \
     "model": "llama3.2:latest",
     "messages": [
       {"role": "user", "content": "Say hello in exactly 3 words"}
-    ],
-    "stream": false
+    ]
   }' | jq .
 ```
 
-**Expected**:
-```json
-{
-  "id": "chatcmpl-...",
-  "object": "chat.completion",
-  "created": 1706900000,
-  "model": "llama3.2:latest",
-  "choices": [
-    {
-      "index": 0,
-      "message": {
-        "role": "assistant",
-        "content": "Hello there, friend!"
-      },
-      "finish_reason": "stop"
-    }
-  ],
-  "usage": {
-    "prompt_tokens": 15,
-    "completion_tokens": 4,
-    "total_tokens": 19
-  }
-}
-```
+**Expected**: Standard OpenAI response with `id`, `choices`, `usage`.
 
-### 1.5 Streaming Chat Completion
+### 4.4 Streaming Chat Completion
 
 ```bash
-curl -s http://localhost:8000/v1/chat/completions \
+curl -sN http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "llama3.2:latest",
-    "messages": [
-      {"role": "user", "content": "Count from 1 to 5"}
-    ],
+    "messages": [{"role": "user", "content": "Count from 1 to 5"}],
     "stream": true
   }'
 ```
 
-**Expected**: Server-Sent Events format:
-```
-data: {"id":"chatcmpl-...","object":"chat.completion.chunk","created":1706900000,"model":"llama3.2:latest","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
+**Expected**: Server-Sent Events with `data: {...}` chunks ending in `data: [DONE]`.
 
-data: {"id":"chatcmpl-...","object":"chat.completion.chunk","created":1706900000,"model":"llama3.2:latest","choices":[{"index":0,"delta":{"content":"1"},"finish_reason":null}]}
-
-... more chunks ...
-
-data: {"id":"chatcmpl-...","object":"chat.completion.chunk","created":1706900000,"model":"llama3.2:latest","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
-
-data: [DONE]
-```
-
-### 1.6 Multi-turn Conversation
+### 4.5 Multi-Turn Conversation
 
 ```bash
 curl -s http://localhost:8000/v1/chat/completions \
@@ -457,12 +339,11 @@ curl -s http://localhost:8000/v1/chat/completions \
   }' | jq '.choices[0].message.content'
 ```
 
-**Expected**: Response acknowledging context: "7" or similar.
+**Expected**: Context-aware response mentioning "7".
 
-### 1.7 Temperature and Max Tokens
+### 4.6 Temperature and Max Tokens
 
 ```bash
-# Low temperature (deterministic)
 curl -s http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
@@ -473,497 +354,721 @@ curl -s http://localhost:8000/v1/chat/completions \
   }' | jq '.choices[0].message.content'
 ```
 
-**Expected**: Short, deterministic response.
-
-### 1.8 Error Handling - Invalid Model
+### 4.7 Error Handling
 
 ```bash
+# Invalid model
 curl -s http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{
-    "model": "nonexistent-model",
-    "messages": [{"role": "user", "content": "Hello"}]
-  }' | jq .
-```
+  -d '{"model": "nonexistent", "messages": [{"role": "user", "content": "Hi"}]}' | jq .
+# → {"error":{"message":"Model 'nonexistent' not found","type":"invalid_request_error","code":"model_not_found"}}
 
-**Expected**: OpenAI-compatible error:
-```json
-{
-  "error": {
-    "message": "Model 'nonexistent-model' not found",
-    "type": "invalid_request_error",
-    "param": "model",
-    "code": "model_not_found"
-  }
-}
-```
-
-### 1.9 Error Handling - Missing Required Fields
-
-```bash
-# Missing messages
+# Missing messages field
 curl -s http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model": "llama3.2:latest"}' | jq .
-```
 
-**Expected**: Error about missing `messages` field.
-
-### 1.10 Error Handling - Invalid JSON
-
-```bash
+# Invalid JSON
 curl -s http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d 'not valid json' | jq .
 ```
 
-**Expected**: Error about JSON parsing.
-
-### 1.11 CORS Headers (if applicable)
-
-```bash
-curl -s -I http://localhost:8000/v1/models \
-  -H "Origin: http://example.com" | grep -i "access-control"
-```
-
-**Expected**: CORS headers if enabled in config.
-
-### 1.12 Request with Authorization Header
-
-```bash
-# Nexus should forward auth headers to backends that need them
-curl -s http://localhost:8000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer test-token" \
-  -d '{
-    "model": "llama3.2:latest",
-    "messages": [{"role": "user", "content": "Hello"}]
-  }' | jq .
-```
-
-**Expected**: Request succeeds (auth may be ignored for local backends).
+All errors follow the OpenAI error format with `error.message`, `error.type`, `error.code`.
 
 ---
 
-## Integration Test: Full Workflow
+## 5. mDNS Discovery (F05)
 
-This test combines all features in a realistic workflow:
+> **Requires**: A local network with another machine running Ollama or an mDNS advertiser. For single-machine testing, use Avahi (Linux) or dns-sd (macOS).
+
+### 5.1 Enable Discovery
 
 ```bash
-#!/bin/bash
-set -e
+cat > nexus.toml << 'EOF'
+[server]
+port = 8000
 
-echo "=== Nexus Integration Test ==="
+[discovery]
+enabled = true
+service_types = ["_ollama._tcp.local", "_llm._tcp.local"]
+grace_period_seconds = 60
 
-# 1. Initialize config
-echo "Step 1: Initialize configuration"
-nexus config init --output /tmp/nexus-test.toml
+[logging]
+level = "info"
 
-# 2. Start server
-echo "Step 2: Start server"
-nexus serve -c /tmp/nexus-test.toml &
-SERVER_PID=$!
-sleep 3
+[[backends]]
+name = "local-ollama"
+url = "http://localhost:11434"
+type = "ollama"
+EOF
+```
 
-# 3. Check health
-echo "Step 3: Check health"
-nexus health
+### 5.2 Watch Discovery in Action
 
-# 4. List backends
-echo "Step 4: List backends"
+```bash
+# Start with debug logging to see discovery messages
+RUST_LOG=debug nexus serve
+```
+
+**Expected logs**:
+```
+INFO  mDNS service daemon started
+INFO  Browsing for mDNS service: _ollama._tcp.local.
+```
+
+### 5.3 Verify Discovered Backends
+
+```bash
+nexus backends list
+```
+
+Discovered backends appear with `[mdns]` source tag alongside `[static]` configured backends.
+
+### 5.4 Disable Discovery
+
+```bash
+nexus serve --no-discovery
+```
+
+### 5.5 Single-Machine mDNS Test (Linux)
+
+```bash
+# Advertise a fake LLM service via Avahi
+sudo apt install avahi-utils  # if needed
+avahi-publish -s "Test LLM" _llm._tcp 8080 "type=generic" &
+AVAHI_PID=$!
+
+# Start Nexus — it should discover the advertised service
+RUST_LOG=debug nexus serve &
+sleep 10
 nexus backends list
 
-# 5. List models
-echo "Step 5: List models"
-nexus models
+kill $AVAHI_PID
+```
 
-# 6. Make a chat completion
-echo "Step 6: Test chat completion"
-RESPONSE=$(curl -s http://localhost:8000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "llama3.2:latest",
-    "messages": [{"role": "user", "content": "Say OK"}],
-    "max_tokens": 5
-  }')
-echo "$RESPONSE" | jq '.choices[0].message.content'
+---
 
-# 7. Test streaming
-echo "Step 7: Test streaming"
+## 6. Intelligent Router (F06)
+
+The router selects the best backend for each request using scoring based on priority, load, and latency.
+
+### 6.1 Configure Routing Strategy
+
+```bash
+cat > nexus.toml << 'EOF'
+[server]
+port = 8000
+
+[discovery]
+enabled = false
+
+[routing]
+strategy = "smart"    # smart | round_robin | priority_only | random
+max_retries = 2
+
+[routing.weights]
+priority = 50         # favor higher-priority backends
+load = 30             # favor less-loaded backends
+latency = 20          # favor lower-latency backends
+
+[logging]
+level = "info"
+
+[[backends]]
+name = "fast-gpu"
+url = "http://localhost:11434"
+type = "ollama"
+priority = 1
+
+# Uncomment if you have a second backend:
+# [[backends]]
+# name = "slow-cpu"
+# url = "http://192.168.1.100:11434"
+# type = "ollama"
+# priority = 50
+EOF
+```
+
+### 6.2 Observe Routing Decisions
+
+```bash
+# Start with debug logging to see scoring
+RUST_LOG=nexus::routing=debug nexus serve
+```
+
+Make a request in another terminal:
+```bash
 curl -s http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "llama3.2:latest",
-    "messages": [{"role": "user", "content": "Count 1 2 3"}],
-    "stream": true,
-    "max_tokens": 10
-  }' | head -5
-
-# Cleanup
-echo "Cleaning up..."
-kill $SERVER_PID 2>/dev/null || true
-rm /tmp/nexus-test.toml
-
-echo "=== All tests passed! ==="
+    "messages": [{"role": "user", "content": "Hi"}],
+    "max_tokens": 5
+  }' | jq .
 ```
+
+**Expected log output** (server terminal):
+```
+DEBUG routing: Scoring backend fast-gpu: priority=99, load=100, latency=100, total=99
+DEBUG routing: Selected backend: fast-gpu (score: 99, reason: highest_score)
+```
+
+### 6.3 Scoring Formula
+
+The Smart strategy scores each backend:
+
+```
+score = (priority_score × 50 + load_score × 30 + latency_score × 20) / 100
+
+priority_score = 100 − min(priority, 100)       # lower priority value = higher score
+load_score     = 100 − min(pending_requests, 100)
+latency_score  = 100 − min(avg_latency_ms/10, 100)
+```
+
+### 6.4 Test with Load
+
+If you have multiple backends, send concurrent requests to see load balancing:
+
+```bash
+for i in $(seq 1 5); do
+  curl -s http://localhost:8000/v1/chat/completions \
+    -H "Content-Type: application/json" \
+    -d '{"model":"llama3.2:latest","messages":[{"role":"user","content":"test"}],"max_tokens":5}' &
+done
+wait
+```
+
+Watch the server logs — the router distributes requests based on real-time load.
+
+---
+
+## 7. Model Aliases (F07)
+
+Aliases let you use familiar model names (like `gpt-4`) that map to your local models.
+
+### 7.1 Configure Aliases
+
+```bash
+cat > nexus.toml << 'EOF'
+[server]
+port = 8000
+
+[discovery]
+enabled = false
+
+[routing]
+strategy = "smart"
+
+[routing.aliases]
+"gpt-4" = "llama3.2:latest"
+"gpt-3.5-turbo" = "llama3.2:latest"
+"claude" = "llama3.2:latest"
+
+[logging]
+level = "info"
+
+[[backends]]
+name = "local-ollama"
+url = "http://localhost:11434"
+type = "ollama"
+EOF
+```
+
+Restart the server with this config.
+
+### 7.2 Use an Alias
+
+```bash
+# Request using "gpt-4" — routed to llama3.2:latest
+curl -s http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4",
+    "messages": [{"role": "user", "content": "What model are you?"}],
+    "max_tokens": 20
+  }' | jq '.model'
+```
+
+**Expected**: The response `model` field shows the resolved model name.
+
+### 7.3 Alias Chaining (Max 3 Levels)
+
+```toml
+[routing.aliases]
+"fast" = "gpt-4"
+"gpt-4" = "llama3.2:latest"
+# fast → gpt-4 → llama3.2:latest
+```
+
+---
+
+## 8. Fallback Chains (F08)
+
+When a requested model isn't available, Nexus tries fallback models automatically.
+
+### 8.1 Configure Fallbacks
+
+```bash
+cat > nexus.toml << 'EOF'
+[server]
+port = 8000
+
+[discovery]
+enabled = false
+
+[routing]
+strategy = "smart"
+
+[routing.aliases]
+"gpt-4" = "llama3.2:latest"
+
+[routing.fallbacks]
+"unavailable-model" = ["llama3.2:latest"]
+
+[logging]
+level = "info"
+
+[[backends]]
+name = "local-ollama"
+url = "http://localhost:11434"
+type = "ollama"
+EOF
+```
+
+Restart the server.
+
+### 8.2 Trigger a Fallback
+
+```bash
+curl -sD - http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "unavailable-model",
+    "messages": [{"role": "user", "content": "Hello"}],
+    "max_tokens": 10
+  }' 2>&1 | grep -i "x-nexus\|HTTP/"
+```
+
+**Expected**: The response includes a fallback header:
+```
+HTTP/1.1 200 OK
+x-nexus-fallback-model: llama3.2:latest
+```
+
+This tells the client that the original model wasn't available and a fallback was used.
+
+---
+
+## 9. Request Metrics (F09)
+
+Nexus exposes Prometheus-compatible metrics and JSON statistics.
+
+### 9.1 Prometheus Metrics
+
+```bash
+curl -s http://localhost:8000/metrics
+```
+
+**Expected** (Prometheus exposition format):
+```
+# HELP nexus_backends_total Total registered backends
+# TYPE nexus_backends_total gauge
+nexus_backends_total 1
+
+# HELP nexus_backends_healthy Healthy backends count
+# TYPE nexus_backends_healthy gauge
+nexus_backends_healthy 1
+
+# HELP nexus_models_available Unique models available
+# TYPE nexus_models_available gauge
+nexus_models_available 3
+
+# HELP nexus_requests_total Total requests by model, backend, and status
+# TYPE nexus_requests_total counter
+nexus_requests_total{backend="local-ollama",model="llama3.2:latest",status="success"} 5
+
+# HELP nexus_request_duration_seconds Request duration histogram
+# TYPE nexus_request_duration_seconds histogram
+nexus_request_duration_seconds_bucket{backend="local-ollama",model="llama3.2:latest",le="1"} 2
+nexus_request_duration_seconds_bucket{backend="local-ollama",model="llama3.2:latest",le="5"} 4
+nexus_request_duration_seconds_bucket{backend="local-ollama",model="llama3.2:latest",le="+Inf"} 5
+```
+
+### 9.2 JSON Stats
+
+```bash
+curl -s http://localhost:8000/v1/stats | jq .
+```
+
+**Expected**:
+```json
+{
+  "uptime_seconds": 120,
+  "requests": {
+    "total": 5,
+    "success": 5,
+    "errors": 0
+  },
+  "backends": [
+    {
+      "id": "local-ollama",
+      "requests": 5,
+      "average_latency_ms": 1250.5,
+      "pending": 0
+    }
+  ],
+  "models": []
+}
+```
+
+### 9.3 Request History
+
+```bash
+curl -s http://localhost:8000/v1/history | jq '.[0]'
+```
+
+**Expected**: Last 100 requests in a ring buffer:
+```json
+{
+  "timestamp": 1739571600,
+  "model": "llama3.2:latest",
+  "backend_id": "local-ollama",
+  "duration_ms": 1500,
+  "status": "Success",
+  "error_message": null
+}
+```
+
+### 9.4 Generate Metrics Data
+
+Make a few requests to populate metrics, then query:
+
+```bash
+# Send 3 requests
+for i in 1 2 3; do
+  curl -s http://localhost:8000/v1/chat/completions \
+    -H "Content-Type: application/json" \
+    -d '{"model":"llama3.2:latest","messages":[{"role":"user","content":"Say OK"}],"max_tokens":5}' > /dev/null
+done
+
+# Check metrics
+curl -s http://localhost:8000/metrics | grep nexus_requests_total
+# nexus_requests_total{backend="local-ollama",model="llama3.2:latest",status="success"} 3
+
+# Check history
+curl -s http://localhost:8000/v1/history | jq 'length'
+# 3
+```
+
+### 9.5 Prometheus Scrape Config
+
+To monitor Nexus with Prometheus, add to `prometheus.yml`:
+
+```yaml
+scrape_configs:
+  - job_name: 'nexus'
+    static_configs:
+      - targets: ['localhost:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+```
+
+---
+
+## 10. Web Dashboard (F10)
+
+Nexus includes an embedded web dashboard — no external files needed.
+
+### 10.1 Open the Dashboard
+
+Open in your browser:
+
+```
+http://localhost:8000/
+```
+
+**What you'll see**:
+- **System Summary**: Uptime, total requests, active backends, available models
+- **Backend Status Grid**: Cards for each backend with health indicators (green/yellow/red)
+- **Model Availability**: Which models are available on which backends
+- **Request History Table**: Recent requests with model, backend, duration, status
+
+### 10.2 Dashboard Features
+
+| Feature | How to Test |
+|---------|-------------|
+| **Health indicators** | Backend cards show green (healthy), red (unhealthy), yellow (unknown) |
+| **Real-time updates** | Make a request — it appears in the history table within seconds |
+| **Dark mode** | Set your OS/browser to dark mode — the dashboard follows `prefers-color-scheme` |
+| **Mobile responsive** | Resize your browser window or open on a phone |
+| **Works without JS** | Disable JavaScript — the page still shows static data with a refresh button |
+
+### 10.3 WebSocket Live Updates
+
+The dashboard uses WebSocket for real-time updates. Test manually:
+
+```bash
+# Install wscat if needed: npm install -g wscat
+wscat -c ws://localhost:8000/ws
+```
+
+**Messages you'll receive** (JSON):
+
+Backend status broadcast:
+```json
+{"update_type":"BackendStatus","data":[{"id":"local-ollama","status":"Healthy",...}]}
+```
+
+After making a request — request completion event:
+```json
+{"update_type":"RequestComplete","data":{"model":"llama3.2:latest","backend_id":"local-ollama","duration_ms":1200,"status":"Success"}}
+```
+
+### 10.4 Screenshot-Worthy Demo
+
+To get a good dashboard screenshot for social media:
+
+```bash
+# 1. Configure multiple backends (even if some are the same Ollama)
+cat > nexus.toml << 'EOF'
+[server]
+port = 8000
+
+[discovery]
+enabled = false
+
+[routing]
+strategy = "smart"
+
+[routing.aliases]
+"gpt-4" = "llama3.2:latest"
+"gpt-3.5-turbo" = "llama3.2:latest"
+
+[logging]
+level = "info"
+
+[[backends]]
+name = "local-ollama"
+url = "http://localhost:11434"
+type = "ollama"
+priority = 1
+EOF
+
+# 2. Start Nexus
+nexus serve &
+sleep 3
+
+# 3. Generate some traffic for the history table
+for i in $(seq 1 10); do
+  curl -s http://localhost:8000/v1/chat/completions \
+    -H "Content-Type: application/json" \
+    -d "{\"model\":\"llama3.2:latest\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hello #$i\"}],\"max_tokens\":10}" > /dev/null &
+done
+wait
+
+# 4. Open http://localhost:8000/ in your browser and take a screenshot!
+```
+
+---
+
+## 11. Structured Logging (F11)
+
+Nexus provides structured, queryable logs for every request.
+
+### 11.1 Pretty Format (Default)
+
+```bash
+nexus serve  # uses pretty format by default
+```
+
+Make a request — server logs show:
+```
+INFO  nexus::api: Request completed
+  request_id=req-a1b2c3 model=llama3.2:latest backend=local-ollama
+  latency_ms=1250 status=success stream=false
+```
+
+### 11.2 JSON Format (Production)
+
+```bash
+nexus serve --log-level info
+```
+
+Or configure in `nexus.toml`:
+```toml
+[logging]
+level = "info"
+format = "json"
+```
+
+**Expected JSON output** (one line per event):
+```json
+{"timestamp":"2026-02-14T22:00:00Z","level":"INFO","target":"nexus::api","message":"Request completed","request_id":"req-a1b2c3","model":"llama3.2:latest","backend":"local-ollama","latency_ms":1250}
+```
+
+JSON logs are compatible with ELK, Loki, Splunk, CloudWatch, and other log aggregators.
+
+### 11.3 Component-Level Logging
+
+Debug specific subsystems without flooding the console:
+
+```toml
+[logging]
+level = "info"              # global baseline
+
+[logging.component_levels]
+routing = "debug"           # verbose routing decisions
+api = "info"                # standard API logging
+health = "warn"             # only health check failures
+discovery = "debug"         # detailed mDNS activity
+```
+
+Or via environment:
+```bash
+NEXUS_LOG_LEVEL=info RUST_LOG=nexus::routing=debug nexus serve
+```
+
+### 11.4 Request Correlation IDs
+
+Every request gets a unique ID that tracks through retries and fallbacks:
+
+```bash
+# Start with debug logging
+RUST_LOG=debug nexus serve
+```
+
+Make a request and find its correlation ID in the logs:
+```
+DEBUG request_id=req-x7y8z9 Resolving alias: gpt-4 → llama3.2:latest
+DEBUG request_id=req-x7y8z9 Scoring backend local-ollama: score=95
+INFO  request_id=req-x7y8z9 Request completed: model=llama3.2:latest latency_ms=800
+```
+
+### 11.5 Privacy: Content Never Logged by Default
+
+Message content is **never** logged unless explicitly opted in:
+
+```toml
+[logging]
+# Only enable for local debugging — never in production!
+enable_content_logging = true
+```
+
+Without this flag, logs contain model names, backends, and latency — but never the actual messages or responses.
+
+---
+
+## E2E Test Script
+
+An automated smoke test is available at `scripts/e2e-test.sh`. It validates all core functionality in one run.
+
+### Run It
+
+```bash
+# Requires: Ollama running with at least one model
+./scripts/e2e-test.sh
+```
+
+The script starts a Nexus server, runs through health checks, model listing, chat completions, metrics, stats, history, and dashboard endpoints, then cleans up.
+
+See [scripts/e2e-test.sh](../scripts/e2e-test.sh) for the full source.
 
 ---
 
 ## Troubleshooting
 
-### Server stops unexpectedly when running in background
-
-If you run `nexus serve &` and the server dies when you run subsequent commands, this is likely due to **shell session termination**. Background processes started with `&` are tied to the shell session and may be killed when the session ends.
-
-**Solutions:**
+### Server stops when running in background
 
 ```bash
-# Option 1: Run in foreground (recommended for testing)
-nexus serve
-# Use a separate terminal for curl commands
+# Option 1: Use two terminals (recommended)
+# Terminal 1: nexus serve
+# Terminal 2: curl commands
 
-# Option 2: Use nohup to detach from terminal
+# Option 2: Detach from terminal
 nohup nexus serve > nexus.log 2>&1 &
 
-# Option 3: Use a terminal multiplexer
+# Option 3: Use tmux
 tmux new-session -d -s nexus 'nexus serve'
-
-# Option 4: Run as a systemd service (production)
-sudo systemctl start nexus
 ```
 
-### Server won't start
+### Port already in use
 
 ```bash
-# Check if port is in use
 lsof -i :8000
-
-# Try different port
-nexus serve --port 8001
+nexus serve --port 8001  # use a different port
 ```
 
-### Backend shows as Unhealthy
+### Backend shows Unhealthy
 
 ```bash
-# Verify backend is running
+# Verify the backend is running
 curl http://localhost:11434/api/tags  # Ollama
-curl http://localhost:8000/v1/models  # vLLM
+curl http://localhost:1234/v1/models  # LM Studio
 
-# Check Nexus logs
+# Check Nexus logs for details
 RUST_LOG=debug nexus serve
 ```
 
 ### No models found
 
 ```bash
-# Ensure backend has models loaded
-ollama list  # For Ollama
-
-# Pull a model if needed
-ollama pull llama3.2:latest
+ollama list                   # verify models exist
+ollama pull llama3.2:latest   # download one if needed
 ```
 
-### Streaming not working
+### Streaming output is buffered
 
 ```bash
-# Ensure you're not buffering output
+# Use --no-buffer flag
 curl --no-buffer -s http://localhost:8000/v1/chat/completions ...
+```
 
-# Check backend supports streaming
+### Dashboard not loading
+
+```bash
+# Verify the root endpoint works
+curl -s http://localhost:8000/ | head -5
+# Should return HTML: <!DOCTYPE html>...
+
+# Check that assets load
+curl -sI http://localhost:8000/assets/dashboard.js | head -1
+# HTTP/1.1 200 OK
 ```
 
 ---
 
 ## Cleanup
 
-After testing:
-
 ```bash
-# Stop Nexus server
-kill $SERVER_PID
+# Stop Nexus server (if running in background)
+kill $SERVER_PID 2>/dev/null
 
 # Remove test config files
-rm -f /tmp/nexus-test.toml /tmp/my-nexus.toml /tmp/bad.toml
+rm -f nexus.toml /tmp/nexus-test.toml /tmp/my-nexus.toml
 
-# Remove shell completion files
+# Remove shell completions
 rm -f /tmp/nexus.{bash,zsh,fish}
 ```
 
 ---
 
-## Summary
+## Feature Summary
 
 | Feature | Key Tests | Pass Criteria |
 |---------|-----------|---------------|
-| F04: CLI | Config init, env vars, completions | Commands work, config valid |
+| F01: API Gateway | Chat completions, streaming, models, errors | OpenAI-compatible responses |
 | F02: Registry | Add/remove/list backends | Backends tracked correctly |
 | F03: Health | Health status, failure detection | Accurate status reporting |
-| F01: API | Models list, chat completion, streaming | OpenAI-compatible responses |
-| F05: mDNS | Auto-discovery, grace period, fallback | Backends discovered, manual takes precedence |
-
-For automated testing, run:
-```bash
-cargo test
-```
-
-Current test suite: **258 tests passing**.
-
----
-
-## F05: mDNS Discovery
-
-mDNS Discovery automatically finds LLM backends on your local network. This feature requires a network environment where mDNS works (typically a local network, not Docker or WSL).
-
-### Prerequisites for mDNS Testing
-
-- At least two machines on the same local network
-- Ollama running on a different machine (it advertises via mDNS by default)
-- OR: An mDNS-capable service advertising `_llm._tcp.local`
-
-> **Note:** Testing mDNS on a single machine is limited because Ollama's mDNS advertisement is meant for network discovery. For single-machine testing, focus on verifying the configuration and graceful fallback.
-
-### 5.1 Verify mDNS is Enabled in Configuration
-
-```bash
-# Check nexus.toml includes discovery section
-cat nexus.toml | grep -A5 "\[discovery\]"
-```
-
-**Expected**:
-```toml
-[discovery]
-enabled = true
-service_types = ["_ollama._tcp.local", "_llm._tcp.local"]
-grace_period_seconds = 60
-```
-
-> **Note**: Service types can be configured with or without trailing dots. Nexus automatically normalizes them (adds the trailing dot if missing) for the mdns-sd library.
-
-### 5.2 Start Server with mDNS Discovery
-
-```bash
-# Start with debug logging to see discovery activity
-RUST_LOG=debug nexus serve 2>&1 | tee nexus.log &
-SERVER_PID=$!
-sleep 5
-
-# Check for mDNS startup messages
-grep -i "mdns\|discovery" nexus.log
-```
-
-**Expected log entries**:
-```
-INFO mDNS service daemon started
-INFO Browsing for mDNS service: _ollama._tcp.local
-INFO Browsing for mDNS service: _llm._tcp.local
-```
-
-### 5.3 Verify Discovery of Remote Ollama
-
-If you have Ollama running on another machine (e.g., 192.168.1.100):
-
-```bash
-# Wait for discovery (may take a few seconds)
-sleep 10
-
-# List backends - should show discovered backend
-nexus backends list
-```
-
-**Expected**:
-```
-Backends:
-  local-ollama (ollama) [static]
-    URL: http://localhost:11434
-    Status: Healthy
-    
-  ollama-laptop (ollama) [mdns]
-    URL: http://192.168.1.100:11434
-    Status: Healthy
-    Models: llama3:latest, ...
-```
-
-The `[mdns]` tag indicates the backend was auto-discovered.
-
-### 5.4 Test mDNS Disabled Mode
-
-```bash
-# Start without discovery
-nexus serve --no-discovery &
-SERVER_PID=$!
-sleep 3
-
-# Check logs - should say disabled
-grep -i "discovery disabled" nexus.log
-
-# Or check that no mDNS backends appear
-nexus backends list --json | jq '[.[] | select(.source == "mdns")] | length'
-```
-
-**Expected**: 0 (no mDNS-discovered backends)
-
-### 5.5 Test Graceful Fallback (Docker/WSL)
-
-In environments where mDNS isn't available (Docker, WSL without special config), Nexus should gracefully continue:
-
-```bash
-# Start server in Docker or WSL
-RUST_LOG=warn nexus serve 2>&1 | tee nexus.log &
-sleep 5
-
-# Check for fallback message
-grep -i "mDNS unavailable" nexus.log
-```
-
-**Expected**:
-```
-WARN mDNS unavailable, discovery disabled: ...
-```
-
-The server should still work, just without auto-discovery.
-
-### 5.6 Test Manual Config Takes Precedence
-
-```bash
-# Pre-configure a backend at the same URL that would be discovered
-cat > nexus.toml << 'EOF'
-[server]
-host = "0.0.0.0"
-port = 8000
-
-[discovery]
-enabled = true
-
-[[backends]]
-name = "my-configured-ollama"
-url = "http://192.168.1.100:11434"
-type = "ollama"
-priority = 10
-EOF
-
-nexus serve &
-SERVER_PID=$!
-sleep 10
-
-# The discovered backend should NOT override the configured one
-nexus backends list
-```
-
-**Expected**: Only "my-configured-ollama" appears, not a duplicate discovered backend.
-
-### 5.7 Test Grace Period (Service Disappearing)
-
-This test requires control over a remote Ollama instance:
-
-```bash
-# 1. Start Nexus and wait for discovery
-nexus serve &
-sleep 10
-
-# 2. Note the discovered backend
-nexus backends list
-
-# 3. Stop the remote Ollama (on the other machine)
-# ssh user@192.168.1.100 'systemctl stop ollama'
-
-# 4. Check status immediately - should show Unknown
-sleep 5
-nexus backends list  # Status: Unknown
-
-# 5. Wait less than grace period (60s) and restart remote Ollama
-# ssh user@192.168.1.100 'systemctl start ollama'
-sleep 30
-
-# 6. Backend should recover without being removed
-nexus backends list  # Status: Healthy (same backend, not re-added)
-```
-
-**Expected**: Backend transitions Unknown → Healthy without removal/re-addition.
-
-### 5.8 Test Service Types Configuration
-
-```bash
-# Only browse for Ollama services
-cat > nexus.toml << 'EOF'
-[discovery]
-enabled = true
-service_types = ["_ollama._tcp.local"]  # Only Ollama, not _llm._tcp
-grace_period_seconds = 60
-EOF
-
-nexus serve &
-sleep 5
-
-# Should only see Ollama services, not generic _llm services
-```
-
-### 5.9 Verify IPv6 Support
-
-If your network has IPv6:
-
-```bash
-# Start with debug logging
-RUST_LOG=debug nexus serve 2>&1 | tee nexus.log &
-sleep 10
-
-# Check if IPv6 addresses are handled correctly
-grep -i "ipv6\|\[::" nexus.log
-```
-
-**Expected**: If IPv6 services are discovered, URLs use bracket notation: `http://[::1]:11434`
-
-### 5.10 Cleanup
-
-```bash
-# Stop the server
-kill $SERVER_PID 2>/dev/null || true
-
-# Remove test config
-rm -f nexus.log
-```
-
----
-
-## mDNS Testing on a Single Machine
-
-If you only have one machine, you can still test some aspects:
-
-### Simulated Test with Avahi (Linux)
-
-```bash
-# Install Avahi if not present
-sudo apt install avahi-daemon avahi-utils
-
-# Advertise a fake LLM service
-avahi-publish -s "Test LLM Server" _llm._tcp 8080 "type=generic" "api_path=/v1" &
-AVAHI_PID=$!
-
-# Start Nexus and check discovery
-RUST_LOG=debug nexus serve &
-sleep 10
-
-nexus backends list
-# Should show discovered "Test LLM Server"
-
-# Cleanup
-kill $AVAHI_PID $SERVER_PID
-```
-
-### Simulated Test with dns-sd (macOS)
-
-```bash
-# Advertise a fake LLM service
-dns-sd -R "Test LLM Server" _llm._tcp local 8080 type=generic api_path=/v1 &
-DNS_SD_PID=$!
-
-# Start Nexus
-RUST_LOG=debug nexus serve &
-sleep 10
-
-nexus backends list
-
-# Cleanup
-kill $DNS_SD_PID $SERVER_PID
-```
-
----
+| F04: CLI & Config | Config init, env vars, CLI overrides | Correct precedence |
+| F05: mDNS | Auto-discovery, graceful fallback | Backends discovered automatically |
+| F06: Router | Smart scoring, strategies | Requests routed to best backend |
+| F07: Aliases | Name mapping, chaining | Aliases resolve transparently |
+| F08: Fallbacks | Automatic failover | `x-nexus-fallback-model` header returned |
+| F09: Metrics | `/metrics`, `/v1/stats`, `/v1/history` | Prometheus-compatible output |
+| F10: Dashboard | Web UI, WebSocket, dark mode | Live updates in browser |
+| F11: Logging | JSON format, component levels, correlation IDs | Structured, queryable logs |
+
+**Automated test suite**: `cargo test` — **462 tests**
+
+For the full E2E smoke test: `./scripts/e2e-test.sh`
