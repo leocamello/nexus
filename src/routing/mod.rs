@@ -29,6 +29,9 @@ pub struct RoutingResult {
     pub actual_model: String,
     /// True if a fallback model was used
     pub fallback_used: bool,
+    /// Explanation of backend selection decision
+    /// Examples: "highest_score:0.95", "round_robin:index_3", "only_healthy_backend"
+    pub route_reason: String,
 }
 
 /// Router selects the best backend for each request
@@ -144,16 +147,91 @@ impl Router {
 
         if !candidates.is_empty() {
             // Apply routing strategy
-            let selected = match self.strategy {
-                RoutingStrategy::Smart => self.select_smart(&candidates),
-                RoutingStrategy::RoundRobin => self.select_round_robin(&candidates),
-                RoutingStrategy::PriorityOnly => self.select_priority_only(&candidates),
-                RoutingStrategy::Random => self.select_random(&candidates),
+            let (selected, route_reason) = match self.strategy {
+                RoutingStrategy::Smart => {
+                    let backend = self.select_smart(&candidates);
+                    let score = score_backend(
+                        backend.priority as u32,
+                        backend
+                            .pending_requests
+                            .load(std::sync::atomic::Ordering::Relaxed),
+                        backend
+                            .avg_latency_ms
+                            .load(std::sync::atomic::Ordering::Relaxed),
+                        &self.weights,
+                    );
+                    let reason = if candidates.len() == 1 {
+                        "only_healthy_backend".to_string()
+                    } else {
+                        format!("highest_score:{}:{:.2}", backend.name, score)
+                    };
+                    (backend, reason)
+                }
+                RoutingStrategy::RoundRobin => {
+                    let counter = self
+                        .round_robin_counter
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let index = (counter as usize) % candidates.len();
+                    let best = &candidates[index];
+
+                    // Create a new Backend snapshot
+                    let backend = Backend {
+                        id: best.id.clone(),
+                        name: best.name.clone(),
+                        url: best.url.clone(),
+                        backend_type: best.backend_type,
+                        status: best.status,
+                        last_health_check: best.last_health_check,
+                        last_error: best.last_error.clone(),
+                        models: best.models.clone(),
+                        priority: best.priority,
+                        pending_requests: AtomicU32::new(
+                            best.pending_requests
+                                .load(std::sync::atomic::Ordering::Relaxed),
+                        ),
+                        total_requests: AtomicU64::new(
+                            best.total_requests
+                                .load(std::sync::atomic::Ordering::Relaxed),
+                        ),
+                        avg_latency_ms: AtomicU32::new(
+                            best.avg_latency_ms
+                                .load(std::sync::atomic::Ordering::Relaxed),
+                        ),
+                        discovery_source: best.discovery_source,
+                        metadata: best.metadata.clone(),
+                    };
+
+                    let reason = if candidates.len() == 1 {
+                        "only_healthy_backend".to_string()
+                    } else {
+                        format!("round_robin:index_{}", index)
+                    };
+                    (backend, reason)
+                }
+                RoutingStrategy::PriorityOnly => {
+                    let backend = self.select_priority_only(&candidates);
+                    let reason = if candidates.len() == 1 {
+                        "only_healthy_backend".to_string()
+                    } else {
+                        format!("priority:{}:{}", backend.name, backend.priority)
+                    };
+                    (backend, reason)
+                }
+                RoutingStrategy::Random => {
+                    let backend = self.select_random(&candidates);
+                    let reason = if candidates.len() == 1 {
+                        "only_healthy_backend".to_string()
+                    } else {
+                        format!("random:{}", backend.name)
+                    };
+                    (backend, reason)
+                }
             };
             return Ok(RoutingResult {
                 backend: Arc::new(selected),
                 actual_model: model.clone(),
                 fallback_used: false,
+                route_reason,
             });
         }
 
@@ -162,12 +240,67 @@ impl Router {
         for fallback_model in &fallbacks {
             let candidates = self.filter_candidates(fallback_model, requirements);
             if !candidates.is_empty() {
-                let selected = match self.strategy {
-                    RoutingStrategy::Smart => self.select_smart(&candidates),
-                    RoutingStrategy::RoundRobin => self.select_round_robin(&candidates),
-                    RoutingStrategy::PriorityOnly => self.select_priority_only(&candidates),
-                    RoutingStrategy::Random => self.select_random(&candidates),
+                let (selected, mut route_reason) = match self.strategy {
+                    RoutingStrategy::Smart => {
+                        let backend = self.select_smart(&candidates);
+                        let score = score_backend(
+                            backend.priority as u32,
+                            backend
+                                .pending_requests
+                                .load(std::sync::atomic::Ordering::Relaxed),
+                            backend
+                                .avg_latency_ms
+                                .load(std::sync::atomic::Ordering::Relaxed),
+                            &self.weights,
+                        );
+                        (backend, format!("highest_score:{:.2}", score))
+                    }
+                    RoutingStrategy::RoundRobin => {
+                        let counter = self
+                            .round_robin_counter
+                            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let index = (counter as usize) % candidates.len();
+                        let best = &candidates[index];
+
+                        // Create a new Backend snapshot
+                        let backend = Backend {
+                            id: best.id.clone(),
+                            name: best.name.clone(),
+                            url: best.url.clone(),
+                            backend_type: best.backend_type,
+                            status: best.status,
+                            last_health_check: best.last_health_check,
+                            last_error: best.last_error.clone(),
+                            models: best.models.clone(),
+                            priority: best.priority,
+                            pending_requests: AtomicU32::new(
+                                best.pending_requests
+                                    .load(std::sync::atomic::Ordering::Relaxed),
+                            ),
+                            total_requests: AtomicU64::new(
+                                best.total_requests
+                                    .load(std::sync::atomic::Ordering::Relaxed),
+                            ),
+                            avg_latency_ms: AtomicU32::new(
+                                best.avg_latency_ms
+                                    .load(std::sync::atomic::Ordering::Relaxed),
+                            ),
+                            discovery_source: best.discovery_source,
+                            metadata: best.metadata.clone(),
+                        };
+
+                        (backend, format!("round_robin:index_{}", index))
+                    }
+                    RoutingStrategy::PriorityOnly => {
+                        let backend = self.select_priority_only(&candidates);
+                        let priority = backend.priority;
+                        (backend, format!("priority:{}", priority))
+                    }
+                    RoutingStrategy::Random => {
+                        (self.select_random(&candidates), "random".to_string())
+                    }
                 };
+                route_reason = format!("fallback:{}:{}", model, route_reason);
                 tracing::warn!(
                     requested_model = %model,
                     fallback_model = %fallback_model,
@@ -178,6 +311,7 @@ impl Router {
                     backend: Arc::new(selected),
                     actual_model: fallback_model.clone(),
                     fallback_used: true,
+                    route_reason,
                 });
             }
         }
@@ -245,41 +379,6 @@ impl Router {
     }
 
     /// Select backend using round-robin
-    fn select_round_robin(&self, candidates: &[Backend]) -> Backend {
-        let counter = self
-            .round_robin_counter
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let index = (counter as usize) % candidates.len();
-        let best = &candidates[index];
-
-        // Create a new Backend snapshot
-        Backend {
-            id: best.id.clone(),
-            name: best.name.clone(),
-            url: best.url.clone(),
-            backend_type: best.backend_type,
-            status: best.status,
-            last_health_check: best.last_health_check,
-            last_error: best.last_error.clone(),
-            models: best.models.clone(),
-            priority: best.priority,
-            pending_requests: AtomicU32::new(
-                best.pending_requests
-                    .load(std::sync::atomic::Ordering::Relaxed),
-            ),
-            total_requests: AtomicU64::new(
-                best.total_requests
-                    .load(std::sync::atomic::Ordering::Relaxed),
-            ),
-            avg_latency_ms: AtomicU32::new(
-                best.avg_latency_ms
-                    .load(std::sync::atomic::Ordering::Relaxed),
-            ),
-            discovery_source: best.discovery_source,
-            metadata: best.metadata.clone(),
-        }
-    }
-
     /// Select backend using priority-only
     fn select_priority_only(&self, candidates: &[Backend]) -> Backend {
         let best = candidates

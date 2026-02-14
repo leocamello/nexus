@@ -180,7 +180,7 @@ Logs must be compatible with common log aggregation and analysis tools (Elastics
 - **SC-003**: Log entries contain accurate measured values - latency_ms matches actual request duration within 1ms, token counts match exact values returned by backends
 - **SC-004**: Zero instances of message content appearing in logs when content logging is disabled (verified by auditing production logs)
 - **SC-005**: Logs are successfully ingested by standard log aggregators (ELK, Loki) without custom parsing configuration - 95% of JSON fields are automatically indexed
-- **SC-006**: Log format switching (JSON vs human-readable) takes effect within 5 seconds of configuration change without service restart
+- **SC-006**: Log format switching (JSON vs human-readable) takes effect on service restart via configuration change
 - **SC-007**: Logging system handles 10,000 requests per minute without blocking request processing or introducing more than 1ms of latency overhead per request
 - **SC-008**: Component-level log filtering reduces log volume by 60-80% in production (by setting non-critical components to WARN level)
 - **SC-009**: Operators successfully diagnose 90% of retry/failover issues using correlation ID to trace request chains without needing additional debugging tools

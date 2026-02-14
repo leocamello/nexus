@@ -49,8 +49,19 @@ pub fn load_config_with_overrides(
 pub fn init_tracing(
     config: &crate::config::LoggingConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Build filter directives using helper function
+    let filter_str = crate::logging::build_filter_directives(config);
+
     let env_filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&config.level));
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&filter_str));
+
+    // Warn if content logging is enabled
+    if config.enable_content_logging {
+        eprintln!(
+            "WARNING: Content logging is enabled. Request/response message content will be logged."
+        );
+        eprintln!("         This may include sensitive data. Use only for debugging.");
+    }
 
     match config.format {
         LogFormat::Pretty => {

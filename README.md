@@ -27,6 +27,7 @@ Nexus is a distributed LLM model serving orchestrator that unifies heterogeneous
 - 🔄 **Transparent Failover**: Automatically retries with fallback backends
 - 🔌 **OpenAI-Compatible**: Works with any OpenAI API client
 - ⚡ **Zero Config**: Just run it - works out of the box with Ollama
+- 📊 **Structured Logging**: Queryable JSON logs for every request with correlation IDs ([quickstart](specs/011-structured-logging/quickstart.md))
 
 ## Supported Backends
 
