@@ -581,15 +581,15 @@ for (index, backend) in backends.iter().enumerate() {
 
 ### Definition of Done
 
-- [ ] HealthChecker struct implemented with all operations
-- [ ] Backend-specific endpoint selection works for all types
-- [ ] Ollama response parsing extracts models correctly
-- [ ] OpenAI response parsing extracts models correctly
-- [ ] Status transition thresholds work correctly
-- [ ] Timeout handling works correctly
-- [ ] Staggered checks implemented
-- [ ] Graceful shutdown implemented
-- [ ] Logging at appropriate levels
-- [ ] Unit tests for parsing and transitions
-- [ ] Integration tests with mock backends
-- [ ] Code passes clippy and fmt checks
+- [x] HealthChecker struct implemented with all operations
+- [x] Backend-specific endpoint selection works for all types
+- [x] Ollama response parsing extracts models correctly
+- [x] OpenAI response parsing extracts models correctly
+- [x] Status transition thresholds work correctly
+- [x] Timeout handling works correctly
+- [x] Staggered checks implemented
+- [x] Graceful shutdown implemented
+- [x] Logging at appropriate levels
+- [x] Unit tests for parsing and transitions
+- [x] Integration tests with mock backends
+- [x] Code passes clippy and fmt checks

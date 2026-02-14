@@ -253,16 +253,16 @@ This keeps the components decoupled - discovery only interacts with the registry
 
 ## Acceptance Criteria
 
-- [ ] Discovers Ollama instances automatically
-- [ ] Discovers `_llm._tcp.local` services
-- [ ] Handles service appearing/disappearing
-- [ ] Grace period prevents flapping (60s default)
-- [ ] Works on macOS, Linux, Windows
-- [ ] Graceful fallback if mDNS unavailable
-- [ ] Manual config takes precedence over discovered
-- [ ] Logs discovery events at appropriate levels
-- [ ] Integrates with health checker for immediate checks
-- [ ] Cleanup task removes stale backends
+- [x] Discovers Ollama instances automatically
+- [x] Discovers `_llm._tcp.local` services
+- [x] Handles service appearing/disappearing
+- [x] Grace period prevents flapping (60s default)
+- [x] Works on macOS, Linux, Windows
+- [x] Graceful fallback if mDNS unavailable
+- [x] Manual config takes precedence over discovered
+- [x] Logs discovery events at appropriate levels
+- [x] Integrates with health checker for immediate checks
+- [x] Cleanup task removes stale backends
 
 ## Non-Goals (Out of Scope)
 

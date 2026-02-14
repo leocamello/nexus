@@ -488,21 +488,21 @@ Following TDD approach per constitution (tests written first, verified to fail, 
 Following TDD workflow (tests first, then implementation):
 
 **Phase 1: Test Setup**
-- [ ] Contract tests defined for OpenAI API format compliance
-- [ ] Integration test scaffolding with mock HTTP backend
-- [ ] Tests verified to FAIL (Red phase)
+- [x] Contract tests defined for OpenAI API format compliance
+- [x] Integration test scaffolding with mock HTTP backend
+- [x] Tests verified to FAIL (Red phase)
 
 **Phase 2: Implementation (Green phase)**
-- [ ] POST /v1/chat/completions handler (non-streaming)
-- [ ] POST /v1/chat/completions handler (streaming)
-- [ ] GET /v1/models handler
-- [ ] GET /health handler with full status
-- [ ] Error handling returns OpenAI-format errors
-- [ ] Request timeout is configurable
-- [ ] Retry logic with router integration
+- [x] POST /v1/chat/completions handler (non-streaming)
+- [x] POST /v1/chat/completions handler (streaming)
+- [x] GET /v1/models handler
+- [x] GET /health handler with full status
+- [x] Error handling returns OpenAI-format errors
+- [x] Request timeout is configurable
+- [x] Retry logic with router integration
 
 **Phase 3: Verification**
-- [ ] All tests pass (Green phase)
-- [ ] Concurrent request handling tested (100+)
-- [ ] Code passes clippy and fmt checks
-- [ ] Module has `#[cfg(test)] mod tests` blocks
+- [x] All tests pass (Green phase)
+- [x] Concurrent request handling tested (100+)
+- [x] Code passes clippy and fmt checks
+- [x] Module has `#[cfg(test)] mod tests` blocks
