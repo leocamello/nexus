@@ -35,6 +35,8 @@ pub struct HealthChecker {
     config: HealthCheckConfig,
     /// Per-backend health tracking state
     state: DashMap<String, BackendHealthState>,
+    /// Optional WebSocket broadcast sender for dashboard updates
+    ws_broadcast: Option<tokio::sync::broadcast::Sender<crate::dashboard::types::WebSocketUpdate>>,
 }
 
 impl HealthChecker {
@@ -50,6 +52,7 @@ impl HealthChecker {
             client,
             config,
             state: DashMap::new(),
+            ws_broadcast: None,
         }
     }
 
@@ -64,7 +67,17 @@ impl HealthChecker {
             client,
             config,
             state: DashMap::new(),
+            ws_broadcast: None,
         }
+    }
+
+    /// Set the WebSocket broadcast sender for dashboard updates.
+    pub fn with_broadcast(
+        mut self,
+        sender: tokio::sync::broadcast::Sender<crate::dashboard::types::WebSocketUpdate>,
+    ) -> Self {
+        self.ws_broadcast = Some(sender);
+        self
     }
 
     /// Get the health check endpoint for a backend type.
@@ -227,6 +240,9 @@ impl HealthChecker {
                         .is_ok()
                     {
                         state.last_models = models.clone();
+
+                        // Broadcast model_change update to dashboard
+                        self.broadcast_model_change(backend_id, models);
                     }
                 } else if !state.last_models.is_empty() {
                     // Preserve last known models for backends that don't report them
@@ -248,6 +264,11 @@ impl HealthChecker {
             }
             HealthCheckResult::Failure { .. } => {
                 // Models preserved in state.last_models
+
+                // Broadcast empty model list when backend fails
+                if !state.last_models.is_empty() {
+                    self.broadcast_model_change(backend_id, &[]);
+                }
             }
         }
 
@@ -291,6 +312,15 @@ impl HealthChecker {
             results.push((id, result));
         }
 
+        // Broadcast backend status update after all checks complete
+        if let Some(ws_broadcast) = &self.ws_broadcast {
+            let backends = self.registry.get_all_backends();
+            let backend_views: Vec<_> = backends.iter().map(|b| b.into()).collect();
+            let update = crate::dashboard::websocket::create_backend_status_update(backend_views);
+            // Ignore error if no receivers are listening
+            let _ = ws_broadcast.send(update);
+        }
+
         results
     }
 
@@ -323,5 +353,33 @@ impl HealthChecker {
                 }
             }
         })
+    }
+
+    /// Broadcast model change update to dashboard via WebSocket
+    fn broadcast_model_change(&self, backend_id: &str, models: &[crate::registry::Model]) {
+        if let Some(ref sender) = self.ws_broadcast {
+            // Convert models to JSON values
+            let model_values: Vec<serde_json::Value> = models
+                .iter()
+                .map(|m| {
+                    serde_json::json!({
+                        "id": m.id,
+                        "name": m.name,
+                        "context_length": m.context_length,
+                        "supports_vision": m.supports_vision,
+                        "supports_tools": m.supports_tools,
+                        "supports_json_mode": m.supports_json_mode,
+                        "max_output_tokens": m.max_output_tokens,
+                    })
+                })
+                .collect();
+
+            let update = crate::dashboard::websocket::create_model_change_update(
+                backend_id.to_string(),
+                model_values,
+            );
+
+            let _ = sender.send(update);
+        }
     }
 }

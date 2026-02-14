@@ -62,12 +62,14 @@
 
 mod completions;
 mod health;
-mod models;
+pub mod models;
 pub mod types;
 
 pub use types::*;
 
 use crate::config::NexusConfig;
+use crate::dashboard::history::RequestHistory;
+use crate::dashboard::types::WebSocketUpdate;
 use crate::metrics::MetricsCollector;
 use crate::registry::Registry;
 use crate::routing;
@@ -76,6 +78,7 @@ use axum::{
     Router,
 };
 use std::sync::Arc;
+use tokio::sync::broadcast;
 use tower_http::limit::RequestBodyLimitLayer;
 
 use std::time::Instant;
@@ -93,6 +96,10 @@ pub struct AppState {
     pub start_time: Instant,
     /// Metrics collector for observability
     pub metrics_collector: Arc<MetricsCollector>,
+    /// Request history ring buffer for dashboard
+    pub request_history: Arc<RequestHistory>,
+    /// WebSocket broadcast channel for dashboard real-time updates
+    pub ws_broadcast: broadcast::Sender<WebSocketUpdate>,
 }
 
 impl AppState {
@@ -133,6 +140,12 @@ impl AppState {
             prometheus_handle,
         ));
 
+        // Create request history ring buffer for dashboard
+        let request_history = Arc::new(RequestHistory::new());
+
+        // Create WebSocket broadcast channel for dashboard real-time updates
+        let (ws_broadcast, _) = broadcast::channel(1000);
+
         Self {
             registry,
             config,
@@ -140,6 +153,8 @@ impl AppState {
             router,
             start_time,
             metrics_collector,
+            request_history,
+            ws_broadcast,
         }
     }
 }
@@ -147,8 +162,14 @@ impl AppState {
 /// Create the main API router with all endpoints configured.
 pub fn create_router(state: Arc<AppState>) -> Router {
     Router::new()
+        // Dashboard routes
+        .route("/", get(crate::dashboard::dashboard_handler))
+        .route("/assets/*path", get(crate::dashboard::assets_handler))
+        .route("/ws", get(crate::dashboard::websocket_handler))
+        // API routes
         .route("/v1/chat/completions", post(completions::handle))
         .route("/v1/models", get(models::handle))
+        .route("/v1/history", get(crate::dashboard::history_handler))
         .route("/health", get(health::handle))
         .route("/metrics", get(crate::metrics::handler::metrics_handler))
         .route("/v1/stats", get(crate::metrics::handler::stats_handler))

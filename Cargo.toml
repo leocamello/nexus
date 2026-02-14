@@ -35,7 +35,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Web framework
-axum = { version = "0.7", features = ["macros"] }
+axum = { version = "0.7", features = ["macros", "ws"] }
 tokio = { version = "1", features = ["full"] }
 tower = "0.4"
 tower-http = { version = "0.5", features = ["trace", "cors", "timeout", "limit"] }
@@ -84,6 +84,10 @@ dashmap = "6"
 # Metrics
 metrics = "0.24"
 metrics-exporter-prometheus = "0.16"
+
+# Dashboard
+rust-embed = { version = "8.5", features = ["debug-embed"] }
+mime_guess = "2.0"
 
 [dev-dependencies]
 tokio-test = "0.4"

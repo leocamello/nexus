@@ -49,7 +49,7 @@ pub async fn stats_handler(State(state): State<Arc<AppState>>) -> impl IntoRespo
 }
 
 /// Compute aggregate request statistics from Prometheus metrics.
-fn compute_request_stats() -> RequestStats {
+pub fn compute_request_stats() -> RequestStats {
     // Request stats require parsing Prometheus text format to extract counter values.
     // The `metrics` crate records metrics but doesn't provide a query API.
     // Use GET /metrics (Prometheus format) for accurate request counts.
@@ -62,7 +62,7 @@ fn compute_request_stats() -> RequestStats {
 }
 
 /// Compute per-backend statistics from Prometheus metrics and Registry.
-fn compute_backend_stats(registry: &crate::registry::Registry) -> Vec<BackendStats> {
+pub fn compute_backend_stats(registry: &crate::registry::Registry) -> Vec<BackendStats> {
     // Get all backends from registry
     let backends = registry.get_all_backends();
 
@@ -88,7 +88,7 @@ fn compute_backend_stats(registry: &crate::registry::Registry) -> Vec<BackendSta
 }
 
 /// Compute per-model statistics from Prometheus metrics.
-fn compute_model_stats() -> Vec<ModelStats> {
+pub fn compute_model_stats() -> Vec<ModelStats> {
     // Per-model stats require parsing Prometheus text format to extract histogram data.
     // Use GET /metrics (Prometheus format) for per-model request counts and durations.
     // Enhancement: parse PrometheusHandle::render() output to populate this.

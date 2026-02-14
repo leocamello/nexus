@@ -59,6 +59,34 @@ pub async fn handle(
         )
         .increment(1);
 
+        // Record routing error in request history
+        let error_message = match &e {
+            crate::routing::RoutingError::ModelNotFound { model } => {
+                format!("Model '{}' not found", model)
+            }
+            crate::routing::RoutingError::FallbackChainExhausted { chain } => {
+                format!("Fallback chain exhausted: {}", chain[0])
+            }
+            crate::routing::RoutingError::NoHealthyBackend { model } => {
+                format!("No healthy backend available for model '{}'", model)
+            }
+            crate::routing::RoutingError::CapabilityMismatch { model, missing } => {
+                format!(
+                    "Model '{}' lacks required capabilities: {:?}",
+                    model, missing
+                )
+            }
+        };
+
+        record_request_completion(
+            &state,
+            &requested_model,
+            "none",
+            start_time.elapsed().as_millis() as u64,
+            crate::dashboard::types::RequestStatus::Error,
+            Some(error_message.clone()),
+        );
+
         match e {
             crate::routing::RoutingError::ModelNotFound { model } => {
                 ApiError::model_not_found(&model, &available)
@@ -148,6 +176,16 @@ pub async fn handle(
                     .record(usage.completion_tokens as f64);
                 }
 
+                // Record request in history and broadcast update
+                record_request_completion(
+                    &state,
+                    &actual_model,
+                    &backend.id,
+                    start_time.elapsed().as_millis() as u64,
+                    crate::dashboard::types::RequestStatus::Success,
+                    None,
+                );
+
                 // Create response with fallback header if applicable
                 let mut resp = Json(response).into_response();
                 if fallback_used {
@@ -175,6 +213,19 @@ pub async fn handle(
                     "model" => sanitized_model
                 )
                 .increment(1);
+
+                // Record error in request history
+                if attempt == max_retries {
+                    // This was the last retry, record the error
+                    record_request_completion(
+                        &state,
+                        &actual_model,
+                        &backend.id,
+                        start_time.elapsed().as_millis() as u64,
+                        crate::dashboard::types::RequestStatus::Error,
+                        Some(e.error.message.clone()),
+                    );
+                }
 
                 last_error = Some(e);
             }
@@ -400,4 +451,36 @@ fn create_error_chunk(message: &str) -> ChatCompletionChunk {
             finish_reason: Some("error".to_string()),
         }],
     }
+}
+
+/// Record a completed request in history and broadcast to dashboard
+fn record_request_completion(
+    state: &Arc<AppState>,
+    model: &str,
+    backend_id: &str,
+    duration_ms: u64,
+    status: crate::dashboard::types::RequestStatus,
+    error_message: Option<String>,
+) {
+    use crate::dashboard::types::HistoryEntry;
+    use crate::dashboard::websocket::create_request_complete_update;
+
+    let entry = HistoryEntry {
+        timestamp: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+        model: model.to_string(),
+        backend_id: backend_id.to_string(),
+        duration_ms,
+        status: status.clone(),
+        error_message,
+    };
+
+    // Push to request history ring buffer
+    state.request_history.push(entry.clone());
+
+    // Broadcast update to WebSocket clients
+    let update = create_request_complete_update(entry);
+    let _ = state.ws_broadcast.send(update);
 }
