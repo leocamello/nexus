@@ -99,9 +99,13 @@ pub fn load_backends_from_config(
 }
 
 /// Build API router with all endpoints
-fn build_api_router(registry: Arc<Registry>, config: Arc<NexusConfig>) -> axum::Router {
+fn build_api_router(
+    registry: Arc<Registry>,
+    config: Arc<NexusConfig>,
+) -> (axum::Router, Arc<AppState>) {
     let app_state = Arc::new(AppState::new(registry, config));
-    create_router(app_state)
+    let router = create_router(Arc::clone(&app_state));
+    (router, app_state)
 }
 
 /// Wait for shutdown signal (SIGINT or SIGTERM)
@@ -153,11 +157,16 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
     let registry = Arc::new(Registry::new());
     load_backends_from_config(&config, &registry)?;
 
-    // 4. Start health checker (if enabled)
+    // 4. Build API router and get AppState (to access ws_broadcast)
+    let config_arc = Arc::new(config.clone());
+    let (app, app_state) = build_api_router(registry.clone(), config_arc);
+
+    // 5. Start health checker (if enabled) with broadcast sender
     let cancel_token = CancellationToken::new();
     let health_handle = if config.health_check.enabled {
         tracing::info!("Starting health checker");
-        let checker = HealthChecker::new(registry.clone(), config.health_check.clone());
+        let checker = HealthChecker::new(registry.clone(), config.health_check.clone())
+            .with_broadcast(app_state.ws_broadcast.clone());
         Some(checker.start(cancel_token.clone()))
     } else {
         tracing::info!("Health checking disabled");
@@ -174,10 +183,6 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
         tracing::info!("mDNS discovery disabled");
         None
     };
-
-    // 5. Build API router with all endpoints
-    let config_arc = Arc::new(config.clone());
-    let app = build_api_router(registry.clone(), config_arc);
 
     // 6. Bind and serve
     let addr = format!("{}:{}", config.server.host, config.server.port);

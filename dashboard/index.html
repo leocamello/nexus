@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nexus Dashboard</title>
+    <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>Nexus Dashboard</h1>
+            <div id="connection-status" class="connection-status">
+                <span class="status-dot"></span>
+                <span class="status-text">Connecting...</span>
+            </div>
+        </header>
+
+        <!-- System Summary -->
+        <section class="summary-section">
+            <h2>System Summary</h2>
+            <div class="summary-cards">
+                <div class="summary-card">
+                    <div class="summary-label">Uptime</div>
+                    <div id="uptime" class="summary-value">--</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-label">Total Requests</div>
+                    <div id="total-requests" class="summary-value">--</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-label">Active Backends</div>
+                    <div id="active-backends" class="summary-value">--</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-label">Available Models</div>
+                    <div id="available-models" class="summary-value">--</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Backend Status -->
+        <section class="backend-section">
+            <h2>Backend Status</h2>
+            <div id="backend-cards" class="backend-grid">
+                <!-- Backend cards will be inserted here by JavaScript -->
+            </div>
+            <div id="no-backends" class="empty-message" style="display: none;">
+                No backends configured
+            </div>
+        </section>
+
+        <!-- Model Availability Matrix -->
+        <section class="model-section">
+            <h2>Model Availability</h2>
+            <div class="table-container">
+                <table id="model-matrix" class="model-matrix">
+                    <thead>
+                        <tr>
+                            <th class="model-name-header">Model</th>
+                            <th class="context-header">Context</th>
+                            <th class="capabilities-header">Capabilities</th>
+                            <!-- Backend columns will be inserted here by JavaScript -->
+                        </tr>
+                    </thead>
+                    <tbody id="model-matrix-tbody">
+                        <!-- Model rows will be inserted here by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+            <div id="no-models" class="empty-message" style="display: none;">
+                No models available
+            </div>
+        </section>
+
+        <!-- Request History -->
+        <section class="history-section">
+            <h2>Request History (Last 100)</h2>
+            <div class="table-container">
+                <table id="history-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Model</th>
+                            <th>Backend</th>
+                            <th>Duration</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-tbody">
+                        <!-- History rows will be inserted here by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+            <div id="no-history" class="empty-message" style="display: none;">
+                No requests recorded yet
+            </div>
+        </section>
+    </div>
+
+    <!-- No-JS Fallback -->
+    <noscript>
+        <div class="noscript-banner">
+            <p><strong>JavaScript is disabled.</strong></p>
+            <p>Enable JavaScript for full dashboard functionality with real-time updates.</p>
+            <p>Without JavaScript, the dashboard will auto-refresh every 5 seconds.</p>
+            <a href="/" class="refresh-button">Refresh Now</a>
+        </div>
+        <meta http-equiv="refresh" content="5">
+    </noscript>
+
+    <!-- Initial data injection point -->
+    <script id="initial-data" type="application/json">
+        {}
+    </script>
+
+    <script src="/assets/dashboard.js"></script>
+</body>
+</html>

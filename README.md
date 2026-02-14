@@ -147,6 +147,21 @@ curl http://localhost:8000/v1/chat/completions \
   }'
 ```
 
+### Web Dashboard
+
+Nexus includes a web dashboard for real-time monitoring and observability. Access it at `http://localhost:8000/` in your browser.
+
+**Features:**
+- 📊 Real-time backend health monitoring with status indicators
+- 🗺️ Model availability matrix showing which models are available on which backends
+- 📝 Request history with last 100 requests, durations, and error details
+- 🔄 WebSocket-based live updates (with HTTP polling fallback)
+- 📱 Fully responsive - works on desktop, tablet, and mobile
+- 🌙 Dark mode support (system preference)
+- 🚀 Works without JavaScript (graceful degradation with auto-refresh)
+
+The dashboard provides a visual overview of your Nexus cluster, making it easy to monitor backend health, track model availability, and debug request issues in real-time.
+
 ### With Claude Code / Continue.dev
 
 Point your AI coding assistant to `http://localhost:8000` as the API endpoint.
