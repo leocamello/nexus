@@ -89,7 +89,10 @@ mod us1_basic_logging {
         assert_eq!(parts[4].len(), 12);
 
         // Version nibble must be '4'
-        assert!(parts[2].starts_with('4'), "UUID v4 must have '4' as version");
+        assert!(
+            parts[2].starts_with('4'),
+            "UUID v4 must have '4' as version"
+        );
 
         // Must be parseable
         let parsed = uuid::Uuid::parse_str(&request_id);
@@ -104,8 +107,16 @@ mod us1_basic_logging {
         std::thread::sleep(std::time::Duration::from_millis(10));
         let elapsed = start.elapsed().as_millis() as u64;
 
-        assert!(elapsed >= 10, "Latency should be at least 10ms, got {}", elapsed);
-        assert!(elapsed < 200, "Latency should be reasonable, got {}ms", elapsed);
+        assert!(
+            elapsed >= 10,
+            "Latency should be at least 10ms, got {}",
+            elapsed
+        );
+        assert!(
+            elapsed < 200,
+            "Latency should be reasonable, got {}ms",
+            elapsed
+        );
     }
 
     #[test]

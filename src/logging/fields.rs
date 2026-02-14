@@ -264,9 +264,7 @@ mod tests {
             model: "gpt-4".to_string(),
             messages: vec![crate::api::ChatMessage {
                 role: "user".to_string(),
-                content: crate::api::MessageContent::Text {
-                    content: long_text,
-                },
+                content: crate::api::MessageContent::Text { content: long_text },
                 name: None,
             }],
             stream: false,

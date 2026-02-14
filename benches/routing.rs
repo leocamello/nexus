@@ -87,15 +87,11 @@ fn bench_smart_routing_by_backend_count(c: &mut Criterion) {
             estimated_tokens: 100,
         };
 
-        group.bench_with_input(
-            BenchmarkId::new("backends", count),
-            &count,
-            |b, _| {
-                b.iter(|| {
-                    black_box(router.select_backend(&requirements).unwrap());
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("backends", count), &count, |b, _| {
+            b.iter(|| {
+                black_box(router.select_backend(&requirements).unwrap());
+            });
+        });
     }
 
     group.finish();
@@ -115,15 +111,11 @@ fn bench_round_robin_routing(c: &mut Criterion) {
             estimated_tokens: 100,
         };
 
-        group.bench_with_input(
-            BenchmarkId::new("backends", count),
-            &count,
-            |b, _| {
-                b.iter(|| {
-                    black_box(router.select_backend(&requirements).unwrap());
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("backends", count), &count, |b, _| {
+            b.iter(|| {
+                black_box(router.select_backend(&requirements).unwrap());
+            });
+        });
     }
 
     group.finish();
@@ -138,7 +130,7 @@ fn bench_capability_filtered_routing(c: &mut Criterion) {
         needs_vision: true,
         needs_tools: false,
         needs_json_mode: false,
-            estimated_tokens: 100,
+        estimated_tokens: 100,
     };
 
     c.bench_function("capability_filtered_25_backends", |b| {
@@ -179,7 +171,7 @@ fn bench_routing_with_fallback(c: &mut Criterion) {
         needs_vision: false,
         needs_tools: false,
         needs_json_mode: false,
-            estimated_tokens: 100,
+        estimated_tokens: 100,
     };
 
     c.bench_function("routing_with_fallback_10_backends", |b| {
@@ -216,7 +208,7 @@ fn bench_routing_with_alias(c: &mut Criterion) {
         needs_vision: false,
         needs_tools: false,
         needs_json_mode: false,
-            estimated_tokens: 100,
+        estimated_tokens: 100,
     };
 
     c.bench_function("routing_with_alias_10_backends", |b| {
