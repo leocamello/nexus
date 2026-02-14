@@ -240,17 +240,11 @@ mod tests {
         let rt_rand: crate::routing::RoutingStrategy = config_rand.into();
 
         assert!(matches!(rt_smart, crate::routing::RoutingStrategy::Smart));
-        assert!(matches!(
-            rt_rr,
-            crate::routing::RoutingStrategy::RoundRobin
-        ));
+        assert!(matches!(rt_rr, crate::routing::RoutingStrategy::RoundRobin));
         assert!(matches!(
             rt_prio,
             crate::routing::RoutingStrategy::PriorityOnly
         ));
-        assert!(matches!(
-            rt_rand,
-            crate::routing::RoutingStrategy::Random
-        ));
+        assert!(matches!(rt_rand, crate::routing::RoutingStrategy::Random));
     }
 }
