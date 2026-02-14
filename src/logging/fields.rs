@@ -188,6 +188,213 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_status_success() {
+        let response = axum::response::Response::builder()
+            .status(200)
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let result: Result<axum::response::Response, ApiError> = Ok(response);
+        let (status, error_msg) = extract_status(&result);
+        assert_eq!(status, "success");
+        assert!(error_msg.is_none());
+    }
+
+    #[test]
+    fn test_extract_status_error() {
+        let result: Result<axum::response::Response, ApiError> =
+            Err(ApiError::service_unavailable("Backend offline"));
+        let (status, error_msg) = extract_status(&result);
+        assert_eq!(status, "server_error");
+        assert_eq!(error_msg.unwrap(), "Backend offline");
+    }
+
+    #[test]
+    fn test_truncate_prompt_disabled() {
+        let request = crate::api::ChatCompletionRequest {
+            model: "gpt-4".to_string(),
+            messages: vec![crate::api::ChatMessage {
+                role: "user".to_string(),
+                content: crate::api::MessageContent::Text {
+                    content: "Hello!".to_string(),
+                },
+                name: None,
+            }],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+        assert!(truncate_prompt(&request, false).is_none());
+    }
+
+    #[test]
+    fn test_truncate_prompt_enabled_short() {
+        let request = crate::api::ChatCompletionRequest {
+            model: "gpt-4".to_string(),
+            messages: vec![crate::api::ChatMessage {
+                role: "user".to_string(),
+                content: crate::api::MessageContent::Text {
+                    content: "Hello!".to_string(),
+                },
+                name: None,
+            }],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+        let result = truncate_prompt(&request, true);
+        assert_eq!(result.unwrap(), "Hello!");
+    }
+
+    #[test]
+    fn test_truncate_prompt_enabled_long() {
+        let long_text = "x".repeat(200);
+        let request = crate::api::ChatCompletionRequest {
+            model: "gpt-4".to_string(),
+            messages: vec![crate::api::ChatMessage {
+                role: "user".to_string(),
+                content: crate::api::MessageContent::Text {
+                    content: long_text,
+                },
+                name: None,
+            }],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+        let result = truncate_prompt(&request, true).unwrap();
+        assert!(result.ends_with("..."));
+        assert!(result.len() <= 104); // 100 + "..."
+    }
+
+    #[test]
+    fn test_truncate_prompt_empty_messages() {
+        let request = crate::api::ChatCompletionRequest {
+            model: "gpt-4".to_string(),
+            messages: vec![],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+        assert!(truncate_prompt(&request, true).is_none());
+    }
+
+    #[test]
+    fn test_truncate_prompt_empty_content() {
+        let request = crate::api::ChatCompletionRequest {
+            model: "gpt-4".to_string(),
+            messages: vec![crate::api::ChatMessage {
+                role: "user".to_string(),
+                content: crate::api::MessageContent::Text {
+                    content: String::new(),
+                },
+                name: None,
+            }],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+        assert!(truncate_prompt(&request, true).is_none());
+    }
+
+    #[test]
+    fn test_truncate_prompt_parts_content() {
+        let request = crate::api::ChatCompletionRequest {
+            model: "gpt-4".to_string(),
+            messages: vec![crate::api::ChatMessage {
+                role: "user".to_string(),
+                content: crate::api::MessageContent::Parts {
+                    content: vec![
+                        crate::api::ContentPart {
+                            part_type: "text".to_string(),
+                            text: Some("Hello from parts".to_string()),
+                            image_url: None,
+                        },
+                        crate::api::ContentPart {
+                            part_type: "image_url".to_string(),
+                            text: None,
+                            image_url: Some(crate::api::ImageUrl {
+                                url: "http://example.com/img.png".to_string(),
+                            }),
+                        },
+                    ],
+                },
+                name: None,
+            }],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+        let result = truncate_prompt(&request, true).unwrap();
+        assert_eq!(result, "Hello from parts");
+    }
+
+    #[test]
+    fn test_truncate_prompt_parts_no_text() {
+        let request = crate::api::ChatCompletionRequest {
+            model: "gpt-4".to_string(),
+            messages: vec![crate::api::ChatMessage {
+                role: "user".to_string(),
+                content: crate::api::MessageContent::Parts {
+                    content: vec![crate::api::ContentPart {
+                        part_type: "image_url".to_string(),
+                        text: None,
+                        image_url: Some(crate::api::ImageUrl {
+                            url: "http://example.com/img.png".to_string(),
+                        }),
+                    }],
+                },
+                name: None,
+            }],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+        assert!(truncate_prompt(&request, true).is_none());
+    }
+
+    #[test]
     fn test_extract_tokens_without_usage() {
         let response = ChatCompletionResponse {
             id: "test".to_string(),

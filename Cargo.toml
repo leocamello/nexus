@@ -110,6 +110,10 @@ harness = false
 name = "metrics"
 harness = false
 
+[[bench]]
+name = "routing"
+harness = false
+
 [profile.release]
 lto = true
 codegen-units = 1

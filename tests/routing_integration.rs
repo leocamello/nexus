@@ -495,3 +495,294 @@ fn test_routing_result_no_fallback_info_when_no_fallback_configured() {
     // And result.actual_model == "model1"
     assert_eq!(result.actual_model, "model1");
 }
+
+#[test]
+fn test_round_robin_routing_with_fallback() {
+    let registry = Arc::new(Registry::new());
+    registry
+        .add_backend(create_test_backend(
+            "backend1",
+            "Backend 1",
+            "fallback-model",
+            1,
+        ))
+        .unwrap();
+    registry
+        .add_backend(create_test_backend(
+            "backend2",
+            "Backend 2",
+            "fallback-model",
+            2,
+        ))
+        .unwrap();
+
+    let mut config = NexusConfig::default();
+    config.routing.strategy = nexus::config::routing::RoutingStrategy::RoundRobin;
+    config.routing.fallbacks.insert(
+        "primary-model".to_string(),
+        vec!["fallback-model".to_string()],
+    );
+    let config = Arc::new(config);
+    let state = AppState::new(registry, config);
+
+    let request = ChatCompletionRequest {
+        model: "primary-model".to_string(),
+        messages: vec![ChatMessage {
+            role: "user".to_string(),
+            content: MessageContent::Text {
+                content: "Test".to_string(),
+            },
+            name: None,
+        }],
+        stream: false,
+        temperature: None,
+        max_tokens: None,
+        top_p: None,
+        stop: None,
+        presence_penalty: None,
+        frequency_penalty: None,
+        user: None,
+        extra: HashMap::new(),
+    };
+
+    let requirements = nexus::routing::RequestRequirements::from_request(&request);
+    let result = state.router.select_backend(&requirements).unwrap();
+
+    assert!(result.fallback_used);
+    assert_eq!(result.actual_model, "fallback-model");
+    assert!(result.route_reason.contains("fallback:"));
+    assert!(result.route_reason.contains("round_robin:"));
+}
+
+#[test]
+fn test_priority_routing_with_fallback() {
+    let registry = Arc::new(Registry::new());
+    registry
+        .add_backend(create_test_backend(
+            "backend1",
+            "Backend Low",
+            "fallback-model",
+            10,
+        ))
+        .unwrap();
+    registry
+        .add_backend(create_test_backend(
+            "backend2",
+            "Backend High",
+            "fallback-model",
+            1,
+        ))
+        .unwrap();
+
+    let mut config = NexusConfig::default();
+    config.routing.strategy = nexus::config::routing::RoutingStrategy::PriorityOnly;
+    config.routing.fallbacks.insert(
+        "primary-model".to_string(),
+        vec!["fallback-model".to_string()],
+    );
+    let config = Arc::new(config);
+    let state = AppState::new(registry, config);
+
+    let request = ChatCompletionRequest {
+        model: "primary-model".to_string(),
+        messages: vec![ChatMessage {
+            role: "user".to_string(),
+            content: MessageContent::Text {
+                content: "Test".to_string(),
+            },
+            name: None,
+        }],
+        stream: false,
+        temperature: None,
+        max_tokens: None,
+        top_p: None,
+        stop: None,
+        presence_penalty: None,
+        frequency_penalty: None,
+        user: None,
+        extra: HashMap::new(),
+    };
+
+    let requirements = nexus::routing::RequestRequirements::from_request(&request);
+    let result = state.router.select_backend(&requirements).unwrap();
+
+    assert!(result.fallback_used);
+    assert_eq!(result.actual_model, "fallback-model");
+    assert!(result.route_reason.contains("fallback:"));
+    assert!(result.route_reason.contains("priority:"));
+}
+
+#[test]
+fn test_random_routing_with_fallback() {
+    let registry = Arc::new(Registry::new());
+    registry
+        .add_backend(create_test_backend(
+            "backend1",
+            "Backend 1",
+            "fallback-model",
+            1,
+        ))
+        .unwrap();
+
+    let mut config = NexusConfig::default();
+    config.routing.strategy = nexus::config::routing::RoutingStrategy::Random;
+    config.routing.fallbacks.insert(
+        "primary-model".to_string(),
+        vec!["fallback-model".to_string()],
+    );
+    let config = Arc::new(config);
+    let state = AppState::new(registry, config);
+
+    let request = ChatCompletionRequest {
+        model: "primary-model".to_string(),
+        messages: vec![ChatMessage {
+            role: "user".to_string(),
+            content: MessageContent::Text {
+                content: "Test".to_string(),
+            },
+            name: None,
+        }],
+        stream: false,
+        temperature: None,
+        max_tokens: None,
+        top_p: None,
+        stop: None,
+        presence_penalty: None,
+        frequency_penalty: None,
+        user: None,
+        extra: HashMap::new(),
+    };
+
+    let requirements = nexus::routing::RequestRequirements::from_request(&request);
+    let result = state.router.select_backend(&requirements).unwrap();
+
+    assert!(result.fallback_used);
+    assert_eq!(result.actual_model, "fallback-model");
+    assert!(result.route_reason.contains("fallback:"));
+}
+
+#[test]
+fn test_round_robin_route_reason_multiple_backends() {
+    let registry = Arc::new(Registry::new());
+    registry
+        .add_backend(create_test_backend("b1", "B1", "model1", 1))
+        .unwrap();
+    registry
+        .add_backend(create_test_backend("b2", "B2", "model1", 1))
+        .unwrap();
+
+    let mut config = NexusConfig::default();
+    config.routing.strategy = nexus::config::routing::RoutingStrategy::RoundRobin;
+    let config = Arc::new(config);
+    let state = AppState::new(registry, config);
+
+    let request = ChatCompletionRequest {
+        model: "model1".to_string(),
+        messages: vec![ChatMessage {
+            role: "user".to_string(),
+            content: MessageContent::Text {
+                content: "Test".to_string(),
+            },
+            name: None,
+        }],
+        stream: false,
+        temperature: None,
+        max_tokens: None,
+        top_p: None,
+        stop: None,
+        presence_penalty: None,
+        frequency_penalty: None,
+        user: None,
+        extra: HashMap::new(),
+    };
+
+    let requirements = nexus::routing::RequestRequirements::from_request(&request);
+    let result = state.router.select_backend(&requirements).unwrap();
+
+    assert!(!result.fallback_used);
+    assert!(result.route_reason.starts_with("round_robin:index_"));
+}
+
+#[test]
+fn test_priority_route_reason_multiple_backends() {
+    let registry = Arc::new(Registry::new());
+    registry
+        .add_backend(create_test_backend("b1", "B1", "model1", 5))
+        .unwrap();
+    registry
+        .add_backend(create_test_backend("b2", "B2", "model1", 1))
+        .unwrap();
+
+    let mut config = NexusConfig::default();
+    config.routing.strategy = nexus::config::routing::RoutingStrategy::PriorityOnly;
+    let config = Arc::new(config);
+    let state = AppState::new(registry, config);
+
+    let request = ChatCompletionRequest {
+        model: "model1".to_string(),
+        messages: vec![ChatMessage {
+            role: "user".to_string(),
+            content: MessageContent::Text {
+                content: "Test".to_string(),
+            },
+            name: None,
+        }],
+        stream: false,
+        temperature: None,
+        max_tokens: None,
+        top_p: None,
+        stop: None,
+        presence_penalty: None,
+        frequency_penalty: None,
+        user: None,
+        extra: HashMap::new(),
+    };
+
+    let requirements = nexus::routing::RequestRequirements::from_request(&request);
+    let result = state.router.select_backend(&requirements).unwrap();
+
+    assert!(!result.fallback_used);
+    assert!(result.route_reason.starts_with("priority:"));
+}
+
+#[test]
+fn test_random_route_reason_multiple_backends() {
+    let registry = Arc::new(Registry::new());
+    registry
+        .add_backend(create_test_backend("b1", "B1", "model1", 1))
+        .unwrap();
+    registry
+        .add_backend(create_test_backend("b2", "B2", "model1", 1))
+        .unwrap();
+
+    let mut config = NexusConfig::default();
+    config.routing.strategy = nexus::config::routing::RoutingStrategy::Random;
+    let config = Arc::new(config);
+    let state = AppState::new(registry, config);
+
+    let request = ChatCompletionRequest {
+        model: "model1".to_string(),
+        messages: vec![ChatMessage {
+            role: "user".to_string(),
+            content: MessageContent::Text {
+                content: "Test".to_string(),
+            },
+            name: None,
+        }],
+        stream: false,
+        temperature: None,
+        max_tokens: None,
+        top_p: None,
+        stop: None,
+        presence_penalty: None,
+        frequency_penalty: None,
+        user: None,
+        extra: HashMap::new(),
+    };
+
+    let requirements = nexus::routing::RequestRequirements::from_request(&request);
+    let result = state.router.select_backend(&requirements).unwrap();
+
+    assert!(!result.fallback_used);
+    assert!(result.route_reason.starts_with("random:"));
+}

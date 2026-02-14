@@ -164,4 +164,83 @@ mod tests {
         assert_eq!(entries[0].timestamp, 4);
         assert_eq!(entries[4].timestamp, 0);
     }
+
+    #[test]
+    fn test_push_future_timestamp_corrected() {
+        let history = RequestHistory::new();
+        let future_ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            + 3600; // 1 hour in future
+
+        let entry = HistoryEntry {
+            timestamp: future_ts,
+            model: "gpt-4".to_string(),
+            backend_id: "backend-1".to_string(),
+            duration_ms: 100,
+            status: RequestStatus::Success,
+            error_message: None,
+        };
+
+        history.push(entry);
+        let entries = history.get_all();
+        // Timestamp should have been corrected to ~now (not the future value)
+        assert!(entries[0].timestamp < future_ts);
+    }
+
+    #[test]
+    fn test_push_truncates_long_model_name() {
+        let history = RequestHistory::new();
+        let long_model = "x".repeat(500);
+
+        let entry = HistoryEntry {
+            timestamp: 1234567890,
+            model: long_model,
+            backend_id: "backend-1".to_string(),
+            duration_ms: 100,
+            status: RequestStatus::Success,
+            error_message: None,
+        };
+
+        history.push(entry);
+        let entries = history.get_all();
+        assert_eq!(entries[0].model.len(), 256);
+    }
+
+    #[test]
+    fn test_push_truncates_long_error_message() {
+        let history = RequestHistory::new();
+        let long_error = "e".repeat(2000);
+
+        let entry = HistoryEntry {
+            timestamp: 1234567890,
+            model: "gpt-4".to_string(),
+            backend_id: "backend-1".to_string(),
+            duration_ms: 100,
+            status: RequestStatus::Error,
+            error_message: Some(long_error),
+        };
+
+        history.push(entry);
+        let entries = history.get_all();
+        assert_eq!(entries[0].error_message.as_ref().unwrap().len(), 1024);
+    }
+
+    #[test]
+    fn test_push_preserves_short_error_message() {
+        let history = RequestHistory::new();
+        let entry = HistoryEntry {
+            timestamp: 1234567890,
+            model: "gpt-4".to_string(),
+            backend_id: "backend-1".to_string(),
+            duration_ms: 100,
+            status: RequestStatus::Error,
+            error_message: Some("short error".to_string()),
+        };
+
+        history.push(entry);
+        let entries = history.get_all();
+        assert_eq!(entries[0].error_message.as_ref().unwrap(), "short error");
+    }
 }
