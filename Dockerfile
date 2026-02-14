@@ -13,7 +13,8 @@ RUN mkdir src && \
     mkdir -p benches && \
     echo "fn main() {}" > benches/cli_startup.rs && \
     echo "fn main() {}" > benches/config_parsing.rs && \
-    echo "fn main() {}" > benches/metrics.rs
+    echo "fn main() {}" > benches/metrics.rs && \
+    echo "fn main() {}" > benches/routing.rs
 
 # Build dependencies only (cached layer)
 RUN cargo build --release && \

@@ -226,4 +226,31 @@ mod tests {
         // Then returns Ok
         assert!(result.is_ok());
     }
+
+    #[test]
+    fn test_routing_strategy_conversion() {
+        let config_smart = RoutingStrategy::Smart;
+        let config_rr = RoutingStrategy::RoundRobin;
+        let config_prio = RoutingStrategy::PriorityOnly;
+        let config_rand = RoutingStrategy::Random;
+
+        let rt_smart: crate::routing::RoutingStrategy = config_smart.into();
+        let rt_rr: crate::routing::RoutingStrategy = config_rr.into();
+        let rt_prio: crate::routing::RoutingStrategy = config_prio.into();
+        let rt_rand: crate::routing::RoutingStrategy = config_rand.into();
+
+        assert!(matches!(rt_smart, crate::routing::RoutingStrategy::Smart));
+        assert!(matches!(
+            rt_rr,
+            crate::routing::RoutingStrategy::RoundRobin
+        ));
+        assert!(matches!(
+            rt_prio,
+            crate::routing::RoutingStrategy::PriorityOnly
+        ));
+        assert!(matches!(
+            rt_rand,
+            crate::routing::RoutingStrategy::Random
+        ));
+    }
 }

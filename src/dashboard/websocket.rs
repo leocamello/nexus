@@ -111,3 +111,72 @@ pub fn create_request_complete_update(
         data: serde_json::to_value(entry).unwrap_or(serde_json::Value::Null),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dashboard::types::{HistoryEntry, RequestStatus};
+
+    #[test]
+    fn test_create_backend_status_update() {
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource};
+        use chrono::Utc;
+        use std::collections::HashMap;
+
+        let backends = vec![BackendView {
+            id: "b1".to_string(),
+            name: "b1".to_string(),
+            url: "http://localhost:11434".to_string(),
+            backend_type: BackendType::Ollama,
+            status: BackendStatus::Healthy,
+            last_health_check: Utc::now(),
+            last_error: None,
+            models: vec![],
+            priority: 10,
+            pending_requests: 0,
+            total_requests: 5,
+            avg_latency_ms: 42,
+            discovery_source: DiscoverySource::Static,
+            metadata: HashMap::new(),
+        }];
+
+        let update = create_backend_status_update(backends);
+        assert_eq!(update.update_type, UpdateType::BackendStatus);
+        assert!(update.data.is_array());
+        assert_eq!(update.data[0]["id"], "b1");
+    }
+
+    #[test]
+    fn test_create_model_change_update() {
+        let models = vec![serde_json::json!({"id": "gpt-4", "context_length": 8192})];
+        let update = create_model_change_update("backend-1".to_string(), models);
+
+        assert_eq!(update.update_type, UpdateType::ModelChange);
+        assert_eq!(update.data["backend_id"], "backend-1");
+        assert!(update.data["models"].is_array());
+    }
+
+    #[test]
+    fn test_create_request_complete_update() {
+        let entry = HistoryEntry {
+            timestamp: 1234567890,
+            model: "gpt-4".to_string(),
+            backend_id: "backend-1".to_string(),
+            duration_ms: 150,
+            status: RequestStatus::Success,
+            error_message: None,
+        };
+
+        let update = create_request_complete_update(entry);
+        assert_eq!(update.update_type, UpdateType::RequestComplete);
+        assert_eq!(update.data["model"], "gpt-4");
+        assert_eq!(update.data["duration_ms"], 150);
+    }
+
+    #[test]
+    fn test_create_backend_status_update_empty() {
+        let update = create_backend_status_update(vec![]);
+        assert_eq!(update.update_type, UpdateType::BackendStatus);
+        assert!(update.data.as_array().unwrap().is_empty());
+    }
+}
