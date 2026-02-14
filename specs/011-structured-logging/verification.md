@@ -300,7 +300,7 @@
 
 - [x] VER-148: Spec status reflects implementation
 - [x] VER-149: All 90/90 tasks in `tasks.md` have checked acceptance criteria
-- [ ] VER-150: PR link is added to spec.md — pending PR creation
+- [x] VER-150: PR link is added to spec.md — PR #125
 - [x] VER-151: No deviations from spec
 
 ---
