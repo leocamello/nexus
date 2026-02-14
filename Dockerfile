@@ -50,7 +50,7 @@ COPY --from=builder /app/target/release/nexus /usr/local/bin/nexus
 USER nexus
 
 # Default port
-EXPOSE 3000
+EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \

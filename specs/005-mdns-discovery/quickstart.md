@@ -2,7 +2,7 @@
 
 **Feature**: F05 mDNS Discovery  
 **Status**: ✅ Implemented  
-**Prerequisites**: Rust 1.75+, Nexus codebase cloned, network with multicast support
+**Prerequisites**: Rust 1.87+, Nexus codebase cloned, network with multicast support
 
 ---
 

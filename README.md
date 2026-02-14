@@ -1,7 +1,7 @@
 # Nexus
 
 <!-- Project -->
-[![Rust](https://img.shields.io/badge/rust-1.75%2B-blue.svg)](https://www.rust-lang.org)
+[![Rust](https://img.shields.io/badge/rust-1.87%2B-blue.svg)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/leocamello/nexus/blob/main/LICENSE)
 
 <!-- Rust Ecosystem -->
@@ -61,10 +61,10 @@ nexus serve --config nexus.toml
 ### Docker
 ```bash
 # Run with default settings
-docker run -d -p 3000:3000 leocamello/nexus
+docker run -d -p 8000:8000 leocamello/nexus
 
 # Run with custom config
-docker run -d -p 3000:3000 \
+docker run -d -p 8000:8000 \
   -v $(pwd)/nexus.toml:/home/nexus/nexus.toml \
   leocamello/nexus serve --config nexus.toml
 

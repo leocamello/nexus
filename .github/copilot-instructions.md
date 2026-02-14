@@ -19,8 +19,8 @@ You are an expert Rust developer building **Nexus**, a distributed LLM orchestra
 | Version | Theme | Status |
 |---------|-------|--------|
 | v0.1 | Foundation — Registry, Health, Router, mDNS, CLI, Aliases, Fallbacks | ✅ Released |
-| v0.2 | Observability — Prometheus metrics, Web Dashboard, Structured logging | Next |
-| v0.3 | Cloud Hybrid — Cloud backends, Privacy zones, Budget management | Planned |
+| v0.2 | Observability — Prometheus metrics, Web Dashboard, Structured logging | ✅ Released |
+| v0.3 | Cloud Hybrid — Cloud backends, Privacy zones, Budget management | Next |
 | v0.4 | Intelligence — Speculative router, Quality tracking, Embeddings, Queuing | Planned |
 | v0.5 | Orchestration — Pre-warming, Model lifecycle, Multi-tenant, Rate limiting | Planned |
 

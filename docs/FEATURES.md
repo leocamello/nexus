@@ -16,9 +16,9 @@ Detailed specifications for each feature in the Nexus LLM Orchestrator.
 | F06 | Intelligent Router | v0.1 | ✅ Complete | [specs/006-intelligent-router](../specs/006-intelligent-router/) |
 | F07 | Model Aliases | v0.1 | ✅ Complete | [specs/007-model-aliases](../specs/007-model-aliases/) |
 | F08 | Fallback Chains | v0.1 | ✅ Complete | [specs/008-fallback-chains](../specs/008-fallback-chains/) |
-| F09 | Request Metrics | v0.2 | Planned | - |
-| F10 | Web Dashboard | v0.2 | Planned | - |
-| F11 | Structured Request Logging | v0.2 | Planned | - |
+| F09 | Request Metrics | v0.2 | ✅ Complete | [specs/009-request-metrics](../specs/009-request-metrics/) |
+| F10 | Web Dashboard | v0.2 | ✅ Complete | [specs/010-web-dashboard](../specs/010-web-dashboard/) |
+| F11 | Structured Request Logging | v0.2 | ✅ Complete | [specs/011-structured-logging](../specs/011-structured-logging/) |
 | F12 | Cloud Backend Support | v0.3 | Planned | - |
 | F13 | Privacy Zones & Capability Tiers | v0.3 | Planned | - |
 | F14 | Inference Budget Management | v0.3 | Planned | - |
@@ -34,11 +34,11 @@ Detailed specifications for each feature in the Nexus LLM Orchestrator.
 ### Current Status
 
 - **v0.1 Foundation**: ✅ Released (F01-F08, 8 features)
-- **v0.2 Observability**: 🎯 Next (F09-F11)
-- **v0.3 Cloud Hybrid**: Planned (F12-F14)
+- **v0.2 Observability**: ✅ Released (F09-F11, 3 features)
+- **v0.3 Cloud Hybrid**: 🎯 Next (F12-F14)
 - **v0.4 Intelligence**: Planned (F15-F18)
 - **v0.5 Orchestration**: Planned (F19-F22)
-- **Tests**: 329 passing
+- **Tests**: 462 passing, 81% coverage
 
 ---
 
@@ -684,12 +684,12 @@ Simple web UI for monitoring.
 7. F07: Model Aliases ✅
 8. F08: Fallback Chains ✅
 
-### v0.2: Observability (Next)
-9. F09: Request Metrics
-10. F10: Web Dashboard
-11. F11: Structured Request Logging
+### v0.2: Observability ✅ Released
+9. F09: Request Metrics ✅
+10. F10: Web Dashboard ✅
+11. F11: Structured Request Logging ✅
 
-### v0.3: Cloud Hybrid Gateway
+### v0.3: Cloud Hybrid Gateway (Next)
 12. F12: Cloud Backend Support
 13. F13: Privacy Zones & Capability Tiers
 14. F14: Inference Budget Management

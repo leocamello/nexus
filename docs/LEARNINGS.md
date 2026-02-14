@@ -620,7 +620,7 @@ Despite adding a web dashboard, Prometheus metrics, and structured logging, Nexu
 Despite the v0.1 retrospective recommending updates, `MANUAL_TESTING_GUIDE.md` hasn't been updated for F09-F11 endpoints. This should be addressed before v0.3.
 
 #### 3. Test Coverage Should Be Tracked
-Test count grew from 389 (v0.1) to 437 (v0.2), but code coverage percentage hasn't been measured since ~79.5%. New features should include coverage targets.
+Test count grew from 389 (v0.1) to 462 (v0.2), with code coverage improving from ~79% to 81.18% after targeted test additions. New features should include coverage targets.
 
 ### Cumulative Project Metrics
 
@@ -628,7 +628,7 @@ Test count grew from 389 (v0.1) to 437 (v0.2), but code coverage percentage hasn
 |--------|------|------|-------|
 | Features Shipped | 9 | 12 | +3 |
 | PRs Merged | 9 | 13 | +4 |
-| Total Tests | 389 | 437 | +48 |
+| Total Tests | 389 | 462 | +73 |
 | GitHub Issues Closed | 50+ | 74+ | +24 |
 
 ### Recommendations for v0.3

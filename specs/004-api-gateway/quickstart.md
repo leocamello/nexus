@@ -2,7 +2,7 @@
 
 **Feature**: F04 API Gateway  
 **Status**: ✅ Implemented  
-**Prerequisites**: Rust 1.75+, Nexus codebase cloned, at least one LLM backend running
+**Prerequisites**: Rust 1.87+, Nexus codebase cloned, at least one LLM backend running
 
 ---
 

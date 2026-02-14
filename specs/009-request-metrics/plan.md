@@ -13,7 +13,7 @@ Track request statistics for observability and debugging. Expose metrics in both
 
 ## Technical Context
 
-**Language/Version**: Rust 1.75 (stable)  
+**Language/Version**: Rust 1.87+ (stable)  
 **Primary Dependencies**: 
 - `axum` 0.7 (HTTP framework)
 - `tokio` 1.x (async runtime)

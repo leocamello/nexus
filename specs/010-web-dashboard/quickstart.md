@@ -2,7 +2,7 @@
 
 **Feature**: F10 Web Dashboard  
 **Branch**: `010-web-dashboard`  
-**Prerequisites**: Rust 1.75+, Nexus codebase cloned
+**Prerequisites**: Rust 1.87+, Nexus codebase cloned
 
 ---
 

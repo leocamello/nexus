@@ -2,7 +2,7 @@
 
 **Feature**: F08 Fallback Chains  
 **Status**: ✅ Implemented  
-**Prerequisites**: Rust 1.75+, Nexus codebase cloned, at least one backend with models
+**Prerequisites**: Rust 1.87+, Nexus codebase cloned, at least one backend with models
 
 ---
 
