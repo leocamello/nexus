@@ -2,7 +2,7 @@
 
 **Feature**: F03 CLI Configuration  
 **Status**: ✅ Implemented  
-**Prerequisites**: Rust 1.75+, Nexus codebase cloned
+**Prerequisites**: Rust 1.87+, Nexus codebase cloned
 
 ---
 

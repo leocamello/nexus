@@ -11,7 +11,7 @@ Implement comprehensive structured logging for every request passing through Nex
 
 ## Technical Context
 
-**Language/Version**: Rust 1.75 (stable)  
+**Language/Version**: Rust 1.87+ (stable)  
 **Primary Dependencies**: axum 0.7, tokio 1.x (full features), tracing 0.1, tracing-subscriber 0.3 (with json feature)  
 **Storage**: N/A (in-memory only, stateless by design)  
 **Testing**: cargo test with integration tests for log output verification  

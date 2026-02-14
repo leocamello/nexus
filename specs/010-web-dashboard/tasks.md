@@ -72,7 +72,7 @@
 
 **Goal**: Display real-time backend health status with indicators, metrics, and WebSocket updates
 
-**Independent Test**: Start Nexus with multiple backends (some healthy, some down), access dashboard at http://localhost:3000/, verify backend status indicators accurately reflect current state and update in real-time
+**Independent Test**: Start Nexus with multiple backends (some healthy, some down), access dashboard at http://localhost:8000/, verify backend status indicators accurately reflect current state and update in real-time
 
 ### Contract Tests for US1 (TDD - Write FIRST)
 

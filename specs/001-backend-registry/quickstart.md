@@ -2,7 +2,7 @@
 
 **Feature**: F01 Backend Registry  
 **Status**: ✅ Implemented  
-**Prerequisites**: Rust 1.75+, Nexus codebase cloned, optionally an Ollama instance running
+**Prerequisites**: Rust 1.87+, Nexus codebase cloned, optionally an Ollama instance running
 
 ---
 

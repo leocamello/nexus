@@ -2,7 +2,7 @@
 
 **Feature**: F11 Structured Request Logging  
 **Target Audience**: Platform operators, DevOps engineers  
-**Prerequisites**: Nexus v0.1.0+, understanding of structured logging concepts
+**Prerequisites**: Nexus v0.2.0+, understanding of structured logging concepts
 
 ## Overview
 

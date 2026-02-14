@@ -15,7 +15,7 @@ HTTP GET upgrade request to establish WebSocket connection.
 **Request**:
 ```http
 GET /ws HTTP/1.1
-Host: localhost:3000
+Host: localhost:8000
 Upgrade: websocket
 Connection: Upgrade
 Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==

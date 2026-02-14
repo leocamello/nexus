@@ -148,6 +148,12 @@ nexus/
 
 ## Development Phases
 
+> **Note**: These 10 spec-kit phases map to our 4-phase Feature Development Lifecycle:
+> - **Spec Phase**: Phases 1-6 (Constitution, Specify, Plan, Tasks, Validate, Issues)
+> - **Implementation Phase**: Phases 7-8 (Analyze, Implement)
+> - **Verification Phase**: Phases 9-10 (Verify, Walkthrough)
+> - **Merge Phase**: Push, PR, merge (not a spec-kit phase)
+
 ### Phase 1: Constitution
 
 Create governing principles for the project. Run once at project start.
@@ -492,9 +498,9 @@ Below are ready-to-use prompts for all Nexus features, organized by priority.
 | F06 | Intelligent Router | v0.1 ✅ | [Link](#f06-intelligent-router) |
 | F07 | Model Aliases | v0.1 ✅ | [Link](#f07-model-aliases) |
 | F08 | Fallback Chains | v0.1 ✅ | [Link](#f08-fallback-chains) |
-| F09 | Request Metrics | v0.2 | [Link](#f09-request-metrics) |
-| F10 | Web Dashboard | v0.2 | [Link](#f10-web-dashboard) |
-| F11 | Structured Request Logging | v0.2 | [Link](#f11-structured-request-logging) |
+| F09 | Request Metrics | v0.2 ✅ | [Link](#f09-request-metrics) |
+| F10 | Web Dashboard | v0.2 ✅ | [Link](#f10-web-dashboard) |
+| F11 | Structured Request Logging | v0.2 ✅ | [Link](#f11-structured-request-logging) |
 | F12 | Cloud Backend Support | v0.3 | [Link](#f12-cloud-backend-support) |
 | F13 | Privacy Zones & Capability Tiers | v0.3 | [Link](#f13-privacy-zones--capability-tiers) |
 | F14 | Inference Budget Management | v0.3 | [Link](#f14-inference-budget-management) |
@@ -509,7 +515,7 @@ Below are ready-to-use prompts for all Nexus features, organized by priority.
 
 ---
 
-## P0 Features (MVP)
+## v0.1 Features (Foundation) ✅
 
 ### F01: Core API Gateway
 ```
@@ -842,10 +848,6 @@ Models: 4 available
 - [ ] CLI args override everything
 ```
 
----
-
-## P1 Features (Post-MVP)
-
 ### F05: mDNS Discovery
 ```
 Create a spec for: mDNS Discovery
@@ -1118,7 +1120,7 @@ Maintains service availability when preferred models are down.
 
 ---
 
-## P2 Features (Polish)
+## v0.2 Features (Observability) ✅
 
 ### F09: Request Metrics
 ```
@@ -1264,48 +1266,6 @@ Embedded in the binary, no external dependencies.
 - [ ] Dashboard accessible at GET /
 ```
 
----
-
-## Implementation Order
-
-Follow this order for a smooth development experience:
-
-### v0.1: Foundation ✅ Released
-1. **F02: Backend Registry** ✅
-2. **F03: Health Checker** ✅
-3. **F01: Core API Gateway** ✅
-4. **F04: CLI and Configuration** ✅
-5. **F05: mDNS Discovery** ✅
-6. **F06: Intelligent Router** ✅
-7. **F07: Model Aliases** ✅
-8. **F08: Fallback Chains** ✅
-
-### v0.2: Observability (Next)
-9. **F09: Request Metrics** — Prometheus + JSON stats
-10. **F10: Web Dashboard** — Embedded monitoring UI
-11. **F11: Structured Request Logging** — Correlation IDs, JSON format
-
-### v0.3: Cloud Hybrid Gateway
-12. **F12: Cloud Backend Support** — OpenAI, Anthropic, Google + Nexus-Transparent Protocol
-13. **F13: Privacy Zones & Capability Tiers** — Structural privacy, quality guarantees
-14. **F14: Inference Budget Management** — Tokenizer registry, cost tracking, graceful degradation
-
-### v0.4: Intelligence
-15. **F15: Speculative Router** — Request-content-aware routing (zero ML)
-16. **F16: Quality Tracking** — Backend profiling, reliability scoring
-17. **F17: Embeddings API** — /v1/embeddings support
-18. **F18: Request Queuing** — Bounded queue with priorities
-
-### v0.5: Orchestration
-19. **F19: Pre-warming** — Demand prediction, VRAM-aware recommendations
-20. **F20: Model Lifecycle** — Load/unload/migrate via API
-21. **F21: Multi-Tenant** — API keys, quotas, access control
-22. **F22: Rate Limiting** — Token bucket with burst support
-
----
-
-## v0.2 Feature Prompts
-
 ### F11: Structured Request Logging
 ```
 Create a spec for: Structured Request Logging (F11)
@@ -1341,7 +1301,7 @@ gets a correlation ID that tracks it through retries and failovers.
 
 ---
 
-## v0.3 Feature Prompts
+## v0.3 Features (Cloud Hybrid)
 
 ### F12: Cloud Backend Support
 ```
@@ -1477,7 +1437,7 @@ hard_limit_action = "local-only"  # "local-only" | "queue" | "reject"
 
 ---
 
-## v0.4 Feature Prompts
+## v0.4 Features (Intelligence)
 
 ### F15: Speculative Router
 ```
@@ -1598,7 +1558,7 @@ priority_header = "X-Nexus-Priority"
 
 ---
 
-## v0.5 Feature Prompts
+## v0.5 Features (Orchestration)
 
 ### F19: Pre-warming & Fleet Intelligence
 ```

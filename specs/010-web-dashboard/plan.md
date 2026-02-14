@@ -11,7 +11,7 @@ Implement an embedded web dashboard served at `/` that displays real-time backen
 
 ## Technical Context
 
-**Language/Version**: Rust 1.75+ (stable toolchain)  
+**Language/Version**: Rust 1.87+ (stable toolchain)  
 **Primary Dependencies**: 
 - axum (HTTP framework with WebSocket support)
 - tokio (async runtime)

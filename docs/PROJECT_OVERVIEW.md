@@ -192,7 +192,7 @@ These were originally non-goals but are now planned for future versions:
 |-----------|-----------|-----|---------|
 | Authentication | Out of scope | Multi-tenant API keys | v0.5 |
 | Cloud backends | Fallback only | Full hybrid gateway | v0.3 |
-| Metrics | Not planned | Prometheus + dashboard | v0.2 |
+| Metrics | Prometheus + dashboard | Prometheus + dashboard | ✅ v0.2 |
 | Rate limiting | Out of scope | Per-backend and per-tenant | v0.5 |
 
 ---
@@ -221,8 +221,8 @@ These were originally non-goals but are now planned for future versions:
 | Version | Theme | Features | Status |
 |---------|-------|----------|--------|
 | **v0.1** | Foundation | Registry, Health, Router, mDNS, CLI, Aliases, Fallbacks, LM Studio | ✅ Released |
-| **v0.2** | Observability | Prometheus metrics, Web Dashboard, Structured request logging | 🎯 Next |
-| **v0.3** | Cloud Hybrid | Cloud backends, Privacy zones, Capability tiers, Budget management, Nexus-Transparent Protocol | Planned |
+| **v0.2** | Observability | Prometheus metrics, Web Dashboard, Structured request logging | ✅ Released |
+| **v0.3** | Cloud Hybrid | Cloud backends, Privacy zones, Capability tiers, Budget management, Nexus-Transparent Protocol | 🎯 Next |
 | **v0.4** | Intelligence | Speculative router, Quality tracking, Embeddings API, Request queuing | Planned |
 | **v0.5** | Orchestration | Pre-warming, Model lifecycle, Multi-tenant, Rate limiting | Planned |
 

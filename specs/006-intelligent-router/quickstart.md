@@ -2,7 +2,7 @@
 
 **Feature**: F06 Intelligent Router  
 **Status**: ✅ Implemented  
-**Prerequisites**: Rust 1.75+, Nexus codebase cloned, at least one backend configured
+**Prerequisites**: Rust 1.87+, Nexus codebase cloned, at least one backend configured
 
 ---
 

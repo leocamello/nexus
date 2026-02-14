@@ -2,7 +2,7 @@
 name = "nexus-orchestrator"
 version = "0.2.0"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.87"
 description = "Distributed LLM model serving orchestrator - unified API gateway for heterogeneous inference backends"
 authors = ["Leonardo Nascimento <leocamello@gmail.com>"]
 license = "Apache-2.0"
