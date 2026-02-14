@@ -333,11 +333,11 @@ function renderModelMatrix(data) {
     
     // Update table headers with backend columns
     const backendArray = Array.from(backends);
-    const staticHeaders = thead.querySelectorAll('th');
     
     // Remove old backend header columns (keep first 3: Model, Context, Capabilities)
-    while (staticHeaders.length > 3) {
-        staticHeaders[3].remove();
+    const headerCells = Array.from(thead.querySelectorAll('th'));
+    for (let i = headerCells.length - 1; i >= 3; i--) {
+        headerCells[i].remove();
     }
     
     // Add new backend header columns
