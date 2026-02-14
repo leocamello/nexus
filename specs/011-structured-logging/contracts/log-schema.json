@@ -1,0 +1,203 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nexus.dev/schemas/request-log-entry.json",
+  "title": "Nexus Request Log Entry",
+  "description": "Structured log entry schema for Nexus request logging. All fields are emitted as part of tracing spans in JSON format.",
+  "type": "object",
+  "required": [
+    "timestamp",
+    "level",
+    "target",
+    "request_id",
+    "model",
+    "status",
+    "latency_ms",
+    "stream",
+    "retry_count"
+  ],
+  "properties": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Request start time in RFC3339 format (UTC timezone)",
+      "example": "2024-01-15T14:32:01.234Z"
+    },
+    "level": {
+      "type": "string",
+      "enum": ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"],
+      "description": "Log level severity"
+    },
+    "target": {
+      "type": "string",
+      "description": "Module path where log originated (e.g., nexus::api::completions)",
+      "pattern": "^[a-z_][a-z0-9_]*(::[a-z_][a-z0-9_]*)*$",
+      "example": "nexus::api::completions"
+    },
+    "request_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique correlation ID for request (UUID v4), persists across retries",
+      "example": "550e8400-e29b-41d4-a716-446655440000"
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Requested model name (may be alias)",
+      "example": "gpt-4"
+    },
+    "actual_model": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Resolved model name after alias/fallback resolution (omitted if same as model)",
+      "example": "llama3:70b"
+    },
+    "backend": {
+      "type": "string",
+      "description": "Selected backend identifier, or 'none' if routing failed",
+      "example": "ollama-local"
+    },
+    "backend_type": {
+      "type": "string",
+      "enum": ["local", "cloud", "unknown"],
+      "description": "Backend category"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["received", "routing", "success", "error", "retry", "fallback", "exhausted", "timeout"],
+      "description": "Request outcome status"
+    },
+    "status_code": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 599,
+      "description": "HTTP status code",
+      "example": 200
+    },
+    "error_message": {
+      "type": "string",
+      "description": "Error description if status indicates failure",
+      "example": "Backend timeout after 30s"
+    },
+    "latency_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 300000,
+      "description": "Total request duration in milliseconds",
+      "example": 1234
+    },
+    "tokens_prompt": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000,
+      "description": "Input token count from backend response",
+      "example": 150
+    },
+    "tokens_completion": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000,
+      "description": "Output token count from backend response",
+      "example": 85
+    },
+    "tokens_total": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2000000,
+      "description": "Total tokens used (prompt + completion)",
+      "example": 235
+    },
+    "stream": {
+      "type": "boolean",
+      "description": "Whether request uses streaming mode",
+      "example": false
+    },
+    "route_reason": {
+      "type": "string",
+      "description": "Explanation of backend selection decision",
+      "examples": [
+        "highest_score:0.95",
+        "round_robin:index_3",
+        "fallback:primary_unhealthy",
+        "only_healthy_backend"
+      ]
+    },
+    "retry_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10,
+      "description": "Number of retry attempts (0 for first attempt)",
+      "example": 0
+    },
+    "fallback_chain": {
+      "type": "string",
+      "description": "Comma-separated list of backends attempted in order, empty if no fallbacks",
+      "example": "ollama-local,vllm-remote"
+    },
+    "prompt_preview": {
+      "type": "string",
+      "maxLength": 100,
+      "description": "First 100 characters of prompt (only when enable_content_logging=true)",
+      "example": "You are a helpful assistant. Explain quantum computing in simple terms."
+    }
+  },
+  "examples": [
+    {
+      "timestamp": "2024-01-15T14:32:01.234Z",
+      "level": "INFO",
+      "target": "nexus::api::completions",
+      "request_id": "550e8400-e29b-41d4-a716-446655440000",
+      "model": "gpt-4",
+      "actual_model": "llama3:70b",
+      "backend": "ollama-local",
+      "backend_type": "local",
+      "status": "success",
+      "status_code": 200,
+      "latency_ms": 1234,
+      "tokens_prompt": 150,
+      "tokens_completion": 85,
+      "tokens_total": 235,
+      "stream": false,
+      "route_reason": "highest_score:0.95",
+      "retry_count": 0,
+      "fallback_chain": ""
+    },
+    {
+      "timestamp": "2024-01-15T14:32:05.678Z",
+      "level": "WARN",
+      "target": "nexus::api::completions",
+      "request_id": "550e8400-e29b-41d4-a716-446655440000",
+      "model": "gpt-4",
+      "backend": "vllm-remote",
+      "backend_type": "cloud",
+      "status": "success",
+      "status_code": 200,
+      "latency_ms": 5432,
+      "tokens_prompt": 150,
+      "tokens_completion": 85,
+      "tokens_total": 235,
+      "stream": false,
+      "route_reason": "fallback:primary_unhealthy",
+      "retry_count": 2,
+      "fallback_chain": "ollama-local,vllm-remote",
+      "error_message": "Primary backend timeout after 30s"
+    },
+    {
+      "timestamp": "2024-01-15T14:32:10.123Z",
+      "level": "ERROR",
+      "target": "nexus::api::completions",
+      "request_id": "550e8400-e29b-41d4-a716-446655440001",
+      "model": "unknown-model",
+      "backend": "none",
+      "status": "error",
+      "status_code": 404,
+      "latency_ms": 12,
+      "stream": false,
+      "retry_count": 0,
+      "fallback_chain": "",
+      "error_message": "Model 'unknown-model' not found. Available: llama3:70b, gpt-3.5-turbo"
+    }
+  ],
+  "additionalProperties": false
+}

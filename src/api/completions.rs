@@ -4,6 +4,7 @@ use crate::api::{
     ApiError, AppState, ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse,
     ChunkChoice, ChunkDelta,
 };
+use crate::logging::generate_request_id;
 use crate::registry::Backend;
 use crate::routing::RequestRequirements;
 use axum::{
@@ -17,17 +18,42 @@ use axum::{
 };
 use futures::StreamExt;
 use std::sync::Arc;
-use tracing::{info, warn};
+use tracing::{info, instrument, warn, Span};
 
 /// Header name for fallback model notification (lowercase for HTTP/2 compatibility)
 pub const FALLBACK_HEADER: &str = "x-nexus-fallback-model";
 
 /// POST /v1/chat/completions - Handle chat completion requests.
+#[instrument(
+    skip(state, headers, request),
+    fields(
+        request_id = tracing::field::Empty,
+        model = %request.model,
+        actual_model = tracing::field::Empty,
+        backend = tracing::field::Empty,
+        backend_type = tracing::field::Empty,
+        status = tracing::field::Empty,
+        status_code = tracing::field::Empty,
+        error_message = tracing::field::Empty,
+        latency_ms = tracing::field::Empty,
+        tokens_prompt = tracing::field::Empty,
+        tokens_completion = tracing::field::Empty,
+        tokens_total = tracing::field::Empty,
+        stream = %request.stream,
+        route_reason = tracing::field::Empty,
+        retry_count = 0u32,
+        fallback_chain = tracing::field::Empty,
+    )
+)]
 pub async fn handle(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Json(request): Json<ChatCompletionRequest>,
 ) -> Result<Response, ApiError> {
+    // Generate request ID for correlation
+    let request_id = generate_request_id();
+    Span::current().record("request_id", request_id.as_str());
+
     // Start timer for request duration tracking
     let start_time = std::time::Instant::now();
     let requested_model = request.model.clone();
@@ -87,6 +113,20 @@ pub async fn handle(
             Some(error_message.clone()),
         );
 
+        // Record error in tracing span
+        let latency = start_time.elapsed().as_millis() as u64;
+        Span::current().record("backend", "none");
+        Span::current().record("latency_ms", latency);
+        Span::current().record("status", "error");
+        Span::current().record("error_message", error_message.as_str());
+        let status_code = match &e {
+            crate::routing::RoutingError::ModelNotFound { .. } => 404u16,
+            crate::routing::RoutingError::FallbackChainExhausted { .. } => 404u16,
+            crate::routing::RoutingError::NoHealthyBackend { .. } => 503u16,
+            crate::routing::RoutingError::CapabilityMismatch { .. } => 400u16,
+        };
+        Span::current().record("status_code", status_code);
+
         match e {
             crate::routing::RoutingError::ModelNotFound { model } => {
                 ApiError::model_not_found(&model, &available)
@@ -113,12 +153,31 @@ pub async fn handle(
     let fallback_used = routing_result.fallback_used;
     let actual_model = routing_result.actual_model.clone();
 
+    // Record routing fields in span
+    Span::current().record("backend", backend.id.as_str());
+    Span::current().record(
+        "backend_type",
+        format!("{:?}", backend.backend_type).as_str(),
+    );
+    Span::current().record("route_reason", routing_result.route_reason.as_str());
+    if fallback_used {
+        Span::current().record("actual_model", actual_model.as_str());
+    }
+
     // Try backend with retry logic
     let max_retries = state.config.routing.max_retries as usize;
     let mut last_error = None;
+    let mut fallback_chain_vec: Vec<String> = vec![];
 
     for attempt in 0..=max_retries {
-        info!(backend_id = %backend.id, attempt, "Trying backend");
+        // Update retry_count in span
+        Span::current().record("retry_count", attempt as u32);
+
+        if attempt > 0 {
+            warn!(backend_id = %backend.id, attempt, "Retrying backend after failure");
+        } else {
+            info!(backend_id = %backend.id, attempt, "Trying backend");
+        }
 
         // Increment pending requests
         let _ = state.registry.increment_pending(&backend.id);
@@ -161,6 +220,7 @@ pub async fn handle(
 
                 // Record token usage if available in response
                 if let Some(ref usage) = response.usage {
+                    // Record in metrics
                     metrics::histogram!("nexus_tokens_total",
                         "model" => sanitized_model.clone(),
                         "backend" => sanitized_backend.clone(),
@@ -174,7 +234,18 @@ pub async fn handle(
                         "type" => "completion"
                     )
                     .record(usage.completion_tokens as f64);
+
+                    // Record in tracing span
+                    Span::current().record("tokens_prompt", usage.prompt_tokens);
+                    Span::current().record("tokens_completion", usage.completion_tokens);
+                    Span::current().record("tokens_total", usage.total_tokens);
                 }
+
+                // Record completion fields in span
+                let latency = start_time.elapsed().as_millis() as u64;
+                Span::current().record("latency_ms", latency);
+                Span::current().record("status", "success");
+                Span::current().record("status_code", 200u16);
 
                 // Record request in history and broadcast update
                 record_request_completion(
@@ -198,7 +269,33 @@ pub async fn handle(
             }
             Err(e) => {
                 let _ = state.registry.decrement_pending(&backend.id);
-                warn!(backend_id = %backend.id, error = %e.error.message, "Backend request failed");
+
+                // Track this backend in fallback chain
+                if !fallback_chain_vec.contains(&backend.id) {
+                    fallback_chain_vec.push(backend.id.clone());
+                }
+
+                // Record error message in span
+                Span::current().record("error_message", e.error.message.as_str());
+
+                // Update fallback chain in span
+                let fallback_chain_str = fallback_chain_vec.join(",");
+                Span::current().record("fallback_chain", fallback_chain_str.as_str());
+
+                if attempt > 0 {
+                    warn!(
+                        backend_id = %backend.id,
+                        error = %e.error.message,
+                        attempt,
+                        "Backend request failed (retry)"
+                    );
+                } else {
+                    warn!(
+                        backend_id = %backend.id,
+                        error = %e.error.message,
+                        "Backend request failed"
+                    );
+                }
 
                 // Record backend error
                 let sanitized_model = state.metrics_collector.sanitize_label(&requested_model);
@@ -216,7 +313,14 @@ pub async fn handle(
 
                 // Record error in request history
                 if attempt == max_retries {
-                    // This was the last retry, record the error
+                    // This was the last retry, record the error at ERROR level
+                    tracing::error!(
+                        backend_id = %backend.id,
+                        error = %e.error.message,
+                        attempts = max_retries + 1,
+                        "All retry attempts exhausted"
+                    );
+
                     record_request_completion(
                         &state,
                         &actual_model,
@@ -233,6 +337,14 @@ pub async fn handle(
     }
 
     // All retries failed
+    let latency = start_time.elapsed().as_millis() as u64;
+    Span::current().record("latency_ms", latency);
+    Span::current().record("status", "error");
+    Span::current().record("status_code", 502u16);
+    if let Some(ref err) = last_error {
+        Span::current().record("error_message", err.error.message.as_str());
+    }
+
     Err(last_error.unwrap_or_else(|| ApiError::bad_gateway("All backends failed")))
 }
 
