@@ -14,14 +14,16 @@ RUN mkdir src && \
     echo "fn main() {}" > benches/cli_startup.rs && \
     echo "fn main() {}" > benches/config_parsing.rs && \
     echo "fn main() {}" > benches/metrics.rs && \
-    echo "fn main() {}" > benches/routing.rs
+    echo "fn main() {}" > benches/routing.rs && \
+    mkdir -p dashboard
 
 # Build dependencies only (cached layer)
 RUN cargo build --release && \
     rm -rf src target/release/deps/nexus* target/release/deps/libnexus*
 
-# Copy actual source code
+# Copy actual source code and embedded assets
 COPY src ./src
+COPY dashboard ./dashboard
 
 # Build the actual binary
 RUN cargo build --release
