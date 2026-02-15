@@ -1,6 +1,9 @@
 //! Agent factory for creating InferenceAgent trait objects from configuration.
 
-use super::{generic::GenericOpenAIAgent, lmstudio::LMStudioAgent, ollama::OllamaAgent, openai::OpenAIAgent, AgentError, InferenceAgent};
+use super::{
+    generic::GenericOpenAIAgent, lmstudio::LMStudioAgent, ollama::OllamaAgent, openai::OpenAIAgent,
+    AgentError, InferenceAgent,
+};
 use crate::registry::BackendType;
 use reqwest::Client;
 use std::collections::HashMap;
@@ -52,9 +55,7 @@ pub fn create_agent(
     metadata: HashMap<String, String>,
 ) -> Result<Arc<dyn InferenceAgent>, AgentError> {
     match backend_type {
-        BackendType::Ollama => {
-            Ok(Arc::new(OllamaAgent::new(id, name, url, client)))
-        }
+        BackendType::Ollama => Ok(Arc::new(OllamaAgent::new(id, name, url, client))),
         BackendType::OpenAI => {
             // Extract API key from metadata
             // First check for direct "api_key" field, then "api_key_env" for env var lookup
@@ -75,18 +76,10 @@ pub fn create_agent(
 
             Ok(Arc::new(OpenAIAgent::new(id, name, url, api_key, client)))
         }
-        BackendType::LMStudio => {
-            Ok(Arc::new(LMStudioAgent::new(id, name, url, client)))
-        }
-        BackendType::VLLM | BackendType::LlamaCpp | BackendType::Exo | BackendType::Generic => {
-            Ok(Arc::new(GenericOpenAIAgent::new(
-                id,
-                name,
-                backend_type,
-                url,
-                client,
-            )))
-        }
+        BackendType::LMStudio => Ok(Arc::new(LMStudioAgent::new(id, name, url, client))),
+        BackendType::VLLM | BackendType::LlamaCpp | BackendType::Exo | BackendType::Generic => Ok(
+            Arc::new(GenericOpenAIAgent::new(id, name, backend_type, url, client)),
+        ),
     }
 }
 

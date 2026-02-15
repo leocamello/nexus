@@ -275,10 +275,7 @@ impl LMStudioAgent {
         }
 
         // Tool calling heuristics
-        if name.contains("hermes")
-            || name.contains("functionary")
-            || name.contains("command")
-        {
+        if name.contains("hermes") || name.contains("functionary") || name.contains("command") {
             model.supports_tools = true;
             model.supports_json_mode = true;
         }
@@ -392,14 +389,14 @@ mod tests {
     #[tokio::test]
     async fn test_timeout_error() {
         let agent = test_agent("http://10.255.255.1:1".to_string()); // Non-routable IP
-        let result = tokio::time::timeout(
-            Duration::from_secs(6),
-            agent.health_check()
-        ).await;
+        let result = tokio::time::timeout(Duration::from_secs(6), agent.health_check()).await;
 
         assert!(result.is_ok());
         let health_result = result.unwrap();
         assert!(health_result.is_err());
-        matches!(health_result.unwrap_err(), AgentError::Network(_) | AgentError::Timeout(_));
+        matches!(
+            health_result.unwrap_err(),
+            AgentError::Network(_) | AgentError::Timeout(_)
+        );
     }
 }

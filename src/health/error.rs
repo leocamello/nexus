@@ -43,9 +43,7 @@ impl HealthCheckError {
                 // Convert milliseconds to seconds (round up)
                 Self::Timeout(ms.div_ceil(1000))
             }
-            crate::agent::AgentError::Upstream { status, message: _ } => {
-                Self::HttpError(status)
-            }
+            crate::agent::AgentError::Upstream { status, message: _ } => Self::HttpError(status),
             crate::agent::AgentError::InvalidResponse(msg) => Self::ParseError(msg),
             crate::agent::AgentError::Unsupported(msg) => Self::AgentError(msg.to_string()),
             crate::agent::AgentError::Configuration(msg) => Self::AgentError(msg),

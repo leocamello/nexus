@@ -8,12 +8,12 @@ use axum::http::HeaderMap;
 use futures_util::stream::BoxStream;
 
 pub mod error;
-pub mod types;
 pub mod factory;
+pub mod generic;
+pub mod lmstudio;
 pub mod ollama;
 pub mod openai;
-pub mod lmstudio;
-pub mod generic;
+pub mod types;
 
 // Re-export key types for convenience
 pub use error::AgentError;

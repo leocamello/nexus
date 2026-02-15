@@ -77,7 +77,7 @@ impl InferenceAgent for OpenAIAgent {
             version: None,
             privacy_zone: PrivacyZone::Open, // Cloud service
             capabilities: AgentCapabilities {
-                embeddings: false,   // Phase 1: Not implemented
+                embeddings: false, // Phase 1: Not implemented
                 model_lifecycle: false,
                 token_counting: false, // Phase 1: Heuristic only (tiktoken in F14)
                 resource_monitoring: false,
@@ -302,10 +302,7 @@ impl OpenAIAgent {
         }
 
         // Tool calling (most modern OpenAI models support it)
-        if name.contains("gpt-4")
-            || name.contains("gpt-3.5-turbo")
-            || name.starts_with("gpt-4o")
-        {
+        if name.contains("gpt-4") || name.contains("gpt-3.5-turbo") || name.starts_with("gpt-4o") {
             model.supports_tools = true;
             model.supports_json_mode = true;
         }
@@ -390,7 +387,7 @@ mod tests {
 
         mock.assert_async().await;
         assert_eq!(models.len(), 2);
-        
+
         // GPT-4o should have vision
         let gpt4o = models.iter().find(|m| m.id == "gpt-4o").unwrap();
         assert!(gpt4o.supports_vision);

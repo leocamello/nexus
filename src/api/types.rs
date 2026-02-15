@@ -211,7 +211,9 @@ impl ApiError {
     /// Convert AgentError to ApiError (T038)
     pub fn from_agent_error(error: crate::agent::AgentError) -> Self {
         match error {
-            crate::agent::AgentError::Network(msg) => Self::bad_gateway(&format!("Network error: {}", msg)),
+            crate::agent::AgentError::Network(msg) => {
+                Self::bad_gateway(&format!("Network error: {}", msg))
+            }
             crate::agent::AgentError::Timeout(_) => Self::gateway_timeout(),
             crate::agent::AgentError::Upstream { status, message } => {
                 if status >= 500 {

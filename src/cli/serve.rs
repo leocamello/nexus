@@ -95,7 +95,7 @@ pub fn load_backends_from_config(
 
     for backend_config in &config.backends {
         let id = uuid::Uuid::new_v4().to_string();
-        
+
         // Build metadata from backend config (T027)
         let mut metadata = HashMap::new();
         if let Some(api_key_env) = &backend_config.api_key_env {

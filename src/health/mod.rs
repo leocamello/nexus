@@ -156,9 +156,7 @@ impl HealthChecker {
                             }
                         }
                         crate::agent::HealthStatus::Draining => HealthCheckResult::Failure {
-                            error: HealthCheckError::ParseError(
-                                "Backend is draining".to_string(),
-                            ),
+                            error: HealthCheckError::ParseError("Backend is draining".to_string()),
                         },
                     }
                 }

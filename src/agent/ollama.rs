@@ -87,7 +87,7 @@ impl InferenceAgent for OllamaAgent {
 
     async fn health_check(&self) -> Result<HealthStatus, AgentError> {
         let url = format!("{}/api/tags", self.base_url);
-        
+
         let response = self
             .client
             .get(&url)
@@ -121,7 +121,7 @@ impl InferenceAgent for OllamaAgent {
 
     async fn list_models(&self) -> Result<Vec<ModelCapability>, AgentError> {
         let url = format!("{}/api/tags", self.base_url);
-        
+
         let response = self
             .client
             .get(&url)
@@ -180,7 +180,11 @@ impl InferenceAgent for OllamaAgent {
     ) -> Result<ChatCompletionResponse, AgentError> {
         let url = format!("{}/v1/chat/completions", self.base_url);
 
-        let mut req = self.client.post(&url).json(&request).timeout(Duration::from_secs(120));
+        let mut req = self
+            .client
+            .post(&url)
+            .json(&request)
+            .timeout(Duration::from_secs(120));
 
         // Forward Authorization header if present
         if let Some(headers) = headers {
@@ -199,7 +203,10 @@ impl InferenceAgent for OllamaAgent {
 
         let status = response.status();
         if !status.is_success() {
-            let error_body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(AgentError::Upstream {
                 status: status.as_u16(),
                 message: error_body,
@@ -222,7 +229,11 @@ impl InferenceAgent for OllamaAgent {
 
         let url = format!("{}/v1/chat/completions", self.base_url);
 
-        let mut req = self.client.post(&url).json(&request).timeout(Duration::from_secs(120));
+        let mut req = self
+            .client
+            .post(&url)
+            .json(&request)
+            .timeout(Duration::from_secs(120));
 
         // Forward Authorization header if present
         if let Some(headers) = headers {
@@ -241,7 +252,10 @@ impl InferenceAgent for OllamaAgent {
 
         let status = response.status();
         if !status.is_success() {
-            let error_body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(AgentError::Upstream {
                 status: status.as_u16(),
                 message: error_body,
@@ -407,7 +421,7 @@ mod tests {
     #[tokio::test]
     async fn test_list_models_with_enrichment() {
         let mut server = Server::new_async().await;
-        
+
         // Mock /api/tags
         let tags_mock = server
             .mock("GET", "/api/tags")
@@ -421,12 +435,14 @@ mod tests {
             .mock("POST", "/api/show")
             .match_body(Matcher::Json(serde_json::json!({"name": "llama3:70b"})))
             .with_status(200)
-            .with_body(r#"{
+            .with_body(
+                r#"{
                 "capabilities": ["vision", "tools"],
                 "model_info": {
                     "llama.context_length": 131072
                 }
-            }"#)
+            }"#,
+            )
             .create_async()
             .await;
 
@@ -446,7 +462,7 @@ mod tests {
     #[tokio::test]
     async fn test_list_models_fallback_heuristics() {
         let mut server = Server::new_async().await;
-        
+
         // Mock /api/tags
         let tags_mock = server
             .mock("GET", "/api/tags")
@@ -488,7 +504,7 @@ mod tests {
     #[tokio::test]
     async fn test_chat_completion_success() {
         let mut server = Server::new_async().await;
-        
+
         let mock = server
             .mock("POST", "/v1/chat/completions")
             .match_body(Matcher::JsonString(
@@ -546,7 +562,7 @@ mod tests {
     #[tokio::test]
     async fn test_chat_completion_upstream_error() {
         let mut server = Server::new_async().await;
-        
+
         let mock = server
             .mock("POST", "/v1/chat/completions")
             .with_status(500)
