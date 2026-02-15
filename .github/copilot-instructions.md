@@ -23,6 +23,7 @@ You are an expert Rust developer building **Nexus**, a distributed LLM orchestra
 | v0.3 | Cloud Hybrid — Cloud backends, Privacy zones, Budget management | Next |
 | v0.4 | Intelligence — Speculative router, Quality tracking, Embeddings, Queuing | Planned |
 | v0.5 | Orchestration — Pre-warming, Model lifecycle, Multi-tenant, Rate limiting | Planned |
+| v1.0 | Complete Product — Management UI, full web-based control plane | Planned |
 
 See `docs/FEATURES.md` for detailed feature specs (F01-F23).
 

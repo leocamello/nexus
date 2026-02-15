@@ -225,6 +225,7 @@ These were originally non-goals but are now planned for future versions:
 | **v0.3** | Cloud Hybrid | Cloud backends, Privacy zones, Capability tiers, Budget management, Nexus-Transparent Protocol | 🎯 Next |
 | **v0.4** | Intelligence | Speculative router, Quality tracking, Embeddings API, Request queuing | Planned |
 | **v0.5** | Orchestration | Pre-warming, Model lifecycle, Multi-tenant, Rate limiting | Planned |
+| **v1.0** | Complete Product | Management UI — full web-based control plane with backend, model, and config management | Planned |
 
 See [FEATURES.md](FEATURES.md) for detailed feature specifications (F01-F23).
 

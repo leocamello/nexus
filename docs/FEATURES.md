@@ -30,7 +30,7 @@ Detailed specifications for each feature in the Nexus LLM Orchestrator.
 | F20 | Model Lifecycle Management | v0.5 | Planned | - |
 | F21 | Multi-Tenant Support | v0.5 | Planned | - |
 | F22 | Rate Limiting | v0.5 | Planned | - |
-| F23 | Management UI | v0.5 | Planned | - |
+| F23 | Management UI | v1.0 | Planned | - |
 
 ### Current Status
 
@@ -38,7 +38,8 @@ Detailed specifications for each feature in the Nexus LLM Orchestrator.
 - **v0.2 Observability**: ✅ Released (F09-F11, 3 features)
 - **v0.3 Cloud Hybrid**: 🎯 Next (F12-F14)
 - **v0.4 Intelligence**: Planned (F15-F18)
-- **v0.5 Orchestration**: Planned (F19-F23)
+- **v0.5 Orchestration**: Planned (F19-F22)
+- **v1.0 Complete Product**: Planned (F23 — Management UI)
 - **Tests**: 462 passing, 81% coverage
 
 ---
@@ -1084,7 +1085,7 @@ Per-backend and per-tenant rate limiting to prevent resource exhaustion.
 
 ---
 
-## F23: Management UI (v0.5)
+## F23: Management UI (v1.0)
 
 ### Overview
 A full-featured web-based management interface that provides everything the CLI offers through an interactive UI. Evolves the existing monitoring dashboard (F10) into a complete control plane with backend management, model lifecycle, configuration editing, and routing controls — all embedded in the single Nexus binary.
