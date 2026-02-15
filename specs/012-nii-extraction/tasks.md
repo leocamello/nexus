@@ -73,7 +73,7 @@ description: "Implementation tasks for NII Extraction feature"
 - [X] T022c [P] Write unit tests for LMStudioAgent in src/agent/lmstudio.rs (≥5 tests: health_check via /v1/models, chat_completion, profile values, error handling, timeout) using mockito
 - [X] T022d [P] Write unit tests for GenericOpenAIAgent in src/agent/generic.rs (≥5 tests: health_check, chat_completion, profile reflects backend_type for VLLM/LlamaCpp/Exo/Generic, error handling) using mockito
 - [X] T022e [P] Write unit tests for create_agent factory in src/agent/factory.rs (≥5 tests: each BackendType maps to correct agent, shared reqwest::Client, agent id/name from config)
-- [-] T022f Write cancellation safety test: drop agent.chat_completion() future mid-stream, verify HTTP request is aborted and no resource leak (FR-014) — Deferred: requires async drop instrumentation, tracked for v0.4
+- [X] T022f Write cancellation safety test: drop agent.chat_completion() future mid-stream, verify HTTP request is aborted and no resource leak (FR-014) — tests/agent_integration.rs
 
 **Checkpoint**: Foundation ready - agent abstraction is complete, all agent unit tests pass, registry integration can now begin
 

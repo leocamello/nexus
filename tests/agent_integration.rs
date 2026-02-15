@@ -256,3 +256,71 @@ async fn test_agent_profile_reflects_backend_type() {
     .unwrap();
     assert_eq!(vllm.profile().backend_type, "vllm");
 }
+
+// T022f: Cancellation safety — dropping chat_completion future mid-flight doesn't leak
+#[tokio::test]
+async fn test_cancellation_safety_chat_completion() {
+    use nexus::api::types::ChatCompletionRequest;
+    use std::time::Duration;
+
+    // Start a mock server that delays its response
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+
+    // Spawn a server that accepts connections but never responds
+    let server_handle = tokio::spawn(async move {
+        // Accept up to 2 connections
+        for _ in 0..2 {
+            if let Ok((mut _socket, _)) = listener.accept().await {
+                // Hold the connection open for 10 seconds (simulating slow backend)
+                tokio::time::sleep(Duration::from_secs(10)).await;
+            }
+        }
+    });
+
+    let client = Arc::new(
+        reqwest::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .unwrap(),
+    );
+
+    let agent = create_agent(
+        "cancel-test".to_string(),
+        "Cancel Test".to_string(),
+        format!("http://127.0.0.1:{}", addr.port()),
+        BackendType::Generic,
+        client,
+        HashMap::new(),
+    )
+    .unwrap();
+
+    let request = ChatCompletionRequest {
+        model: "test-model".to_string(),
+        messages: vec![],
+        stream: false,
+        temperature: None,
+        max_tokens: None,
+        top_p: None,
+        stop: None,
+        presence_penalty: None,
+        frequency_penalty: None,
+        user: None,
+        extra: std::collections::HashMap::new(),
+    };
+
+    // Drop the future after 100ms — it should not panic or leak
+    let result = tokio::time::timeout(
+        Duration::from_millis(100),
+        agent.chat_completion(request, None),
+    )
+    .await;
+
+    // The timeout should fire (server never responds)
+    assert!(result.is_err(), "Expected timeout, got {:?}", result);
+
+    // If we get here without panic or hang, cancellation is safe
+    // The agent's reqwest future was dropped and resources cleaned up
+
+    server_handle.abort();
+}

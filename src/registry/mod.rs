@@ -166,9 +166,10 @@ impl Registry {
                 .push(id.clone());
         }
 
-        // Insert backend and agent
-        self.backends.insert(id.clone(), backend);
-        self.agents.insert(id, agent);
+        // Insert agent first, then backend — ensures get_agent() never returns None
+        // for an existing backend during concurrent access
+        self.agents.insert(id.clone(), agent);
+        self.backends.insert(id, backend);
         Ok(())
     }
 
