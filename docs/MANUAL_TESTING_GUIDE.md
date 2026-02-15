@@ -1069,6 +1069,6 @@ rm -f /tmp/nexus.{bash,zsh,fish}
 | F10: Dashboard | Web UI, WebSocket, dark mode | Live updates in browser |
 | F11: Logging | JSON format, component levels, correlation IDs | Structured, queryable logs |
 
-**Automated test suite**: `cargo test` — **462 tests**
+**Automated test suite**: `cargo test` — **468 tests**
 
 For the full E2E smoke test: `./scripts/e2e-test.sh`

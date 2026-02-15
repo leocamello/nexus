@@ -141,6 +141,8 @@ fn test_routing_with_aliases() {
     // Should resolve alias and select backend
     assert_eq!(backend.name, "Backend 1");
     assert_eq!(backend.models[0].id, "llama3:70b");
+    // The resolved model name should be the actual model, not the alias
+    assert_eq!(result.actual_model, "llama3:70b");
 }
 
 #[test]
