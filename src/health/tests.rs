@@ -635,3 +635,586 @@ fn test_success_with_parse_error_preserves_healthy_status() {
     assert_eq!(new_status, None);
     assert_eq!(state.consecutive_successes, 1);
 }
+
+// ============================================================================
+// T10: from_agent_error Conversion Tests
+// ============================================================================
+
+#[test]
+fn test_from_agent_error_network() {
+    let agent_err = crate::agent::AgentError::Network("connection refused".to_string());
+    let health_err = HealthCheckError::from_agent_error(agent_err);
+    assert!(matches!(
+        health_err,
+        HealthCheckError::ConnectionFailed(msg) if msg == "connection refused"
+    ));
+}
+
+#[test]
+fn test_from_agent_error_timeout_ms_to_seconds() {
+    // 5000ms → 5s
+    let agent_err = crate::agent::AgentError::Timeout(5000);
+    let health_err = HealthCheckError::from_agent_error(agent_err);
+    assert!(matches!(health_err, HealthCheckError::Timeout(5)));
+}
+
+#[test]
+fn test_from_agent_error_timeout_rounds_up() {
+    // 5001ms → 6s (ceil division)
+    let agent_err = crate::agent::AgentError::Timeout(5001);
+    let health_err = HealthCheckError::from_agent_error(agent_err);
+    assert!(matches!(health_err, HealthCheckError::Timeout(6)));
+}
+
+#[test]
+fn test_from_agent_error_timeout_sub_second() {
+    // 500ms → 1s
+    let agent_err = crate::agent::AgentError::Timeout(500);
+    let health_err = HealthCheckError::from_agent_error(agent_err);
+    assert!(matches!(health_err, HealthCheckError::Timeout(1)));
+}
+
+#[test]
+fn test_from_agent_error_upstream() {
+    let agent_err = crate::agent::AgentError::Upstream {
+        status: 503,
+        message: "Service Unavailable".to_string(),
+    };
+    let health_err = HealthCheckError::from_agent_error(agent_err);
+    assert!(matches!(health_err, HealthCheckError::HttpError(503)));
+}
+
+#[test]
+fn test_from_agent_error_invalid_response() {
+    let agent_err = crate::agent::AgentError::InvalidResponse("bad json".to_string());
+    let health_err = HealthCheckError::from_agent_error(agent_err);
+    assert!(matches!(
+        health_err,
+        HealthCheckError::ParseError(msg) if msg == "bad json"
+    ));
+}
+
+#[test]
+fn test_from_agent_error_unsupported() {
+    let agent_err = crate::agent::AgentError::Unsupported("embeddings");
+    let health_err = HealthCheckError::from_agent_error(agent_err);
+    assert!(matches!(health_err, HealthCheckError::AgentError(_)));
+}
+
+#[test]
+fn test_from_agent_error_configuration() {
+    let agent_err = crate::agent::AgentError::Configuration("missing API key".to_string());
+    let health_err = HealthCheckError::from_agent_error(agent_err);
+    assert!(matches!(health_err, HealthCheckError::AgentError(_)));
+}
+
+// ============================================================================
+// T11: check_backend with Agent Tests (async)
+// ============================================================================
+
+use crate::agent::{
+    AgentCapabilities, AgentProfile, HealthStatus, ModelCapability, PrivacyZone, StreamChunk,
+};
+use crate::api::types::{ChatCompletionRequest, ChatCompletionResponse};
+use async_trait::async_trait;
+use axum::http::HeaderMap;
+use futures_util::stream::BoxStream;
+use std::sync::Arc;
+
+/// Mock health response for testing (avoids AgentError not being Clone).
+#[derive(Clone)]
+enum MockHealthResponse {
+    Ok(HealthStatus),
+    NetworkError(String),
+    TimeoutError(u64),
+}
+
+/// Mock models response for testing.
+#[derive(Clone)]
+enum MockModelsResponse {
+    Ok(Vec<ModelCapability>),
+    NetworkError(String),
+}
+
+/// Mock agent for testing health check paths.
+struct MockAgent {
+    id: String,
+    health_response: MockHealthResponse,
+    models_response: MockModelsResponse,
+}
+
+#[async_trait]
+impl crate::agent::InferenceAgent for MockAgent {
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn name(&self) -> &str {
+        "MockAgent"
+    }
+    fn profile(&self) -> AgentProfile {
+        AgentProfile {
+            backend_type: "generic".to_string(),
+            version: None,
+            privacy_zone: PrivacyZone::Open,
+            capabilities: AgentCapabilities::default(),
+        }
+    }
+    async fn health_check(&self) -> Result<HealthStatus, crate::agent::AgentError> {
+        match &self.health_response {
+            MockHealthResponse::Ok(status) => Ok(status.clone()),
+            MockHealthResponse::NetworkError(msg) => {
+                Err(crate::agent::AgentError::Network(msg.clone()))
+            }
+            MockHealthResponse::TimeoutError(ms) => Err(crate::agent::AgentError::Timeout(*ms)),
+        }
+    }
+    async fn list_models(&self) -> Result<Vec<ModelCapability>, crate::agent::AgentError> {
+        match &self.models_response {
+            MockModelsResponse::Ok(models) => Ok(models.clone()),
+            MockModelsResponse::NetworkError(msg) => {
+                Err(crate::agent::AgentError::Network(msg.clone()))
+            }
+        }
+    }
+    async fn chat_completion(
+        &self,
+        _request: ChatCompletionRequest,
+        _headers: Option<&HeaderMap>,
+    ) -> Result<ChatCompletionResponse, crate::agent::AgentError> {
+        Err(crate::agent::AgentError::Unsupported("chat_completion"))
+    }
+    async fn chat_completion_stream(
+        &self,
+        _request: ChatCompletionRequest,
+        _headers: Option<&HeaderMap>,
+    ) -> Result<
+        BoxStream<'static, Result<StreamChunk, crate::agent::AgentError>>,
+        crate::agent::AgentError,
+    > {
+        Err(crate::agent::AgentError::Unsupported(
+            "chat_completion_stream",
+        ))
+    }
+}
+
+fn make_test_backend(id: &str) -> Backend {
+    Backend::new(
+        id.to_string(),
+        "test-backend".to_string(),
+        "http://localhost:11434".to_string(),
+        BackendType::Ollama,
+        vec![],
+        crate::registry::DiscoverySource::Static,
+        std::collections::HashMap::new(),
+    )
+}
+
+#[tokio::test]
+async fn test_check_backend_agent_healthy_with_models() {
+    let registry = Arc::new(crate::registry::Registry::new());
+    let backend = make_test_backend("test-1");
+
+    let agent: Arc<dyn crate::agent::InferenceAgent> = Arc::new(MockAgent {
+        id: "test-1".to_string(),
+        health_response: MockHealthResponse::Ok(HealthStatus::Healthy { model_count: 2 }),
+        models_response: MockModelsResponse::Ok(vec![
+            ModelCapability {
+                id: "llama3:8b".to_string(),
+                name: "llama3:8b".to_string(),
+                context_length: 8192,
+                supports_vision: false,
+                supports_tools: true,
+                supports_json_mode: false,
+                max_output_tokens: None,
+                capability_tier: None,
+            },
+            ModelCapability {
+                id: "gpt-4".to_string(),
+                name: "gpt-4".to_string(),
+                context_length: 128000,
+                supports_vision: true,
+                supports_tools: true,
+                supports_json_mode: true,
+                max_output_tokens: Some(4096),
+                capability_tier: None,
+            },
+        ]),
+    });
+
+    registry.add_backend_with_agent(backend, agent).unwrap();
+    let backend = registry.get_backend("test-1").unwrap();
+
+    let checker = HealthChecker::with_client(
+        registry,
+        HealthCheckConfig::default(),
+        reqwest::Client::new(),
+    );
+    let result = checker.check_backend(&backend).await;
+
+    match result {
+        HealthCheckResult::Success { models, .. } => {
+            assert_eq!(models.len(), 2);
+            assert_eq!(models[0].id, "llama3:8b");
+            assert!(models[1].supports_vision);
+        }
+        other => panic!("Expected Success, got: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_check_backend_agent_healthy_list_models_fails() {
+    let registry = Arc::new(crate::registry::Registry::new());
+    let backend = make_test_backend("test-2");
+
+    let agent: Arc<dyn crate::agent::InferenceAgent> = Arc::new(MockAgent {
+        id: "test-2".to_string(),
+        health_response: MockHealthResponse::Ok(HealthStatus::Healthy { model_count: 0 }),
+        models_response: MockModelsResponse::NetworkError("timeout".to_string()),
+    });
+
+    registry.add_backend_with_agent(backend, agent).unwrap();
+    let backend = registry.get_backend("test-2").unwrap();
+
+    let checker = HealthChecker::with_client(
+        registry,
+        HealthCheckConfig::default(),
+        reqwest::Client::new(),
+    );
+    let result = checker.check_backend(&backend).await;
+
+    assert!(matches!(
+        result,
+        HealthCheckResult::SuccessWithParseError { .. }
+    ));
+}
+
+#[tokio::test]
+async fn test_check_backend_agent_unhealthy() {
+    let registry = Arc::new(crate::registry::Registry::new());
+    let backend = make_test_backend("test-3");
+
+    let agent: Arc<dyn crate::agent::InferenceAgent> = Arc::new(MockAgent {
+        id: "test-3".to_string(),
+        health_response: MockHealthResponse::Ok(HealthStatus::Unhealthy),
+        models_response: MockModelsResponse::Ok(vec![]),
+    });
+
+    registry.add_backend_with_agent(backend, agent).unwrap();
+    let backend = registry.get_backend("test-3").unwrap();
+
+    let checker = HealthChecker::with_client(
+        registry,
+        HealthCheckConfig::default(),
+        reqwest::Client::new(),
+    );
+    let result = checker.check_backend(&backend).await;
+
+    assert!(matches!(result, HealthCheckResult::Failure { .. }));
+}
+
+#[tokio::test]
+async fn test_check_backend_agent_loading() {
+    let registry = Arc::new(crate::registry::Registry::new());
+    let backend = make_test_backend("test-4");
+
+    let agent: Arc<dyn crate::agent::InferenceAgent> = Arc::new(MockAgent {
+        id: "test-4".to_string(),
+        health_response: MockHealthResponse::Ok(HealthStatus::Loading {
+            model_id: "llama3:70b".to_string(),
+            percent: 42,
+            eta_ms: Some(5000),
+        }),
+        models_response: MockModelsResponse::Ok(vec![]),
+    });
+
+    registry.add_backend_with_agent(backend, agent).unwrap();
+    let backend = registry.get_backend("test-4").unwrap();
+
+    let checker = HealthChecker::with_client(
+        registry,
+        HealthCheckConfig::default(),
+        reqwest::Client::new(),
+    );
+    let result = checker.check_backend(&backend).await;
+
+    match result {
+        HealthCheckResult::Failure { error } => {
+            let msg = error.to_string();
+            assert!(
+                msg.contains("loading"),
+                "Expected loading message, got: {msg}"
+            );
+        }
+        other => panic!("Expected Failure, got: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_check_backend_agent_draining() {
+    let registry = Arc::new(crate::registry::Registry::new());
+    let backend = make_test_backend("test-5");
+
+    let agent: Arc<dyn crate::agent::InferenceAgent> = Arc::new(MockAgent {
+        id: "test-5".to_string(),
+        health_response: MockHealthResponse::Ok(HealthStatus::Draining),
+        models_response: MockModelsResponse::Ok(vec![]),
+    });
+
+    registry.add_backend_with_agent(backend, agent).unwrap();
+    let backend = registry.get_backend("test-5").unwrap();
+
+    let checker = HealthChecker::with_client(
+        registry,
+        HealthCheckConfig::default(),
+        reqwest::Client::new(),
+    );
+    let result = checker.check_backend(&backend).await;
+
+    match result {
+        HealthCheckResult::Failure { error } => {
+            let msg = error.to_string();
+            assert!(
+                msg.contains("draining"),
+                "Expected draining message, got: {msg}"
+            );
+        }
+        other => panic!("Expected Failure, got: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_check_backend_agent_network_error() {
+    let registry = Arc::new(crate::registry::Registry::new());
+    let backend = make_test_backend("test-6");
+
+    let agent: Arc<dyn crate::agent::InferenceAgent> = Arc::new(MockAgent {
+        id: "test-6".to_string(),
+        health_response: MockHealthResponse::NetworkError("connection refused".to_string()),
+        models_response: MockModelsResponse::Ok(vec![]),
+    });
+
+    registry.add_backend_with_agent(backend, agent).unwrap();
+    let backend = registry.get_backend("test-6").unwrap();
+
+    let checker = HealthChecker::with_client(
+        registry,
+        HealthCheckConfig::default(),
+        reqwest::Client::new(),
+    );
+    let result = checker.check_backend(&backend).await;
+
+    match result {
+        HealthCheckResult::Failure { error } => {
+            assert!(matches!(error, HealthCheckError::ConnectionFailed(_)));
+        }
+        other => panic!("Expected Failure, got: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_check_backend_agent_timeout_error() {
+    let registry = Arc::new(crate::registry::Registry::new());
+    let backend = make_test_backend("test-7");
+
+    let agent: Arc<dyn crate::agent::InferenceAgent> = Arc::new(MockAgent {
+        id: "test-7".to_string(),
+        health_response: MockHealthResponse::TimeoutError(5000),
+        models_response: MockModelsResponse::Ok(vec![]),
+    });
+
+    registry.add_backend_with_agent(backend, agent).unwrap();
+    let backend = registry.get_backend("test-7").unwrap();
+
+    let checker = HealthChecker::with_client(
+        registry,
+        HealthCheckConfig::default(),
+        reqwest::Client::new(),
+    );
+    let result = checker.check_backend(&backend).await;
+
+    match result {
+        HealthCheckResult::Failure { error } => {
+            assert!(matches!(error, HealthCheckError::Timeout(5)));
+        }
+        other => panic!("Expected Failure, got: {other:?}"),
+    }
+}
+
+// ============================================================================
+// T12: apply_result Registry Integration Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_apply_result_success_updates_registry() {
+    let registry = Arc::new(crate::registry::Registry::new());
+    let backend = make_test_backend("apply-1");
+    registry.add_backend(backend).unwrap();
+
+    let checker = HealthChecker::with_client(
+        registry.clone(),
+        HealthCheckConfig::default(),
+        reqwest::Client::new(),
+    );
+
+    let models = vec![Model {
+        id: "llama3:8b".to_string(),
+        name: "llama3:8b".to_string(),
+        context_length: 8192,
+        supports_vision: false,
+        supports_tools: true,
+        supports_json_mode: false,
+        max_output_tokens: None,
+    }];
+
+    let result = HealthCheckResult::Success {
+        latency_ms: 42,
+        models: models.clone(),
+    };
+
+    checker.apply_result("apply-1", result);
+
+    // Registry should have models
+    let b = registry.get_backend("apply-1").unwrap();
+    assert_eq!(b.models.len(), 1);
+    assert_eq!(b.models[0].id, "llama3:8b");
+
+    // Status should transition Unknown → Healthy
+    assert_eq!(b.status, BackendStatus::Healthy);
+}
+
+#[tokio::test]
+async fn test_apply_result_failure_updates_status() {
+    let registry = Arc::new(crate::registry::Registry::new());
+    let backend = make_test_backend("apply-2");
+    registry.add_backend(backend).unwrap();
+
+    let checker = HealthChecker::with_client(
+        registry.clone(),
+        HealthCheckConfig::default(),
+        reqwest::Client::new(),
+    );
+
+    let result = HealthCheckResult::Failure {
+        error: HealthCheckError::ConnectionFailed("refused".to_string()),
+    };
+
+    checker.apply_result("apply-2", result);
+
+    // Status should transition Unknown → Unhealthy
+    let backends = registry.get_all_backends();
+    let b = backends.iter().find(|b| b.id == "apply-2").unwrap();
+    assert_eq!(b.status, BackendStatus::Unhealthy);
+}
+
+#[tokio::test]
+async fn test_apply_result_parse_error_preserves_models() {
+    let registry = Arc::new(crate::registry::Registry::new());
+    let backend = make_test_backend("apply-3");
+    registry.add_backend(backend).unwrap();
+
+    let checker = HealthChecker::with_client(
+        registry.clone(),
+        HealthCheckConfig::default(),
+        reqwest::Client::new(),
+    );
+
+    // First: successful check with models
+    let models = vec![Model {
+        id: "model-a".to_string(),
+        name: "model-a".to_string(),
+        context_length: 4096,
+        supports_vision: false,
+        supports_tools: false,
+        supports_json_mode: false,
+        max_output_tokens: None,
+    }];
+    checker.apply_result(
+        "apply-3",
+        HealthCheckResult::Success {
+            latency_ms: 10,
+            models,
+        },
+    );
+
+    // Second: parse error should preserve the models
+    checker.apply_result(
+        "apply-3",
+        HealthCheckResult::SuccessWithParseError {
+            latency_ms: 15,
+            parse_error: "bad json".to_string(),
+        },
+    );
+
+    let b = registry.get_backend("apply-3").unwrap();
+    assert_eq!(b.models.len(), 1);
+    assert_eq!(b.models[0].id, "model-a");
+}
+
+// ============================================================================
+// T13: check_all_backends Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_check_all_backends_with_agents() {
+    let registry = Arc::new(crate::registry::Registry::new());
+
+    // Add two backends with mock agents
+    let backend1 = make_test_backend("all-1");
+    let agent1: Arc<dyn crate::agent::InferenceAgent> = Arc::new(MockAgent {
+        id: "all-1".to_string(),
+        health_response: MockHealthResponse::Ok(HealthStatus::Healthy { model_count: 1 }),
+        models_response: MockModelsResponse::Ok(vec![ModelCapability {
+            id: "model-x".to_string(),
+            name: "model-x".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        }]),
+    });
+    registry.add_backend_with_agent(backend1, agent1).unwrap();
+
+    let backend2 = make_test_backend("all-2");
+    let agent2: Arc<dyn crate::agent::InferenceAgent> = Arc::new(MockAgent {
+        id: "all-2".to_string(),
+        health_response: MockHealthResponse::NetworkError("refused".to_string()),
+        models_response: MockModelsResponse::Ok(vec![]),
+    });
+    registry.add_backend_with_agent(backend2, agent2).unwrap();
+
+    let checker = HealthChecker::with_client(
+        registry.clone(),
+        HealthCheckConfig::default(),
+        reqwest::Client::new(),
+    );
+
+    let results = checker.check_all_backends().await;
+    assert_eq!(results.len(), 2);
+
+    // One should succeed, one should fail
+    let successes = results
+        .iter()
+        .filter(|(_, r)| matches!(r, HealthCheckResult::Success { .. }))
+        .count();
+    let failures = results
+        .iter()
+        .filter(|(_, r)| matches!(r, HealthCheckResult::Failure { .. }))
+        .count();
+    assert_eq!(successes, 1);
+    assert_eq!(failures, 1);
+}
+
+#[tokio::test]
+async fn test_check_all_backends_empty_registry() {
+    let registry = Arc::new(crate::registry::Registry::new());
+    let checker = HealthChecker::with_client(
+        registry,
+        HealthCheckConfig::default(),
+        reqwest::Client::new(),
+    );
+
+    let results = checker.check_all_backends().await;
+    assert!(results.is_empty());
+}

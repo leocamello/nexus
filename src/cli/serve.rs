@@ -365,4 +365,124 @@ mod tests {
         let result = tokio::time::timeout(Duration::from_secs(1), handle).await;
         assert!(result.is_ok());
     }
+
+    #[tokio::test]
+    async fn test_backends_loaded_with_agents() {
+        let mut config = NexusConfig::default();
+        config.backends.push(BackendConfig {
+            name: "ollama-test".to_string(),
+            url: "http://localhost:11434".to_string(),
+            backend_type: BackendType::Ollama,
+            priority: 1,
+            api_key_env: None,
+        });
+        config.backends.push(BackendConfig {
+            name: "vllm-test".to_string(),
+            url: "http://localhost:8000".to_string(),
+            backend_type: BackendType::VLLM,
+            priority: 2,
+            api_key_env: None,
+        });
+
+        let registry = Arc::new(Registry::new());
+        load_backends_from_config(&config, &registry).unwrap();
+
+        assert_eq!(registry.backend_count(), 2);
+
+        // Verify agents are created for each backend
+        let backends = registry.get_all_backends();
+        for backend in &backends {
+            let agent = registry.get_agent(&backend.id);
+            assert!(
+                agent.is_some(),
+                "Agent should exist for backend {}",
+                backend.name
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_backends_loaded_with_api_key_env() {
+        // Set a test API key in the environment
+        std::env::set_var("NEXUS_TEST_OPENAI_KEY", "sk-test-key-12345");
+
+        let mut config = NexusConfig::default();
+        config.backends.push(BackendConfig {
+            name: "openai-test".to_string(),
+            url: "https://api.openai.com".to_string(),
+            backend_type: BackendType::OpenAI,
+            priority: 1,
+            api_key_env: Some("NEXUS_TEST_OPENAI_KEY".to_string()),
+        });
+
+        let registry = Arc::new(Registry::new());
+        load_backends_from_config(&config, &registry).unwrap();
+
+        assert_eq!(registry.backend_count(), 1);
+
+        let backends = registry.get_all_backends();
+        let backend = &backends[0];
+        let agent = registry.get_agent(&backend.id);
+        assert!(agent.is_some(), "Agent should exist for OpenAI backend");
+
+        // Verify agent profile has correct type
+        let profile = agent.unwrap().profile();
+        assert_eq!(profile.backend_type, "openai");
+
+        // Clean up
+        std::env::remove_var("NEXUS_TEST_OPENAI_KEY");
+    }
+
+    #[tokio::test]
+    async fn test_build_api_router_returns_app_state() {
+        let registry = Arc::new(Registry::new());
+        let config = Arc::new(NexusConfig::default());
+        let (_router, app_state) = build_api_router(registry.clone(), config.clone());
+
+        // AppState should reference the same registry
+        assert_eq!(app_state.registry.backend_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_cli_overrides_host_and_log_level() {
+        let temp = NamedTempFile::new().unwrap();
+        std::fs::write(temp.path(), "[server]\nhost = \"0.0.0.0\"\nport = 8000").unwrap();
+
+        let args = ServeArgs {
+            config: temp.path().to_path_buf(),
+            port: None,
+            host: Some("127.0.0.1".to_string()),
+            log_level: Some("debug".to_string()),
+            no_discovery: false,
+            no_health_check: false,
+        };
+
+        let config = load_config_with_overrides(&args).unwrap();
+        assert_eq!(config.server.host, "127.0.0.1");
+        assert_eq!(config.logging.level, "debug");
+    }
+
+    #[tokio::test]
+    async fn test_cli_overrides_disable_discovery_and_health() {
+        let args = ServeArgs {
+            config: PathBuf::from("nonexistent.toml"),
+            port: None,
+            host: None,
+            log_level: None,
+            no_discovery: true,
+            no_health_check: true,
+        };
+
+        let config = load_config_with_overrides(&args).unwrap();
+        assert!(!config.discovery.enabled);
+        assert!(!config.health_check.enabled);
+    }
+
+    #[tokio::test]
+    async fn test_empty_config_loads_zero_backends() {
+        let config = NexusConfig::default();
+        let registry = Arc::new(Registry::new());
+        load_backends_from_config(&config, &registry).unwrap();
+        assert_eq!(registry.backend_count(), 0);
+    }
 }
