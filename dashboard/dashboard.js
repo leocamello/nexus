@@ -6,6 +6,8 @@ let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const BASE_RECONNECT_DELAY = 3000; // Start at 3 seconds
 let currentReconnectDelay = BASE_RECONNECT_DELAY;
+// Maps backend UUID → display name for request history
+const backendNameMap = new Map();
 
 // Initialize dashboard
 document.addEventListener('DOMContentLoaded', () => {
@@ -309,8 +311,8 @@ function renderBackendCards(backends) {
     container.innerHTML = '';
 
     backends.forEach(backend => {
+        backendNameMap.set(backend.id, backend.name || backend.id);
         const card = document.createElement('div');
-        const statusClass = (backend.status || 'Unknown').toLowerCase();
         card.className = `backend-card ${statusClass}`;
 
         const statusDot = statusClass === 'healthy' ? '🟢'
@@ -600,7 +602,7 @@ function renderRequestRow(entry) {
     
     // Backend
     const backendCell = document.createElement('td');
-    backendCell.textContent = entry.backend_id || '—';
+    backendCell.textContent = backendNameMap.get(entry.backend_id) || entry.backend_id || '—';
     row.appendChild(backendCell);
     
     // Duration

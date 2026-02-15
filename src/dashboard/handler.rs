@@ -61,29 +61,27 @@ pub async fn dashboard_handler(State(state): State<Arc<AppState>>) -> Response {
                 .filter(|b| b.status == crate::registry::BackendStatus::Healthy)
                 .collect();
 
-            let mut models_map = std::collections::HashMap::new();
+            let mut models_data: Vec<crate::api::models::ModelObject> = Vec::new();
             for backend in healthy_backends {
                 for model in &backend.models {
-                    models_map.entry(model.name.clone()).or_insert_with(|| {
-                        crate::api::models::ModelObject {
-                            id: model.name.clone(),
-                            object: "model".to_string(),
-                            created: 0,
-                            owned_by: "nexus".to_string(),
-                            context_length: Some(model.context_length),
-                            capabilities: Some(crate::api::models::ModelCapabilities {
-                                vision: model.supports_vision,
-                                tools: model.supports_tools,
-                                json_mode: model.supports_json_mode,
-                            }),
-                        }
+                    models_data.push(crate::api::models::ModelObject {
+                        id: model.name.clone(),
+                        object: "model".to_string(),
+                        created: 0,
+                        owned_by: backend.name.clone(),
+                        context_length: Some(model.context_length),
+                        capabilities: Some(crate::api::models::ModelCapabilities {
+                            vision: model.supports_vision,
+                            tools: model.supports_tools,
+                            json_mode: model.supports_json_mode,
+                        }),
                     });
                 }
             }
 
             let models = crate::api::models::ModelsResponse {
                 object: "list".to_string(),
-                data: models_map.into_values().collect(),
+                data: models_data,
             };
             let models_json = serde_json::to_string(&models).unwrap_or_else(|_| "{}".to_string());
 
