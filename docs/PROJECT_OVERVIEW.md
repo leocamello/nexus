@@ -226,7 +226,7 @@ These were originally non-goals but are now planned for future versions:
 | **v0.4** | Intelligence | Speculative router, Quality tracking, Embeddings API, Request queuing | Planned |
 | **v0.5** | Orchestration | Pre-warming, Model lifecycle, Multi-tenant, Rate limiting | Planned |
 
-See [FEATURES.md](FEATURES.md) for detailed feature specifications (F01-F22).
+See [FEATURES.md](FEATURES.md) for detailed feature specifications (F01-F23).
 
 ---
 
@@ -260,7 +260,7 @@ Nexus follows 10 core principles defined in the [Constitution](.specify/memory/c
 | Document | Purpose |
 |----------|---------|
 | [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) | This file — vision, roadmap, and positioning |
-| [FEATURES.md](FEATURES.md) | Feature specifications (F01-F22) |
+| [FEATURES.md](FEATURES.md) | Feature specifications (F01-F23) |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Technical architecture and design |
 | [SPEC_KIT_PROMPTS.md](SPEC_KIT_PROMPTS.md) | Spec-kit workflow and feature prompts |
 | [constitution.md](../.specify/memory/constitution.md) | Core principles and constraints |
