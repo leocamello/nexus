@@ -28,4 +28,27 @@ pub enum HealthCheckError {
     /// Invalid response
     #[error("invalid response: {0}")]
     ParseError(String),
+
+    /// Agent error (T034)
+    #[error("agent error: {0}")]
+    AgentError(String),
+}
+
+impl HealthCheckError {
+    /// Convert AgentError to HealthCheckError (T034)
+    pub fn from_agent_error(error: crate::agent::AgentError) -> Self {
+        match error {
+            crate::agent::AgentError::Network(msg) => Self::ConnectionFailed(msg),
+            crate::agent::AgentError::Timeout(_msg) => {
+                // Try to extract timeout duration, default to 30s
+                Self::Timeout(30)
+            }
+            crate::agent::AgentError::Upstream { status, message: _ } => {
+                Self::HttpError(status)
+            }
+            crate::agent::AgentError::InvalidResponse(msg) => Self::ParseError(msg),
+            crate::agent::AgentError::Unsupported(msg) => Self::AgentError(msg.to_string()),
+            crate::agent::AgentError::Configuration(msg) => Self::AgentError(msg),
+        }
+    }
 }

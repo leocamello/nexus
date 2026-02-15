@@ -93,47 +93,119 @@ impl HealthChecker {
         }
     }
 
-    /// Check a single backend's health.
+    /// Check a single backend's health (T029, T030).
+    ///
+    /// Uses the agent from the registry to perform health checks and model listing.
+    /// Falls back to legacy direct HTTP if agent is not available (for backwards compatibility).
     pub async fn check_backend(&self, backend: &Backend) -> HealthCheckResult {
-        let endpoint = Self::get_health_endpoint(backend.backend_type);
-        let url = format!("{}{}", backend.url, endpoint);
-
         let start = Instant::now();
 
-        match self
-            .client
-            .get(&url)
-            .timeout(Duration::from_secs(self.config.timeout_seconds))
-            .send()
-            .await
-        {
-            Ok(response) => {
-                let latency_ms = start.elapsed().as_millis() as u32;
+        // Try to get agent from registry (T029)
+        if let Some(agent) = self.registry.get_agent(&backend.id) {
+            // Use agent-based health check (T029, T030)
+            match agent.health_check().await {
+                Ok(health_status) => {
+                    let latency_ms = start.elapsed().as_millis() as u32;
 
-                // Record backend latency histogram (convert ms to seconds for Prometheus)
-                let latency_seconds = latency_ms as f64 / 1000.0;
-                metrics::histogram!("nexus_backend_latency_seconds",
-                    "backend" => backend.id.clone()
-                )
-                .record(latency_seconds);
+                    // Record backend latency histogram
+                    let latency_seconds = latency_ms as f64 / 1000.0;
+                    metrics::histogram!("nexus_backend_latency_seconds",
+                        "backend" => backend.id.clone()
+                    )
+                    .record(latency_seconds);
 
-                if !response.status().is_success() {
-                    return HealthCheckResult::Failure {
-                        error: HealthCheckError::HttpError(response.status().as_u16()),
-                    };
+                    // Check if backend is healthy (T029)
+                    match health_status {
+                        crate::agent::HealthStatus::Healthy { .. } => {
+                            // List models via agent (T030)
+                            match agent.list_models().await {
+                                Ok(model_capabilities) => {
+                                    // Convert ModelCapability to Model
+                                    let models = model_capabilities
+                                        .into_iter()
+                                        .map(crate::registry::Model::from)
+                                        .collect();
+
+                                    HealthCheckResult::Success { latency_ms, models }
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        backend_id = %backend.id,
+                                        error = %e,
+                                        "Agent list_models failed, treating as healthy with empty model list"
+                                    );
+                                    HealthCheckResult::SuccessWithParseError {
+                                        latency_ms,
+                                        parse_error: e.to_string(),
+                                    }
+                                }
+                            }
+                        }
+                        crate::agent::HealthStatus::Unhealthy => HealthCheckResult::Failure {
+                            error: HealthCheckError::ParseError(
+                                "Backend reported unhealthy status".to_string(),
+                            ),
+                        },
+                        crate::agent::HealthStatus::Loading { model_id, .. } => {
+                            // Treat loading as temporarily unhealthy
+                            HealthCheckResult::Failure {
+                                error: HealthCheckError::ParseError(format!(
+                                    "Backend is loading model: {}",
+                                    model_id
+                                )),
+                            }
+                        }
+                        crate::agent::HealthStatus::Draining => HealthCheckResult::Failure {
+                            error: HealthCheckError::ParseError(
+                                "Backend is draining".to_string(),
+                            ),
+                        },
+                    }
                 }
-
-                // Parse response based on backend type
-                match response.text().await {
-                    Ok(body) => self.parse_and_enrich(backend, &body, latency_ms).await,
-                    Err(e) => HealthCheckResult::Failure {
-                        error: HealthCheckError::ParseError(e.to_string()),
-                    },
-                }
+                Err(e) => HealthCheckResult::Failure {
+                    error: HealthCheckError::from_agent_error(e),
+                },
             }
-            Err(e) => HealthCheckResult::Failure {
-                error: Self::classify_error(e, self.config.timeout_seconds),
-            },
+        } else {
+            // Legacy fallback: direct HTTP (backwards compatibility)
+            let endpoint = Self::get_health_endpoint(backend.backend_type);
+            let url = format!("{}{}", backend.url, endpoint);
+
+            match self
+                .client
+                .get(&url)
+                .timeout(Duration::from_secs(self.config.timeout_seconds))
+                .send()
+                .await
+            {
+                Ok(response) => {
+                    let latency_ms = start.elapsed().as_millis() as u32;
+
+                    // Record backend latency histogram (convert ms to seconds for Prometheus)
+                    let latency_seconds = latency_ms as f64 / 1000.0;
+                    metrics::histogram!("nexus_backend_latency_seconds",
+                        "backend" => backend.id.clone()
+                    )
+                    .record(latency_seconds);
+
+                    if !response.status().is_success() {
+                        return HealthCheckResult::Failure {
+                            error: HealthCheckError::HttpError(response.status().as_u16()),
+                        };
+                    }
+
+                    // Parse response based on backend type
+                    match response.text().await {
+                        Ok(body) => self.parse_and_enrich(backend, &body, latency_ms).await,
+                        Err(e) => HealthCheckResult::Failure {
+                            error: HealthCheckError::ParseError(e.to_string()),
+                        },
+                    }
+                }
+                Err(e) => HealthCheckResult::Failure {
+                    error: Self::classify_error(e, self.config.timeout_seconds),
+                },
+            }
         }
     }
 

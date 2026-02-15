@@ -86,18 +86,45 @@ pub fn load_backends_from_config(
     config: &NexusConfig,
     registry: &Registry,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Create shared HTTP client for all agents (T027)
+    let client = Arc::new(
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()?,
+    );
+
     for backend_config in &config.backends {
+        let id = uuid::Uuid::new_v4().to_string();
+        
+        // Build metadata from backend config (T027)
+        let mut metadata = HashMap::new();
+        if let Some(api_key_env) = &backend_config.api_key_env {
+            metadata.insert("api_key_env".to_string(), api_key_env.clone());
+        }
+
         let backend = Backend::new(
-            uuid::Uuid::new_v4().to_string(),
+            id.clone(),
             backend_config.name.clone(),
             backend_config.url.clone(),
             backend_config.backend_type,
             vec![], // Models will be discovered by health checker
             DiscoverySource::Static,
-            HashMap::new(),
+            metadata.clone(),
         );
 
-        registry.add_backend(backend)?;
+        // Create agent for this backend (T027)
+        let agent = crate::agent::factory::create_agent(
+            id.clone(),
+            backend_config.name.clone(),
+            backend_config.url.clone(),
+            backend_config.backend_type,
+            Arc::clone(&client),
+            metadata,
+        )?;
+
+        // Register both backend and agent
+        registry.add_backend_with_agent(backend, agent)?;
+
         tracing::info!(
             name = %backend_config.name,
             url = %backend_config.url,

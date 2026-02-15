@@ -208,6 +208,39 @@ impl ApiError {
         }
     }
 
+    /// Convert AgentError to ApiError (T038)
+    pub fn from_agent_error(error: crate::agent::AgentError) -> Self {
+        match error {
+            crate::agent::AgentError::Network(msg) => Self::bad_gateway(&format!("Network error: {}", msg)),
+            crate::agent::AgentError::Timeout(_) => Self::gateway_timeout(),
+            crate::agent::AgentError::Upstream { status, message } => {
+                if status >= 500 {
+                    Self::bad_gateway(&format!("Backend returned {}: {}", status, message))
+                } else if status == 404 {
+                    Self {
+                        error: ApiErrorBody {
+                            message: format!("Backend returned 404: {}", message),
+                            r#type: "invalid_request_error".to_string(),
+                            param: None,
+                            code: Some("not_found".to_string()),
+                        },
+                    }
+                } else {
+                    Self::bad_request(&format!("Backend returned {}: {}", status, message))
+                }
+            }
+            crate::agent::AgentError::InvalidResponse(msg) => {
+                Self::bad_gateway(&format!("Invalid backend response: {}", msg))
+            }
+            crate::agent::AgentError::Unsupported(msg) => {
+                Self::service_unavailable(&format!("Feature not supported: {}", msg))
+            }
+            crate::agent::AgentError::Configuration(msg) => {
+                Self::bad_gateway(&format!("Backend configuration error: {}", msg))
+            }
+        }
+    }
+
     /// Get the HTTP status code for this error.
     fn status_code(&self) -> StatusCode {
         match self.error.code.as_deref() {
