@@ -376,6 +376,20 @@ impl Registry {
         }
     }
 
+    /// Atomically increment total completed requests counter.
+    pub fn increment_total_requests(&self, id: &str) -> Result<u64, RegistryError> {
+        let backend = self
+            .backends
+            .get(id)
+            .ok_or_else(|| RegistryError::BackendNotFound(id.to_string()))?;
+
+        let new_val = backend
+            .total_requests
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            + 1;
+        Ok(new_val)
+    }
+
     /// Update rolling average latency using EMA: new = (sample + 4*old) / 5.
     ///
     /// Uses integer math with α=0.2. First sample sets the initial value.

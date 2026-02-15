@@ -32,6 +32,12 @@ function loadInitialData() {
             console.log('Initial data:', data);
             if (data.stats) {
                 updateSystemSummary(data.stats);
+                if (data.stats.backends && Array.isArray(data.stats.backends)) {
+                    renderBackendCardsFromStats(data.stats.backends);
+                }
+            }
+            if (data.backends && Array.isArray(data.backends)) {
+                renderBackendCards(data.backends);
             }
             if (data.models && data.models.data) {
                 renderModelMatrix(data.models.data);
@@ -49,6 +55,10 @@ async function fetchSystemSummary() {
         if (response.ok) {
             const stats = await response.json();
             updateSystemSummary(stats);
+            // Stats include backend data — render cards from it
+            if (stats.backends && Array.isArray(stats.backends)) {
+                renderBackendCardsFromStats(stats.backends);
+            }
         } else {
             console.error('Failed to fetch stats:', response.status);
         }
@@ -193,7 +203,9 @@ function updateConnectionStatus(status) {
 // Update handlers
 function handleBackendStatusUpdate(data) {
     console.log('Backend status update:', data);
-    // Update backend card and model matrix when backend status changes
+    if (Array.isArray(data)) {
+        renderBackendCards(data);
+    }
     fetchSystemSummary();
     fetchModels();
 }
@@ -277,6 +289,88 @@ function truncateModelName(name, maxLength = 50) {
     if (!name) return '—';
     if (name.length <= maxLength) return name;
     return name.substring(0, maxLength - 3) + '...';
+}
+
+// Backend card rendering
+
+// Render backend cards from WebSocket BackendView data (full details)
+function renderBackendCards(backends) {
+    const container = document.getElementById('backend-cards');
+    const noBackends = document.getElementById('no-backends');
+    if (!container) return;
+
+    if (!backends || backends.length === 0) {
+        container.innerHTML = '';
+        if (noBackends) noBackends.style.display = 'block';
+        return;
+    }
+
+    if (noBackends) noBackends.style.display = 'none';
+    container.innerHTML = '';
+
+    backends.forEach(backend => {
+        const card = document.createElement('div');
+        const statusClass = (backend.status || 'Unknown').toLowerCase();
+        card.className = `backend-card ${statusClass}`;
+
+        const statusDot = statusClass === 'healthy' ? '🟢'
+            : statusClass === 'unhealthy' ? '🔴' : '🟡';
+
+        card.innerHTML = `
+            <div class="backend-header">
+                <span class="backend-name">${statusDot} ${escapeHtml(backend.name || backend.id)}</span>
+                <span class="badge">${escapeHtml(backend.backend_type || 'Unknown')}</span>
+            </div>
+            <div class="backend-url">${escapeHtml(backend.url || '')}</div>
+            <div class="backend-metrics">
+                <div><strong>${backend.total_requests || 0}</strong> requests</div>
+                <div><strong>${formatDuration(backend.avg_latency_ms)}</strong> avg</div>
+                <div><strong>${backend.pending_requests || 0}</strong> pending</div>
+                <div><strong>${(backend.models || []).length}</strong> models</div>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+}
+
+// Render backend cards from /v1/stats data (minimal: id, requests, latency, pending)
+function renderBackendCardsFromStats(backends) {
+    // Only render from stats if we haven't received full WebSocket data yet
+    const container = document.getElementById('backend-cards');
+    if (!container || container.children.length > 0) return;
+
+    const noBackends = document.getElementById('no-backends');
+    if (!backends || backends.length === 0) {
+        if (noBackends) noBackends.style.display = 'block';
+        return;
+    }
+
+    if (noBackends) noBackends.style.display = 'none';
+    container.innerHTML = '';
+
+    backends.forEach(backend => {
+        const card = document.createElement('div');
+        card.className = 'backend-card healthy';
+
+        card.innerHTML = `
+            <div class="backend-header">
+                <span class="backend-name">🟢 ${escapeHtml(backend.id)}</span>
+            </div>
+            <div class="backend-metrics">
+                <div><strong>${backend.requests || 0}</strong> requests</div>
+                <div><strong>${formatDuration(backend.average_latency_ms)}</strong> avg</div>
+                <div><strong>${backend.pending || 0}</strong> pending</div>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
 }
 
 // Fetch models from /v1/models endpoint

@@ -38,19 +38,25 @@ pub async fn dashboard_handler(State(state): State<Arc<AppState>>) -> Response {
 
             // Generate initial stats data
             state.metrics_collector.update_fleet_gauges();
+            let registry = state.metrics_collector.registry();
+            let backend_stats = crate::metrics::handler::compute_backend_stats(registry);
             let stats = crate::metrics::types::StatsResponse {
                 uptime_seconds: state.metrics_collector.uptime_seconds(),
-                requests: crate::metrics::handler::compute_request_stats(),
-                backends: crate::metrics::handler::compute_backend_stats(
-                    state.metrics_collector.registry(),
-                ),
-                models: crate::metrics::handler::compute_model_stats(),
+                requests: crate::metrics::handler::compute_request_stats(&backend_stats),
+                backends: backend_stats,
+                models: crate::metrics::handler::compute_model_stats(registry),
             };
             let stats_json = serde_json::to_string(&stats).unwrap_or_else(|_| "{}".to_string());
 
+            // Generate initial backend views (full details for cards)
+            let all_backends = state.registry.get_all_backends();
+            let backend_views: Vec<crate::registry::BackendView> =
+                all_backends.iter().map(|b| b.into()).collect();
+            let backends_json =
+                serde_json::to_string(&backend_views).unwrap_or_else(|_| "[]".to_string());
+
             // Generate initial models data
-            let backends = state.registry.get_all_backends();
-            let healthy_backends: Vec<_> = backends
+            let healthy_backends: Vec<_> = all_backends
                 .into_iter()
                 .filter(|b| b.status == crate::registry::BackendStatus::Healthy)
                 .collect();
@@ -81,8 +87,11 @@ pub async fn dashboard_handler(State(state): State<Arc<AppState>>) -> Response {
             };
             let models_json = serde_json::to_string(&models).unwrap_or_else(|_| "{}".to_string());
 
-            // Create initial data object with stats and models
-            let initial_data = format!(r#"{{"stats":{}, "models":{}}}"#, stats_json, models_json);
+            // Create initial data object with stats, models, and backends
+            let initial_data = format!(
+                r#"{{"stats":{}, "models":{}, "backends":{}}}"#,
+                stats_json, models_json, backends_json
+            );
 
             // Inject initial data into the HTML template
             let updated_html = html.replace(
