@@ -4,7 +4,6 @@ use crate::api::AppState;
 use crate::registry::BackendStatus;
 use axum::{extract::State, Json};
 use serde::Serialize;
-use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Models list response in OpenAI format.
@@ -43,29 +42,26 @@ pub async fn handle(State(state): State<Arc<AppState>>) -> Json<ModelsResponse> 
         .filter(|b| b.status == BackendStatus::Healthy)
         .collect();
 
-    let mut models_map: HashMap<String, ModelObject> = HashMap::new();
+    let mut data: Vec<ModelObject> = Vec::new();
 
     for backend in healthy_backends {
         for model in &backend.models {
-            models_map
-                .entry(model.id.clone())
-                .or_insert_with(|| ModelObject {
-                    id: model.id.clone(),
-                    object: "model".to_string(),
-                    created: chrono::Utc::now().timestamp(),
-                    owned_by: "nexus".to_string(),
-                    context_length: Some(model.context_length),
-                    capabilities: Some(ModelCapabilities {
-                        vision: model.supports_vision,
-                        tools: model.supports_tools,
-                        json_mode: model.supports_json_mode,
-                    }),
-                });
+            data.push(ModelObject {
+                id: model.id.clone(),
+                object: "model".to_string(),
+                created: chrono::Utc::now().timestamp(),
+                owned_by: backend.name.clone(),
+                context_length: Some(model.context_length),
+                capabilities: Some(ModelCapabilities {
+                    vision: model.supports_vision,
+                    tools: model.supports_tools,
+                    json_mode: model.supports_json_mode,
+                }),
+            });
         }
     }
 
-    let mut data: Vec<_> = models_map.into_values().collect();
-    data.sort_by(|a, b| a.id.cmp(&b.id));
+    data.sort_by(|a, b| a.id.cmp(&b.id).then(a.owned_by.cmp(&b.owned_by)));
 
     Json(ModelsResponse {
         object: "list".to_string(),

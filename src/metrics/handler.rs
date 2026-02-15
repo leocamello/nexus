@@ -72,6 +72,7 @@ pub fn compute_backend_stats(registry: &crate::registry::Registry) -> Vec<Backen
             // Backend stats sourced from Registry atomics (real-time values)
             BackendStats {
                 id: backend.id.clone(),
+                name: backend.name.clone(),
                 requests: backend
                     .total_requests
                     .load(std::sync::atomic::Ordering::SeqCst),
@@ -128,12 +129,14 @@ mod tests {
         let backends = vec![
             BackendStats {
                 id: "b1".to_string(),
+                name: "backend-1".to_string(),
                 requests: 10,
                 average_latency_ms: 5.0,
                 pending: 0,
             },
             BackendStats {
                 id: "b2".to_string(),
+                name: "backend-2".to_string(),
                 requests: 20,
                 average_latency_ms: 3.0,
                 pending: 1,

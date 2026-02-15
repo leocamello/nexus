@@ -33,6 +33,8 @@ pub struct RequestStats {
 pub struct BackendStats {
     /// Backend identifier
     pub id: String,
+    /// Backend display name
+    pub name: String,
     /// Total requests sent to this backend
     pub requests: u64,
     /// Average latency in milliseconds
@@ -67,6 +69,7 @@ mod tests {
             },
             backends: vec![BackendStats {
                 id: "ollama-local".to_string(),
+                name: "ollama-local".to_string(),
                 requests: 500,
                 average_latency_ms: 1250.5,
                 pending: 2,
