@@ -524,7 +524,8 @@ async fn test_models_endpoint_shows_models_from_healthy_backends() {
 
 #[tokio::test]
 async fn test_models_deduplication_across_backends() {
-    // Two backends serve the same model — /v1/models should deduplicate
+    // Two backends serve the same model — /v1/models lists per-backend entries
+    // with owned_by set to the backend name for multi-backend visibility
     let mut app = create_app_with_backends(vec![
         create_test_backend("b1", "Backend1", "llama3:8b", 1),
         create_test_backend("b2", "Backend2", "llama3:8b", 2),
@@ -544,8 +545,17 @@ async fn test_models_deduplication_across_backends() {
     let body = get_body_string(response).await;
     let json: serde_json::Value = serde_json::from_str(&body).unwrap();
     let models = json["data"].as_array().unwrap();
-    // Should be 2 unique models (llama3:8b, mistral:7b), not 3
-    assert_eq!(models.len(), 2, "Should deduplicate models across backends");
+    // Should list all per-backend entries (2x llama3:8b + 1x mistral:7b)
+    assert_eq!(
+        models.len(),
+        3,
+        "Should list per-backend model entries for multi-backend visibility"
+    );
+    // Verify owned_by is the backend name, not "nexus"
+    let owners: Vec<&str> = models.iter().map(|m| m["owned_by"].as_str().unwrap()).collect();
+    assert!(owners.contains(&"Backend1"));
+    assert!(owners.contains(&"Backend2"));
+    assert!(owners.contains(&"Backend3"));
 }
 
 // ===========================================================================
