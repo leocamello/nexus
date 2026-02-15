@@ -488,35 +488,40 @@ Below are ready-to-use prompts for all Nexus features, organized by priority.
 
 ### Feature Index
 
-| ID | Feature | Version | Prompt Section |
-|----|---------|---------|----------------|
-| — | **NII Extraction (Phase 1)** | **v0.3-alpha** | [Link](#phase-1-nii-extraction-prerequisite-for-v03) |
-| — | **Control Plane (Phase 2)** | **v0.3** | [Link](#phase-2-control-plane-prerequisite-for-f13f14) |
-| — | **Quality + Queuing (Phase 2.5)** | **v0.4** | [Link](#phase-25-quality--queuing-enables-f15f18) |
-| — | **Fleet Intelligence (Phase 3)** | **v0.5** | [Link](#phase-3-fleet-intelligence-enables-f19f20) |
-| F01 | Core API Gateway | v0.1 ✅ | [Link](#f01-core-api-gateway) |
-| F02 | Backend Registry | v0.1 ✅ | [Link](#f02-backend-registry) |
-| F03 | Health Checker | v0.1 ✅ | [Link](#f03-health-checker) |
-| F04 | CLI and Configuration | v0.1 ✅ | [Link](#f04-cli-and-configuration) |
-| F05 | mDNS Discovery | v0.1 ✅ | [Link](#f05-mdns-discovery) |
-| F06 | Intelligent Router | v0.1 ✅ | [Link](#f06-intelligent-router) |
-| F07 | Model Aliases | v0.1 ✅ | [Link](#f07-model-aliases) |
-| F08 | Fallback Chains | v0.1 ✅ | [Link](#f08-fallback-chains) |
-| F09 | Request Metrics | v0.2 ✅ | [Link](#f09-request-metrics) |
-| F10 | Web Dashboard | v0.2 ✅ | [Link](#f10-web-dashboard) |
-| F11 | Structured Request Logging | v0.2 ✅ | [Link](#f11-structured-request-logging) |
-| F12 | Cloud Backend Support | v0.3 | [Link](#f12-cloud-backend-support) |
-| F13 | Privacy Zones & Capability Tiers | v0.3 | [Link](#f13-privacy-zones--capability-tiers) |
-| F14 | Inference Budget Management | v0.3 | [Link](#f14-inference-budget-management) |
-| F15 | Speculative Router | v0.4 | [Link](#f15-speculative-router) |
-| F16 | Quality Tracking & Backend Profiling | v0.4 | [Link](#f16-quality-tracking--backend-profiling) |
-| F17 | Embeddings API | v0.4 | [Link](#f17-embeddings-api) |
-| F18 | Request Queuing & Prioritization | v0.4 | [Link](#f18-request-queuing--prioritization) |
-| F19 | Pre-warming & Fleet Intelligence | v0.5 | [Link](#f19-pre-warming--fleet-intelligence) |
-| F20 | Model Lifecycle Management | v0.5 | [Link](#f20-model-lifecycle-management) |
-| F21 | Multi-Tenant Support | v0.5 | [Link](#f21-multi-tenant-support) |
-| F22 | Rate Limiting | v0.5 | [Link](#f22-rate-limiting) |
-| F23 | Management UI | v1.0 | [Link](#f23-management-ui) |
+Features and architectural foundations are listed in **implementation order**.
+Completed items (✅) are grouped first, followed by the work ahead in dependency order.
+
+| # | ID | Feature | Version | Depends On | Prompt Section |
+|---|-----|---------|---------|------------|----------------|
+| 1 | F01 | Core API Gateway | v0.1 ✅ | — | [Link](#f01-core-api-gateway) |
+| 2 | F02 | Backend Registry | v0.1 ✅ | — | [Link](#f02-backend-registry) |
+| 3 | F03 | Health Checker | v0.1 ✅ | F02 | [Link](#f03-health-checker) |
+| 4 | F04 | CLI and Configuration | v0.1 ✅ | F01-F03 | [Link](#f04-cli-and-configuration) |
+| 5 | F05 | mDNS Discovery | v0.1 ✅ | F02 | [Link](#f05-mdns-discovery) |
+| 6 | F06 | Intelligent Router | v0.1 ✅ | F02, F03 | [Link](#f06-intelligent-router) |
+| 7 | F07 | Model Aliases | v0.1 ✅ | F06 | [Link](#f07-model-aliases) |
+| 8 | F08 | Fallback Chains | v0.1 ✅ | F06 | [Link](#f08-fallback-chains) |
+| 9 | F09 | Request Metrics | v0.2 ✅ | F01 | [Link](#f09-request-metrics) |
+| 10 | F10 | Web Dashboard | v0.2 ✅ | F09 | [Link](#f10-web-dashboard) |
+| 11 | F11 | Structured Request Logging | v0.2 ✅ | F01 | [Link](#f11-structured-request-logging) |
+| | | | | | |
+| 12 | — | **NII Extraction (Phase 1)** | **v0.3** | F02, F03, F06 | [Link](#phase-1-nii-extraction-prerequisite-for-v03) |
+| 13 | F12 | Cloud Backend Support | v0.3 | Phase 1 | [Link](#f12-cloud-backend-support) |
+| 14 | — | **Control Plane (Phase 2)** | **v0.3** | Phase 1, F12 | [Link](#phase-2-control-plane-prerequisite-for-f13f14) |
+| 15 | F13 | Privacy Zones & Capability Tiers | v0.3 | Phase 2 | [Link](#f13-privacy-zones--capability-tiers) |
+| 16 | F14 | Inference Budget Management | v0.3 | Phase 2 | [Link](#f14-inference-budget-management) |
+| | | | | | |
+| 17 | F15 | Speculative Router | v0.4 | Phase 2 | [Link](#f15-speculative-router) |
+| 18 | F16 | Quality Tracking & Backend Profiling | v0.4 | Phase 2 | [Link](#f16-quality-tracking--backend-profiling) |
+| 19 | F17 | Embeddings API | v0.4 | Phase 1 | [Link](#f17-embeddings-api) |
+| 20 | F18 | Request Queuing & Prioritization | v0.4 | Phase 2 | [Link](#f18-request-queuing--prioritization) |
+| | | | | | |
+| 21 | F19 | Pre-warming & Fleet Intelligence | v0.5 | Phase 1, F16 | [Link](#f19-pre-warming--fleet-intelligence) |
+| 22 | F20 | Model Lifecycle Management | v0.5 | Phase 1 | [Link](#f20-model-lifecycle-management) |
+| 23 | F21 | Multi-Tenant Support | v0.5 | Phase 2 | [Link](#f21-multi-tenant-support) |
+| 24 | F22 | Rate Limiting | v0.5 | Phase 2 | [Link](#f22-rate-limiting) |
+| | | | | | |
+| 25 | F23 | Management UI | v1.0 | F10, Phase 2 | [Link](#f23-management-ui) |
 
 ---
 
