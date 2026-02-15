@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **NII Agent Abstraction (RFC-001 Phase 1)**: `InferenceAgent` trait with built-in agents for all backend types
+  - `OllamaAgent`: health via `/api/tags`, model enrichment via `/api/show`, chat via OpenAI-compat endpoint
+  - `OpenAIAgent`: cloud backend with Bearer auth support
+  - `LMStudioAgent`: local OpenAI-compatible backend
+  - `GenericOpenAIAgent`: covers vLLM, exo, llama.cpp, and other OpenAI-compatible backends
+  - Agent factory: `create_agent()` maps `BackendType` to correct implementation
+  - Forward-looking trait methods with safe defaults (embeddings, load_model, count_tokens)
+- Registry dual storage: `Arc<dyn InferenceAgent>` alongside existing `Backend` struct
+- Health checker delegates to `agent.health_check()` and `agent.list_models()`
+- Completions handler delegates to `agent.chat_completion()` and `agent.chat_completion_stream()`
 - Model capability detection via Ollama `/api/show` endpoint (real vision, tools, context_length)
 - Name-based capability heuristics for all backends (gemma, llama4, pixtral, qwen, etc.)
 - CHANGELOG.md

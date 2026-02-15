@@ -3,6 +3,7 @@
 //! This library provides the core functionality for managing and routing requests
 //! to heterogeneous LLM inference backends.
 
+pub mod agent;
 pub mod api;
 pub mod cli;
 pub mod config;
