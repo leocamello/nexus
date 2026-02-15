@@ -609,8 +609,9 @@ function renderModelCapabilities(model) {
     
     if (!model.supports_vision && !model.supports_tools && !model.supports_json_mode) {
         const noBadge = document.createElement('span');
-        noBadge.className = 'text-secondary';
-        noBadge.textContent = 'Basic';
+        noBadge.className = 'capability-badge basic';
+        noBadge.textContent = '💬 Basic';
+        noBadge.title = 'Text completion only';
         container.appendChild(noBadge);
     }
     
