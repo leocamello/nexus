@@ -115,15 +115,26 @@ pub struct MdnsDiscovery {
     config: DiscoveryConfig,
     registry: Arc<Registry>,
     pending_removal: Arc<Mutex<HashMap<String, Instant>>>,
+    /// Shared HTTP client for creating agents (T028)
+    client: Arc<reqwest::Client>,
 }
 
 impl MdnsDiscovery {
     /// Create a new MdnsDiscovery instance
     pub fn new(config: DiscoveryConfig, registry: Arc<Registry>) -> Self {
+        // Create HTTP client with reasonable defaults for mDNS backends (T028)
+        let client = Arc::new(
+            reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .expect("Failed to build HTTP client for mDNS discovery"),
+        );
+
         Self {
             config,
             registry,
             pending_removal: Arc::new(Mutex::new(HashMap::new())),
+            client,
         }
     }
 
@@ -192,10 +203,17 @@ impl MdnsDiscovery {
                 tokio::select! {
                     _ = cleanup_cancel.cancelled() => break,
                     _ = interval.tick() => {
+                        let temp_client = Arc::new(
+                            reqwest::Client::builder()
+                                .timeout(std::time::Duration::from_secs(30))
+                                .build()
+                                .expect("Failed to build HTTP client")
+                        );
                         let temp_discovery = MdnsDiscovery {
                             config: cleanup_config.clone(),
                             registry: cleanup_registry.clone(),
                             pending_removal: cleanup_pending.clone(),
+                            client: temp_client,
                         };
                         temp_discovery.cleanup_stale_backends().await;
                     }
@@ -311,8 +329,28 @@ impl MdnsDiscovery {
             return;
         }
 
-        // Add to registry
-        match self.registry.add_backend(backend) {
+        // Create agent for this backend (T028)
+        let agent = match crate::agent::factory::create_agent(
+            backend.id.clone(),
+            backend.name.clone(),
+            backend.url.clone(),
+            backend.backend_type,
+            Arc::clone(&self.client),
+            backend.metadata.clone(),
+        ) {
+            Ok(agent) => agent,
+            Err(e) => {
+                tracing::error!(
+                    instance = %instance,
+                    error = %e,
+                    "Failed to create agent for discovered backend"
+                );
+                return;
+            }
+        };
+
+        // Add to registry with agent (T028)
+        match self.registry.add_backend_with_agent(backend, agent) {
             Ok(()) => {
                 // Find the backend we just added
                 if let Some(id) = self

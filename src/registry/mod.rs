@@ -10,7 +10,9 @@ mod tests;
 pub use backend::*;
 pub use error::*;
 
+use crate::agent::InferenceAgent;
 use dashmap::DashMap;
+use std::sync::Arc;
 
 /// The Backend Registry stores all known LLM backends.
 ///
@@ -41,6 +43,8 @@ use dashmap::DashMap;
 pub struct Registry {
     backends: DashMap<String, Backend>,
     model_index: DashMap<String, Vec<String>>,
+    /// Agent instances for backend communication (T023)
+    agents: DashMap<String, Arc<dyn InferenceAgent>>,
 }
 
 impl Registry {
@@ -49,6 +53,7 @@ impl Registry {
         Self {
             backends: DashMap::new(),
             model_index: DashMap::new(),
+            agents: DashMap::new(),
         }
     }
 
@@ -98,9 +103,114 @@ impl Registry {
         Ok(())
     }
 
+    /// Add a new backend with its corresponding agent to the registry (T024).
+    ///
+    /// Stores both the Backend struct and the agent for dual-access patterns:
+    /// - Dashboard/metrics/CLI read from Backend struct
+    /// - Health checker and completions handler use agent methods
+    ///
+    /// # Errors
+    ///
+    /// Returns `RegistryError::DuplicateBackend` if a backend with the same ID already exists.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use nexus::registry::{Registry, Backend, BackendType, DiscoverySource};
+    /// use nexus::agent::factory::create_agent;
+    /// use std::collections::HashMap;
+    /// use std::sync::Arc;
+    ///
+    /// # async fn example() {
+    /// let registry = Registry::new();
+    /// let client = Arc::new(reqwest::Client::new());
+    /// let backend = Backend::new(
+    ///     "backend-1".to_string(),
+    ///     "My Backend".to_string(),
+    ///     "http://localhost:11434".to_string(),
+    ///     BackendType::Ollama,
+    ///     vec![],
+    ///     DiscoverySource::Static,
+    ///     HashMap::new(),
+    /// );
+    ///
+    /// let agent = create_agent(
+    ///     backend.id.clone(),
+    ///     backend.name.clone(),
+    ///     backend.url.clone(),
+    ///     backend.backend_type,
+    ///     client,
+    ///     backend.metadata.clone(),
+    /// ).unwrap();
+    ///
+    /// assert!(registry.add_backend_with_agent(backend, agent).is_ok());
+    /// # }
+    /// ```
+    pub fn add_backend_with_agent(
+        &self,
+        backend: Backend,
+        agent: Arc<dyn InferenceAgent>,
+    ) -> Result<(), RegistryError> {
+        let id = backend.id.clone();
+
+        // Check for duplicate
+        if self.backends.contains_key(&id) {
+            return Err(RegistryError::DuplicateBackend(id));
+        }
+
+        // Update model index
+        for model in &backend.models {
+            self.model_index
+                .entry(model.id.clone())
+                .or_default()
+                .push(id.clone());
+        }
+
+        // Insert agent first, then backend — ensures get_agent() never returns None
+        // for an existing backend during concurrent access
+        self.agents.insert(id.clone(), agent);
+        self.backends.insert(id, backend);
+        Ok(())
+    }
+
+    /// Get an agent by backend ID (T025).
+    ///
+    /// Returns a cloned Arc to the agent for the specified backend.
+    /// The agent can be used for health checks, model listing, and request forwarding.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use nexus::registry::Registry;
+    /// # async fn example() {
+    /// let registry = Registry::new();
+    /// // ... add backends with agents ...
+    ///
+    /// if let Some(agent) = registry.get_agent("backend-1") {
+    ///     let health = agent.health_check().await;
+    ///     println!("Health: {:?}", health);
+    /// }
+    /// # }
+    /// ```
+    pub fn get_agent(&self, id: &str) -> Option<Arc<dyn InferenceAgent>> {
+        self.agents.get(id).map(|entry| Arc::clone(entry.value()))
+    }
+
+    /// Get all agents (T026).
+    ///
+    /// Returns cloned Arcs to all registered agents.
+    /// Useful for uniform iteration in health checking loops.
+    pub fn get_all_agents(&self) -> Vec<Arc<dyn InferenceAgent>> {
+        self.agents
+            .iter()
+            .map(|entry| Arc::clone(entry.value()))
+            .collect()
+    }
+
     /// Remove a backend from the registry.
     ///
-    /// Also cleans up the model index to remove references to this backend.
+    /// Also cleans up the model index to remove references to this backend
+    /// and removes the associated agent if present.
     ///
     /// # Errors
     ///
@@ -111,6 +221,9 @@ impl Registry {
             .remove(id)
             .map(|(_, backend)| backend)
             .ok_or_else(|| RegistryError::BackendNotFound(id.to_string()))?;
+
+        // Remove agent if present
+        self.agents.remove(id);
 
         // Cleanup model index
         for model in &backend.models {

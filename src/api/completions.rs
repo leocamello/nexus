@@ -16,7 +16,6 @@ use axum::{
     },
     Json,
 };
-use futures::StreamExt;
 use std::sync::Arc;
 use tracing::{info, instrument, warn, Span};
 
@@ -359,38 +358,50 @@ async fn proxy_request(
     headers: &HeaderMap,
     request: &ChatCompletionRequest,
 ) -> Result<ChatCompletionResponse, ApiError> {
-    let url = format!("{}/v1/chat/completions", backend.url);
+    // Try to get agent from registry (T036)
+    if let Some(agent) = state.registry.get_agent(&backend.id) {
+        // Use agent-based chat completion (T036)
+        let response = agent
+            .chat_completion(request.clone(), Some(headers))
+            .await
+            .map_err(ApiError::from_agent_error)?;
 
-    let mut req = state.http_client.post(&url).json(request);
+        Ok(response)
+    } else {
+        // Legacy fallback: direct HTTP (backwards compatibility)
+        let url = format!("{}/v1/chat/completions", backend.url);
 
-    // Forward Authorization header if present
-    if let Some(auth) = headers.get("authorization") {
-        req = req.header("Authorization", auth);
+        let mut req = state.http_client.post(&url).json(request);
+
+        // Forward Authorization header if present
+        if let Some(auth) = headers.get("authorization") {
+            req = req.header("Authorization", auth);
+        }
+
+        let response = req
+            .send()
+            .await
+            .map_err(|e| ApiError::bad_gateway(&format!("Backend connection failed: {}", e)))?;
+
+        let status = response.status();
+
+        if status == axum::http::StatusCode::GATEWAY_TIMEOUT {
+            return Err(ApiError::gateway_timeout());
+        }
+
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(ApiError::bad_gateway(&format!(
+                "Backend returned {}: {}",
+                status, body
+            )));
+        }
+
+        response
+            .json::<ChatCompletionResponse>()
+            .await
+            .map_err(|e| ApiError::bad_gateway(&format!("Invalid backend response: {}", e)))
     }
-
-    let response = req
-        .send()
-        .await
-        .map_err(|e| ApiError::bad_gateway(&format!("Backend connection failed: {}", e)))?;
-
-    let status = response.status();
-
-    if status == axum::http::StatusCode::GATEWAY_TIMEOUT {
-        return Err(ApiError::gateway_timeout());
-    }
-
-    if !status.is_success() {
-        let body = response.text().await.unwrap_or_default();
-        return Err(ApiError::bad_gateway(&format!(
-            "Backend returned {}: {}",
-            status, body
-        )));
-    }
-
-    response
-        .json::<ChatCompletionResponse>()
-        .await
-        .map_err(|e| ApiError::bad_gateway(&format!("Invalid backend response: {}", e)))
 }
 
 /// Get list of available models for error messages.
@@ -476,75 +487,116 @@ fn create_sse_stream(
     request: ChatCompletionRequest,
 ) -> impl futures::Stream<Item = Result<Event, std::convert::Infallible>> {
     async_stream::stream! {
-        let url = format!("{}/v1/chat/completions", backend.url);
         let backend_id = backend.id.clone();
 
-        let mut req = state.http_client.post(&url).json(&request);
-
-        // Forward Authorization header if present
-        if let Some(auth) = headers.get("authorization") {
-            req = req.header("Authorization", auth);
-        }
-
-        // Send request to backend
-        let response = match req.send().await {
-            Ok(r) => r,
-            Err(e) => {
-                warn!(backend_id = %backend_id, error = %e, "Backend connection failed");
-                let _ = state.registry.decrement_pending(&backend_id);
-                // Yield error as SSE event before closing
-                let error_chunk = create_error_chunk(&format!("Backend connection failed: {}", e));
-                yield Ok(Event::default().data(serde_json::to_string(&error_chunk).unwrap_or_default()));
-                yield Ok(Event::default().data("[DONE]"));
-                return;
-            }
-        };
-
-        // Check for non-success status
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            warn!(backend_id = %backend_id, status = %status, "Backend returned error");
-            let _ = state.registry.decrement_pending(&backend_id);
-            let error_chunk = create_error_chunk(&format!("Backend returned {}: {}", status, body));
-            yield Ok(Event::default().data(serde_json::to_string(&error_chunk).unwrap_or_default()));
-            yield Ok(Event::default().data("[DONE]"));
-            return;
-        }
-
-        // Stream response body
-        let mut byte_stream = response.bytes_stream();
-        let mut buffer = String::new();
-
-        while let Some(chunk_result) = byte_stream.next().await {
-            match chunk_result {
-                Ok(bytes) => {
-                    buffer.push_str(&String::from_utf8_lossy(&bytes));
-
-                    // Process complete lines
-                    while let Some(pos) = buffer.find('\n') {
-                        let line = buffer[..pos].to_string();
-                        buffer = buffer[pos + 1..].to_string();
-
-                        let line = line.trim();
-                        if line.is_empty() {
-                            continue;
-                        }
-
-                        // Parse SSE data lines
-                        if let Some(data) = line.strip_prefix("data: ") {
-                            if data == "[DONE]" {
+        // Try to get agent from registry (T037)
+        if let Some(agent) = state.registry.get_agent(&backend_id) {
+            // Use agent-based streaming (T037)
+            match agent.chat_completion_stream(request.clone(), Some(&headers)).await {
+                Ok(mut stream) => {
+                    // Stream chunks from agent
+                    use futures::StreamExt;
+                    while let Some(result) = stream.next().await {
+                        match result {
+                            Ok(chunk) => {
+                                // Check if this is [DONE]
+                                if chunk.data == "[DONE]" {
+                                    yield Ok(Event::default().data("[DONE]"));
+                                    break;
+                                } else {
+                                    // Forward the chunk data (already JSON)
+                                    yield Ok(Event::default().data(chunk.data));
+                                }
+                            }
+                            Err(e) => {
+                                warn!(backend_id = %backend_id, error = %e, "Stream error from agent");
+                                let error_chunk = create_error_chunk(&format!("Stream error: {}", e));
+                                yield Ok(Event::default().data(serde_json::to_string(&error_chunk).unwrap_or_default()));
                                 yield Ok(Event::default().data("[DONE]"));
-                            } else {
-                                // Forward the data as-is (already JSON)
-                                yield Ok(Event::default().data(data));
+                                break;
                             }
                         }
                     }
                 }
                 Err(e) => {
-                    warn!(backend_id = %backend_id, error = %e, "Stream read error");
-                    break;
+                    warn!(backend_id = %backend_id, error = %e, "Failed to start streaming from agent");
+                    let error_chunk = create_error_chunk(&format!("Failed to start streaming: {}", e));
+                    yield Ok(Event::default().data(serde_json::to_string(&error_chunk).unwrap_or_default()));
+                    yield Ok(Event::default().data("[DONE]"));
+                }
+            }
+        } else {
+            // Legacy fallback: direct HTTP streaming
+            let url = format!("{}/v1/chat/completions", backend.url);
+
+            let mut req = state.http_client.post(&url).json(&request);
+
+            // Forward Authorization header if present
+            if let Some(auth) = headers.get("authorization") {
+                req = req.header("Authorization", auth);
+            }
+
+            // Send request to backend
+            let response = match req.send().await {
+                Ok(r) => r,
+                Err(e) => {
+                    warn!(backend_id = %backend_id, error = %e, "Backend connection failed");
+                    let _ = state.registry.decrement_pending(&backend_id);
+                    // Yield error as SSE event before closing
+                    let error_chunk = create_error_chunk(&format!("Backend connection failed: {}", e));
+                    yield Ok(Event::default().data(serde_json::to_string(&error_chunk).unwrap_or_default()));
+                    yield Ok(Event::default().data("[DONE]"));
+                    return;
+                }
+            };
+
+            // Check for non-success status
+            if !response.status().is_success() {
+                let status = response.status();
+                let body = response.text().await.unwrap_or_default();
+                warn!(backend_id = %backend_id, status = %status, "Backend returned error");
+                let _ = state.registry.decrement_pending(&backend_id);
+                let error_chunk = create_error_chunk(&format!("Backend returned {}: {}", status, body));
+                yield Ok(Event::default().data(serde_json::to_string(&error_chunk).unwrap_or_default()));
+                yield Ok(Event::default().data("[DONE]"));
+                return;
+            }
+
+            // Stream response body
+            use futures::StreamExt;
+            let mut byte_stream = response.bytes_stream();
+            let mut buffer = String::new();
+
+            while let Some(chunk_result) = byte_stream.next().await {
+                match chunk_result {
+                    Ok(bytes) => {
+                        buffer.push_str(&String::from_utf8_lossy(&bytes));
+
+                        // Process complete lines
+                        while let Some(pos) = buffer.find('\n') {
+                            let line = buffer[..pos].to_string();
+                            buffer = buffer[pos + 1..].to_string();
+
+                            let line = line.trim();
+                            if line.is_empty() {
+                                continue;
+                            }
+
+                            // Parse SSE data lines
+                            if let Some(data) = line.strip_prefix("data: ") {
+                                if data == "[DONE]" {
+                                    yield Ok(Event::default().data("[DONE]"));
+                                } else {
+                                    // Forward the data as-is (already JSON)
+                                    yield Ok(Event::default().data(data));
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!(backend_id = %backend_id, error = %e, "Stream read error");
+                        break;
+                    }
                 }
             }
         }
