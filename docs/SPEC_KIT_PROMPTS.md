@@ -490,6 +490,10 @@ Below are ready-to-use prompts for all Nexus features, organized by priority.
 
 | ID | Feature | Version | Prompt Section |
 |----|---------|---------|----------------|
+| — | **NII Extraction (Phase 1)** | **v0.3-alpha** | [Link](#phase-1-nii-extraction-prerequisite-for-v03) |
+| — | **Control Plane (Phase 2)** | **v0.3** | [Link](#phase-2-control-plane-prerequisite-for-f13f14) |
+| — | **Quality + Queuing (Phase 2.5)** | **v0.4** | [Link](#phase-25-quality--queuing-enables-f15f18) |
+| — | **Fleet Intelligence (Phase 3)** | **v0.5** | [Link](#phase-3-fleet-intelligence-enables-f19f20) |
 | F01 | Core API Gateway | v0.1 ✅ | [Link](#f01-core-api-gateway) |
 | F02 | Backend Registry | v0.1 ✅ | [Link](#f02-backend-registry) |
 | F03 | Health Checker | v0.1 ✅ | [Link](#f03-health-checker) |
@@ -513,6 +517,329 @@ Below are ready-to-use prompts for all Nexus features, organized by priority.
 | F21 | Multi-Tenant Support | v0.5 | [Link](#f21-multi-tenant-support) |
 | F22 | Rate Limiting | v0.5 | [Link](#f22-rate-limiting) |
 | F23 | Management UI | v1.0 | [Link](#f23-management-ui) |
+
+---
+
+## Architectural Foundations
+
+These are cross-cutting specs that enable multiple features. They follow the same Feature Development Lifecycle but span multiple feature areas.
+
+### Phase 1: NII Extraction (prerequisite for v0.3)
+```
+Create a spec for: NII Extraction — Nexus Inference Interface (RFC-001 Phase 1)
+
+## Feature Description
+Extract the Nexus Inference Interface (NII) from the existing monolithic codebase.
+Define the InferenceAgent trait and implement built-in agents for all supported
+backend types. This is the architectural foundation that enables F12-F14 (v0.3)
+and all subsequent features.
+
+## Architecture Context (RFC-001)
+RFC-001 v2 ("Platform Architecture — From Monolithic Router to Controller/Agent
+Platform") was approved 2026-02-15. Phase 1 creates the agent abstraction layer:
+- Every backend implements the InferenceAgent trait (NII)
+- Eliminates match backend_type { } branching across health/, api/, registry/
+- Forward-looking trait methods (embeddings, count_tokens, load_model) have
+  default implementations so v0.4/v0.5 features don't break the trait
+
+## What Gets Created
+
+### src/agent/mod.rs — Trait and types
+- InferenceAgent trait: id, name, profile, list_models, health_check,
+  chat_completion, chat_completion_stream, embeddings (default: Unsupported),
+  load_model/unload_model (default: Unsupported), count_tokens (default: chars/4),
+  resource_usage (default: empty)
+- AgentProfile: agent_type, version, privacy_zone, capabilities
+- AgentCapabilities: supports_streaming, embeddings, load_unload, token_counting
+- ModelCapability: id, name, context_length, vision, tools, json_mode, tier
+- AgentError: enum with Network, Timeout, Upstream, Unsupported, etc.
+- HealthStatus: Healthy, Unhealthy, Loading { percent, eta_ms }, Draining
+- TokenCount: Exact(u32) | Heuristic(u32)
+- ResourceUsage: vram_used_mb, vram_total_mb, pending, latency, loaded_models
+- PrivacyZone: Restricted | Open
+
+### src/agent/ollama.rs — OllamaAgent
+- Extract health parsing from health/parser.rs (parse_and_enrich, enrich_ollama_models)
+- Extract request forwarding from api/completions.rs (proxy_request)
+- Implement list_models via GET /api/tags + POST /api/show enrichment
+- Implement health_check via GET /api/tags
+- Implement chat_completion via POST /api/chat (Ollama native) or /v1/chat/completions
+- load_model via POST /api/pull (lifecycle, default Unsupported initially)
+
+### src/agent/openai.rs — OpenAIAgent (NEW — F12)
+- Cloud backend for OpenAI API
+- API key from environment variable (api_key_env config field)
+- chat_completion via POST /v1/chat/completions with Bearer auth
+- count_tokens: Exact via tiktoken-rs (o200k_base for GPT-4o, cl100k_base for GPT-3.5)
+- embeddings via POST /v1/embeddings
+
+### src/agent/lmstudio.rs — LMStudioAgent
+- OpenAI-compatible local backend
+- health_check + list_models via GET /v1/models
+- chat_completion via POST /v1/chat/completions
+
+### src/agent/generic.rs — GenericOpenAIAgent
+- Covers vLLM, exo, llama.cpp, and any OpenAI-compatible backend
+- Same interface as LMStudioAgent but with configurable API paths
+
+### Agent Factory
+- create_agent(config: &BackendConfig) -> Arc<dyn InferenceAgent>
+- Maps BackendType enum to correct agent implementation
+- Users' TOML config stays the same — zero config impact
+
+## Integration Points (what changes in existing code)
+- Registry: Store Arc<dyn InferenceAgent> alongside existing Backend struct
+  (dual storage during migration — both coexist)
+- HealthChecker: Call agent.health_check() + agent.list_models() instead of
+  type-specific branching in health/mod.rs and health/parser.rs
+- api/completions.rs: Call agent.chat_completion() instead of building HTTP
+  requests manually in proxy_request()
+- lib.rs: Add pub mod agent;
+
+## What Does NOT Change
+- Router logic (Router::select_backend signature unchanged)
+- Dashboard (reads from Registry, unchanged)
+- Metrics (reads from Registry, unchanged)
+- Config format (TOML stays identical)
+- CLI (unchanged)
+- All 468 existing tests continue to pass
+
+## Non-Functional Requirements
+- Agent creation: < 1ms per backend
+- No additional memory overhead beyond existing Backend struct (~3KB/agent)
+- All async methods must be cancellation-safe
+- Binary size impact: < 500KB (no heavy dependencies)
+
+## Testing Strategy
+- Unit tests in each agent file (mod tests)
+- Mock HTTP server for agent health_check and chat_completion
+- Integration test: create agent from config, verify health_check returns models
+- Property tests for TokenCount (Heuristic vs Exact consistency)
+- Verify all 468 existing tests still pass after migration
+
+## Acceptance Criteria
+- [ ] InferenceAgent trait defined with all methods from RFC-001
+- [ ] OllamaAgent implemented with health_check, list_models, chat_completion
+- [ ] OpenAIAgent implemented with API key auth and tiktoken count_tokens
+- [ ] LMStudioAgent implemented
+- [ ] GenericOpenAIAgent implemented (covers vLLM, exo, llama.cpp)
+- [ ] Agent factory creates correct agent type from BackendConfig
+- [ ] HealthChecker delegates to agent.health_check() + agent.list_models()
+- [ ] proxy_request() delegates to agent.chat_completion()
+- [ ] Registry stores Arc<dyn InferenceAgent> alongside Backend
+- [ ] All 468+ existing tests pass without modification
+- [ ] New agent unit tests (mock HTTP backends)
+- [ ] Zero config impact — TOML format unchanged
+```
+
+### Phase 2: Control Plane (prerequisite for F13/F14)
+```
+Create a spec for: Control Plane — Reconciler Pipeline (RFC-001 Phase 2)
+
+## Feature Description
+Replace the imperative Router::select_backend() god-function with a pipeline of
+independent Reconcilers that annotate shared routing state. This enables Privacy
+Zones (F13) and Budget Management (F14) without O(n²) feature interaction.
+
+## Architecture Context (RFC-001)
+Phase 2 requires Phase 1 (NII Extraction) to be complete. The Reconciler Pipeline
+replaces the current flow:
+  extract_requirements → resolve_alias → filter_healthy → filter_capability → score → select
+With:
+  RequestAnalyzer → PrivacyReconciler → BudgetReconciler → TierReconciler
+  → QualityReconciler → SchedulerReconciler → RoutingDecision
+
+Each reconciler is independent — Privacy doesn't know about Budget, Budget
+doesn't know about Quality. They annotate a shared RoutingIntent struct.
+
+## What Gets Created
+
+### src/control/mod.rs — Reconciler trait and types
+- Reconciler trait: name() -> &str, reconcile(&mut RoutingIntent) -> Result<()>
+- RoutingIntent: request_id, requested_model, resolved_model, requirements,
+  privacy_constraint, budget_status, min_capability_tier, cost_estimate,
+  candidate_agents, excluded_agents, rejection_reasons
+- RoutingDecision: Route { agent_id, model, reason, cost_estimate } |
+  Queue { reason, estimated_wait_ms, fallback_agent } |
+  Reject { rejection_reasons }
+- RejectionReason: agent_id, reconciler, reason, suggested_action
+- BudgetStatus: Normal | SoftLimit | HardLimit
+- CostEstimate: input_tokens, estimated_output_tokens, cost_usd, token_count_tier
+- AgentSchedulingProfile: agent_id, privacy_zone, capability_tier, current_load,
+  latency_ema_ms, available_models, resource_usage, budget_remaining,
+  error_rate_1h (default 0.0), avg_ttft_ms (default 0), success_rate_24h (default 1.0)
+- TrafficPolicy: model_pattern (glob), privacy, max_cost_per_request, min_tier,
+  fallback_allowed — hydrated from [routing.policies.*] TOML at startup
+
+### src/control/analyzer.rs — RequestAnalyzer (F15 foundation)
+- RequestAnalyzer::analyze(request, config) -> RoutingIntent
+- Resolves aliases (3-level chaining, extracted from routing/mod.rs)
+- Extracts RequestRequirements (vision, tools, JSON mode, token estimate)
+- Budget: < 0.5ms
+
+### src/control/privacy.rs — PrivacyReconciler (F13)
+- Reads privacy_constraint from TrafficPolicy (matched by model pattern glob)
+- Reads privacy_zone from AgentProfile via agent.profile()
+- Excludes cloud agents if privacy = "restricted"
+- Logs RejectionReason for each excluded agent
+
+### src/control/budget.rs — BudgetReconciler (F14)
+- Reads budget config (monthly_limit, soft_limit_percent, hard_limit_action)
+- Calls agent.count_tokens() to estimate cost
+- Sets BudgetStatus on RoutingIntent
+- At SoftLimit: prefers local agents. At HardLimit: excludes cloud agents
+- Background BudgetReconciliationLoop: aggregates spending every 60s
+
+### src/control/tier.rs — TierReconciler (F13)
+- Reads min_tier from TrafficPolicy
+- Excludes agents below minimum capability tier
+- Handles X-Nexus-Strict / X-Nexus-Flexible headers
+
+### src/control/scheduler.rs — SchedulerReconciler
+- Scores remaining candidates (priority × load × latency × quality)
+- Handles HealthStatus::Loading → Queue decision
+- Returns Route | Queue | Reject
+
+### Integration Points
+- Router::select_backend() becomes thin wrapper: create intent → run pipeline → return
+- Existing Router signature unchanged — all tests pass without modification
+- Config: Optional [routing.policies] TOML sections (zero config by default)
+- Actionable 503: rejection_reasons flow into error response context object
+
+## What Does NOT Change
+- Router::select_backend() method signature
+- Dashboard, Metrics, CLI, Config format (except optional new TOML sections)
+- All existing tests
+
+## Testing Strategy
+- Unit tests per reconciler (mock AgentSchedulingProfiles)
+- Integration test: full pipeline with Privacy + Budget + Scheduler
+- Property tests for RoutingIntent annotation ordering
+- Verify Router::select_backend() backward compatibility
+
+## Acceptance Criteria
+- [ ] Reconciler trait defined with reconcile(&mut RoutingIntent)
+- [ ] RoutingIntent carries rejection_reasons for actionable 503s
+- [ ] RoutingDecision enum: Route | Queue | Reject
+- [ ] RequestAnalyzer extracts requirements and resolves aliases (< 0.5ms)
+- [ ] PrivacyReconciler enforces zone constraints (F13)
+- [ ] BudgetReconciler tracks spending and enforces limits (F14)
+- [ ] TierReconciler prevents silent quality downgrades (F13)
+- [ ] SchedulerReconciler scores candidates (existing scoring logic)
+- [ ] Router::select_backend() unchanged externally, delegates to pipeline
+- [ ] TrafficPolicies loaded from optional TOML sections
+- [ ] All existing tests pass without modification
+- [ ] Pipeline total overhead < 1ms
+```
+
+### Phase 2.5: Quality + Queuing (enables F15–F18)
+```
+Create a spec for: Quality Tracking, Embeddings, and Request Queuing (RFC-001 Phase 2.5)
+
+## Feature Description
+Ship Quality Tracking (F16), Embeddings API (F17), Request Queuing (F18), and
+Speculative Router enhancements (F15). This phase populates the quality metrics
+fields defined in Phase 2 with real data and enables the Queue routing decision.
+
+## Architecture Context (RFC-001)
+Phase 2.5 requires Phase 2 (Control Plane) to be complete. It adds:
+- QualityReconciler to the pipeline (reads error_rate_1h, avg_ttft_ms)
+- Background quality_reconciliation_loop (computes rolling metrics every 30s)
+- RequestQueue (bounded mpsc channel with drain task)
+- POST /v1/embeddings endpoint (delegates to agent.embeddings())
+- Enhanced RequestAnalyzer with better token estimation
+
+## What Gets Created
+
+### src/control/quality.rs — QualityReconciler (F16)
+- Reads error_rate_1h, avg_ttft_ms from AgentSchedulingProfile
+- Excludes agents with error_rate > configurable threshold
+- Penalizes agents with high TTFT in scoring
+
+### Background quality_reconciliation_loop (F16)
+- Computes rolling 1h/24h metrics from request history every 30s
+- Updates AgentSchedulingProfile: error_rate_1h, avg_ttft_ms,
+  last_failure_ts, success_rate_24h
+
+### src/control/queue.rs — RequestQueue (F18)
+- Bounded queue (configurable max_size, default 100)
+- QueuedRequest: intent, request, response_tx (oneshot), enqueued_at
+- Drain task: re-runs reconciler pipeline when agents become available
+- Timeout: 503 with retry_after if max_wait exceeded
+- Priority: dual channels (high/normal) for X-Nexus-Priority support
+
+### POST /v1/embeddings endpoint (F17)
+- OpenAI-compatible request/response format
+- Routes through reconciler pipeline to capable agents
+- Delegates to agent.embeddings() via NII trait
+
+### Enhanced RequestAnalyzer (F15)
+- Better token estimation heuristics
+- Stream preference signal for efficient streaming backends
+
+## Acceptance Criteria
+- [ ] QualityReconciler excludes high-error-rate agents (F16)
+- [ ] Rolling window statistics (1h, 24h) per model+backend (F16)
+- [ ] Quality metrics exposed via Prometheus and /v1/stats (F16)
+- [ ] POST /v1/embeddings routes to capable backends (F17)
+- [ ] Batch embedding requests supported (F17)
+- [ ] Bounded request queue with configurable max size (F18)
+- [ ] Priority levels via X-Nexus-Priority header (F18)
+- [ ] Queue timeout produces actionable 503 with ETA (F18)
+- [ ] Queue depth exposed in Prometheus metrics (F18)
+- [ ] RequestAnalyzer token estimation improved (F15)
+- [ ] All existing tests pass
+```
+
+### Phase 3: Fleet Intelligence (enables F19/F20)
+```
+Create a spec for: Fleet Intelligence and Model Lifecycle (RFC-001 Phase 3)
+
+## Feature Description
+Ship Model Lifecycle Management (F20) and Pre-warming & Fleet Intelligence (F19).
+Enable Nexus to control model loading/unloading across the fleet and predict
+demand for proactive model placement.
+
+## Architecture Context (RFC-001)
+Phase 3 requires Phase 2.5 to be complete. It activates NII lifecycle methods
+that have been defined (with default Unsupported) since Phase 1:
+- OllamaAgent.load_model() → POST /api/pull
+- OllamaAgent.unload_model() → keepalive=0 or DELETE
+- OllamaAgent.resource_usage() → GET /api/ps (VRAM usage)
+- HealthStatus::Loading { percent, eta_ms } prevents routing during pulls
+
+## What Gets Created
+
+### Model Lifecycle API (F20)
+- POST /v1/models/load — trigger model load on specific backend
+- DELETE /v1/models/{id} — unload model from specific backend
+- Model migration: unload from A, load on B (coordinated operation)
+- Status tracking: HealthStatus::Loading with progress updates
+
+### src/control/lifecycle.rs — LifecycleReconciler (F20)
+- Coordinates load/unload operations
+- Handles HealthStatus::Loading state — prevents routing during pull
+- Integrates with SchedulerReconciler Queue decision
+
+### src/control/fleet.rs — FleetReconciler (F19)
+- Analyzes request history patterns (time of day, model popularity)
+- Uses agent.resource_usage() for VRAM headroom awareness
+- Produces pre-warming recommendations via API and logs
+- Suggestion-first: recommends, admin/policy approves
+- Never evicts a hot model for a prediction
+- Only uses idle capacity (configurable headroom %)
+
+## Acceptance Criteria
+- [ ] API to trigger model load/unload on specific backends (F20)
+- [ ] Model migration (unload from A, load on B) (F20)
+- [ ] Status tracking for loading operations (F20)
+- [ ] HealthStatus::Loading prevents routing to loading agents (F20)
+- [ ] Tracks model request frequency over time (F19)
+- [ ] Reports pre-warming recommendations via API/logs (F19)
+- [ ] Respects VRAM headroom budget (configurable %) (F19)
+- [ ] Never disrupts active model serving (F19)
+- [ ] All existing tests pass
+```
 
 ---
 
