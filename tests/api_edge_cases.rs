@@ -3,6 +3,8 @@
 //! These tests verify handling of edge cases like payload limits, backend failures,
 //! invalid responses, and concurrent requests.
 
+mod common;
+
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use futures::StreamExt;
@@ -15,40 +17,6 @@ use std::time::{Duration, Instant};
 use tower::Service;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
-
-/// Create a test app with a mock backend registered.
-async fn create_test_app_with_mock(mock_server: &MockServer) -> (axum::Router, Arc<Registry>) {
-    let registry = Arc::new(Registry::new());
-    let config = Arc::new(NexusConfig::default());
-
-    let backend = Backend::new(
-        "test-backend".to_string(),
-        "Test Backend".to_string(),
-        mock_server.uri(),
-        BackendType::Generic,
-        vec![],
-        DiscoverySource::Static,
-        HashMap::new(),
-    );
-    registry.add_backend(backend).unwrap();
-
-    let _ = registry.update_status("test-backend", BackendStatus::Healthy, None);
-    let _ = registry.update_models(
-        "test-backend",
-        vec![Model {
-            id: "test-model".to_string(),
-            name: "Test Model".to_string(),
-            context_length: 4096,
-            supports_vision: false,
-            supports_tools: false,
-            supports_json_mode: false,
-            max_output_tokens: None,
-        }],
-    );
-
-    let state = Arc::new(AppState::new(registry.clone(), config));
-    (create_router(state), registry)
-}
 
 /// Create a test app with two mock backends.
 async fn create_test_app_with_two_backends(
@@ -154,7 +122,7 @@ async fn body_to_string(body: Body) -> String {
 #[tokio::test]
 async fn test_completions_payload_too_large() {
     let mock_server = MockServer::start().await;
-    let (mut app, _) = create_test_app_with_mock(&mock_server).await;
+    let (mut app, _) = common::make_app_with_mock(&mock_server).await;
 
     // Create a payload larger than 10MB
     let large_content = "x".repeat(11 * 1024 * 1024);
@@ -224,7 +192,7 @@ async fn test_completions_backend_invalid_json() {
         .mount(&mock_server)
         .await;
 
-    let (mut app, _) = create_test_app_with_mock(&mock_server).await;
+    let (mut app, _) = common::make_app_with_mock(&mock_server).await;
 
     let request = Request::builder()
         .method("POST")
@@ -257,7 +225,7 @@ async fn test_completions_empty_messages() {
         .mount(&mock_server)
         .await;
 
-    let (mut app, _) = create_test_app_with_mock(&mock_server).await;
+    let (mut app, _) = common::make_app_with_mock(&mock_server).await;
 
     // Empty messages array should still be accepted (backend may validate)
     let request = Request::builder()
@@ -276,7 +244,7 @@ async fn test_completions_empty_messages() {
 #[tokio::test]
 async fn test_completions_missing_model_field() {
     let mock_server = MockServer::start().await;
-    let (mut app, _) = create_test_app_with_mock(&mock_server).await;
+    let (mut app, _) = common::make_app_with_mock(&mock_server).await;
 
     // Missing model field
     let request = Request::builder()
@@ -369,7 +337,7 @@ async fn test_concurrent_100_requests() {
         .mount(&mock_server)
         .await;
 
-    let (app, _) = create_test_app_with_mock(&mock_server).await;
+    let (app, _) = common::make_app_with_mock(&mock_server).await;
     let app = Arc::new(tokio::sync::Mutex::new(app));
 
     let handles: Vec<_> = (0..100)
@@ -427,7 +395,7 @@ async fn test_concurrent_streaming_requests() {
         .mount(&mock_server)
         .await;
 
-    let (app, _) = create_test_app_with_mock(&mock_server).await;
+    let (app, _) = common::make_app_with_mock(&mock_server).await;
     let app = Arc::new(tokio::sync::Mutex::new(app));
 
     let handles: Vec<_> = (0..20)
@@ -484,7 +452,7 @@ async fn test_response_overhead_reasonable() {
         .mount(&mock_server)
         .await;
 
-    let (app, _) = create_test_app_with_mock(&mock_server).await;
+    let (app, _) = common::make_app_with_mock(&mock_server).await;
     let app = Arc::new(tokio::sync::Mutex::new(app));
 
     let mut times = Vec::new();
@@ -548,7 +516,7 @@ async fn test_pending_request_tracking_accuracy() {
         .mount(&mock_server)
         .await;
 
-    let (app, registry) = create_test_app_with_mock(&mock_server).await;
+    let (app, registry) = common::make_app_with_mock(&mock_server).await;
     let app = Arc::new(tokio::sync::Mutex::new(app));
 
     // Initial pending should be 0
@@ -617,7 +585,7 @@ async fn test_completions_forwards_auth_header_nonstreaming() {
         .mount(&mock_server)
         .await;
 
-    let (mut app, _) = create_test_app_with_mock(&mock_server).await;
+    let (mut app, _) = common::make_app_with_mock(&mock_server).await;
 
     let request = Request::builder()
         .method("POST")
@@ -660,7 +628,7 @@ data: [DONE]
         .mount(&mock_server)
         .await;
 
-    let (mut app, _) = create_test_app_with_mock(&mock_server).await;
+    let (mut app, _) = common::make_app_with_mock(&mock_server).await;
 
     let request = Request::builder()
         .method("POST")
@@ -721,7 +689,7 @@ async fn test_streaming_handles_backend_disconnect() {
         .mount(&mock_server)
         .await;
 
-    let (mut app, _) = create_test_app_with_mock(&mock_server).await;
+    let (mut app, _) = common::make_app_with_mock(&mock_server).await;
 
     let request = Request::builder()
         .method("POST")
@@ -773,7 +741,7 @@ data: [DONE]
         .mount(&mock_server)
         .await;
 
-    let (mut app, _) = create_test_app_with_mock(&mock_server).await;
+    let (mut app, _) = common::make_app_with_mock(&mock_server).await;
 
     let request = Request::builder()
         .method("POST")

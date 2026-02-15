@@ -338,11 +338,7 @@ fn test_add_backend_duplicate_error() {
     registry.add_backend(backend1).unwrap();
     let result = registry.add_backend(backend2);
 
-    assert!(result.is_err());
-    match result {
-        Err(RegistryError::DuplicateBackend(id)) => assert_eq!(id, "backend-1"),
-        _ => panic!("Expected DuplicateBackend error"),
-    }
+    assert!(matches!(result, Err(RegistryError::DuplicateBackend(ref id)) if id == "backend-1"));
 }
 
 #[test]
@@ -377,11 +373,7 @@ fn test_remove_backend_not_found() {
     let registry = Registry::new();
 
     let result = registry.remove_backend("nonexistent");
-    assert!(result.is_err());
-    match result {
-        Err(RegistryError::BackendNotFound(id)) => assert_eq!(id, "nonexistent"),
-        _ => panic!("Expected BackendNotFound error"),
-    }
+    assert!(matches!(result, Err(RegistryError::BackendNotFound(ref id)) if id == "nonexistent"));
 }
 
 #[test]
@@ -943,11 +935,7 @@ fn test_update_status_not_found() {
     let registry = Registry::new();
 
     let result = registry.update_status("nonexistent", BackendStatus::Healthy, None);
-    assert!(result.is_err());
-    match result {
-        Err(RegistryError::BackendNotFound(id)) => assert_eq!(id, "nonexistent"),
-        _ => panic!("Expected BackendNotFound error"),
-    }
+    assert!(matches!(result, Err(RegistryError::BackendNotFound(ref id)) if id == "nonexistent"));
 }
 
 #[test]
@@ -1097,11 +1085,7 @@ fn test_update_models_not_found() {
     }];
 
     let result = registry.update_models("nonexistent", models);
-    assert!(result.is_err());
-    match result {
-        Err(RegistryError::BackendNotFound(id)) => assert_eq!(id, "nonexistent"),
-        _ => panic!("Expected BackendNotFound error"),
-    }
+    assert!(matches!(result, Err(RegistryError::BackendNotFound(ref id)) if id == "nonexistent"));
 }
 
 // T08 Tests - Atomic counters

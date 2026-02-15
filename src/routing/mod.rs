@@ -1027,11 +1027,7 @@ mod smart_strategy_tests {
         };
 
         let result = router.select_backend(&requirements);
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            RoutingError::ModelNotFound { .. }
-        ));
+        assert!(matches!(result, Err(RoutingError::ModelNotFound { .. })));
     }
 }
 
@@ -1321,10 +1317,9 @@ mod alias_and_fallback_tests {
         };
 
         let result = router.select_backend(&requirements);
-        assert!(result.is_err());
         assert!(matches!(
-            result.unwrap_err(),
-            RoutingError::FallbackChainExhausted { .. }
+            result,
+            Err(RoutingError::FallbackChainExhausted { .. })
         ));
     }
 

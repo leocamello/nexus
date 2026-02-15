@@ -393,10 +393,9 @@ mod tests {
 
         assert!(result.is_ok());
         let health_result = result.unwrap();
-        assert!(health_result.is_err());
-        matches!(
-            health_result.unwrap_err(),
-            AgentError::Network(_) | AgentError::Timeout(_)
-        );
+        assert!(matches!(
+            health_result,
+            Err(AgentError::Network(_)) | Err(AgentError::Timeout(_))
+        ));
     }
 }

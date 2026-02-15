@@ -284,13 +284,7 @@ mod tests {
 
         // Validation should fail
         let result = config.validate();
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            ConfigError::CircularAlias { .. } => {
-                // Success - expected error
-            }
-            _ => panic!("Expected CircularAlias error"),
-        }
+        assert!(matches!(result, Err(ConfigError::CircularAlias { .. })));
     }
 
     #[test]
@@ -355,13 +349,10 @@ mod tests {
         config.server.port = 0;
 
         let result = config.validate();
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            ConfigError::Validation { field, .. } => {
-                assert_eq!(field, "server.port");
-            }
-            _ => panic!("Expected Validation error"),
-        }
+        assert!(matches!(
+            result,
+            Err(ConfigError::Validation { ref field, .. }) if field == "server.port"
+        ));
     }
 
     #[test]
@@ -376,13 +367,10 @@ mod tests {
         });
 
         let result = config.validate();
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            ConfigError::Validation { field, .. } => {
-                assert!(field.contains("url"));
-            }
-            _ => panic!("Expected Validation error"),
-        }
+        assert!(matches!(
+            result,
+            Err(ConfigError::Validation { ref field, .. }) if field.contains("url")
+        ));
     }
 
     #[test]
@@ -397,13 +385,10 @@ mod tests {
         });
 
         let result = config.validate();
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            ConfigError::Validation { field, .. } => {
-                assert!(field.contains("name"));
-            }
-            _ => panic!("Expected Validation error"),
-        }
+        assert!(matches!(
+            result,
+            Err(ConfigError::Validation { ref field, .. }) if field.contains("name")
+        ));
     }
 
     #[test]

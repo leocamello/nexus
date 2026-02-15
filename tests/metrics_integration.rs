@@ -10,13 +10,14 @@
 //! than asserting specific values in Prometheus text output (which depends on
 //! which test wins the global recorder).
 
+mod common;
+
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use nexus::api::{create_router, AppState};
 use nexus::config::NexusConfig;
-use nexus::registry::{Backend, BackendStatus, BackendType, DiscoverySource, Model, Registry};
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use nexus::registry::{Backend, BackendStatus};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tower::Service;
 
@@ -24,38 +25,8 @@ use tower::Service;
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn create_test_backend(id: &str, name: &str, model_id: &str, priority: i32) -> Backend {
-    Backend {
-        id: id.to_string(),
-        name: name.to_string(),
-        url: format!("http://{}", name),
-        backend_type: BackendType::Ollama,
-        status: BackendStatus::Healthy,
-        last_health_check: chrono::Utc::now(),
-        last_error: None,
-        models: vec![Model {
-            id: model_id.to_string(),
-            name: model_id.to_string(),
-            context_length: 4096,
-            supports_vision: false,
-            supports_tools: false,
-            supports_json_mode: false,
-            max_output_tokens: None,
-        }],
-        priority,
-        pending_requests: AtomicU32::new(0),
-        total_requests: AtomicU64::new(0),
-        avg_latency_ms: AtomicU32::new(50),
-        discovery_source: DiscoverySource::Static,
-        metadata: HashMap::new(),
-    }
-}
-
 fn create_app_with_backends(backends: Vec<Backend>) -> axum::Router {
-    let registry = Arc::new(Registry::new());
-    for backend in backends {
-        registry.add_backend(backend).unwrap();
-    }
+    let registry = common::make_registry(backends);
     let config = Arc::new(NexusConfig::default());
     let state = Arc::new(AppState::new(registry, config));
     create_router(state)
@@ -95,7 +66,7 @@ async fn test_metrics_endpoint_returns_200() {
 #[tokio::test]
 async fn test_metrics_endpoint_returns_text_response() {
     let mut app =
-        create_app_with_backends(vec![create_test_backend("b1", "Backend1", "llama3:8b", 1)]);
+        create_app_with_backends(vec![common::make_backend("b1", "Backend1", "llama3:8b", 1)]);
     let response = app
         .call(
             Request::builder()
@@ -261,7 +232,7 @@ async fn test_metrics_still_works_after_error_request() {
 #[tokio::test]
 async fn test_metrics_returns_valid_output_with_backends() {
     let mut app =
-        create_app_with_backends(vec![create_test_backend("b1", "Backend1", "llama3:8b", 1)]);
+        create_app_with_backends(vec![common::make_backend("b1", "Backend1", "llama3:8b", 1)]);
     let response = app
         .call(
             Request::builder()
@@ -282,7 +253,7 @@ async fn test_metrics_returns_valid_output_with_backends() {
 #[tokio::test]
 async fn test_metrics_endpoint_ok_with_registered_backends() {
     let mut app =
-        create_app_with_backends(vec![create_test_backend("b1", "Backend1", "llama3:8b", 1)]);
+        create_app_with_backends(vec![common::make_backend("b1", "Backend1", "llama3:8b", 1)]);
     let response = app
         .call(
             Request::builder()
@@ -302,7 +273,7 @@ async fn test_metrics_endpoint_ok_with_registered_backends() {
 
 #[tokio::test]
 async fn test_stats_backend_latency_from_registry() {
-    let backend = create_test_backend("b1", "Backend1", "llama3:8b", 1);
+    let backend = common::make_backend("b1", "Backend1", "llama3:8b", 1);
     backend.avg_latency_ms.store(150, Ordering::SeqCst);
     backend.total_requests.store(42, Ordering::SeqCst);
 
@@ -405,7 +376,7 @@ async fn test_metrics_endpoint_healthy_after_setup() {
 
 #[tokio::test]
 async fn test_pending_requests_in_stats() {
-    let backend = create_test_backend("b1", "Backend1", "llama3:8b", 1);
+    let backend = common::make_backend("b1", "Backend1", "llama3:8b", 1);
     backend.pending_requests.store(5, Ordering::SeqCst);
 
     let mut app = create_app_with_backends(vec![backend]);
@@ -434,9 +405,9 @@ async fn test_pending_requests_in_stats() {
 #[tokio::test]
 async fn test_backends_total_reflected_in_stats() {
     let mut app = create_app_with_backends(vec![
-        create_test_backend("b1", "Backend1", "llama3:8b", 1),
-        create_test_backend("b2", "Backend2", "mistral:7b", 2),
-        create_test_backend("b3", "Backend3", "phi3:mini", 3),
+        common::make_backend("b1", "Backend1", "llama3:8b", 1),
+        common::make_backend("b2", "Backend2", "mistral:7b", 2),
+        common::make_backend("b3", "Backend3", "phi3:mini", 3),
     ]);
     let response = app
         .call(
@@ -461,11 +432,11 @@ async fn test_backends_total_reflected_in_stats() {
 
 #[tokio::test]
 async fn test_unhealthy_backend_still_appears_in_stats() {
-    let mut unhealthy = create_test_backend("b2", "Backend2", "mistral:7b", 2);
+    let mut unhealthy = common::make_backend("b2", "Backend2", "mistral:7b", 2);
     unhealthy.status = BackendStatus::Unhealthy;
 
     let mut app = create_app_with_backends(vec![
-        create_test_backend("b1", "Backend1", "llama3:8b", 1),
+        common::make_backend("b1", "Backend1", "llama3:8b", 1),
         unhealthy,
     ]);
     let response = app
@@ -496,11 +467,11 @@ async fn test_unhealthy_backend_still_appears_in_stats() {
 
 #[tokio::test]
 async fn test_models_endpoint_shows_models_from_healthy_backends() {
-    let mut unhealthy = create_test_backend("b2", "Backend2", "mistral:7b", 2);
+    let mut unhealthy = common::make_backend("b2", "Backend2", "mistral:7b", 2);
     unhealthy.status = BackendStatus::Unhealthy;
 
     let mut app = create_app_with_backends(vec![
-        create_test_backend("b1", "Backend1", "llama3:8b", 1),
+        common::make_backend("b1", "Backend1", "llama3:8b", 1),
         unhealthy,
     ]);
     let response = app
@@ -527,9 +498,9 @@ async fn test_models_deduplication_across_backends() {
     // Two backends serve the same model — /v1/models lists per-backend entries
     // with owned_by set to the backend name for multi-backend visibility
     let mut app = create_app_with_backends(vec![
-        create_test_backend("b1", "Backend1", "llama3:8b", 1),
-        create_test_backend("b2", "Backend2", "llama3:8b", 2),
-        create_test_backend("b3", "Backend3", "mistral:7b", 3),
+        common::make_backend("b1", "Backend1", "llama3:8b", 1),
+        common::make_backend("b2", "Backend2", "llama3:8b", 2),
+        common::make_backend("b3", "Backend3", "mistral:7b", 3),
     ]);
     let response = app
         .call(
@@ -567,12 +538,12 @@ async fn test_models_deduplication_across_backends() {
 
 #[tokio::test]
 async fn test_stats_per_backend_breakdown() {
-    let b1 = create_test_backend("ollama-1", "Ollama Local", "llama3:8b", 1);
+    let b1 = common::make_backend("ollama-1", "Ollama Local", "llama3:8b", 1);
     b1.total_requests.store(100, Ordering::SeqCst);
     b1.avg_latency_ms.store(45, Ordering::SeqCst);
     b1.pending_requests.store(2, Ordering::SeqCst);
 
-    let b2 = create_test_backend("vllm-1", "vLLM Server", "mistral:7b", 2);
+    let b2 = common::make_backend("vllm-1", "vLLM Server", "mistral:7b", 2);
     b2.total_requests.store(200, Ordering::SeqCst);
     b2.avg_latency_ms.store(30, Ordering::SeqCst);
     b2.pending_requests.store(0, Ordering::SeqCst);
@@ -612,7 +583,7 @@ async fn test_stats_per_backend_breakdown() {
 #[tokio::test]
 async fn test_existing_endpoints_unaffected_by_metrics() {
     let mut app =
-        create_app_with_backends(vec![create_test_backend("b1", "Backend1", "llama3:8b", 1)]);
+        create_app_with_backends(vec![common::make_backend("b1", "Backend1", "llama3:8b", 1)]);
 
     // GET /health should still work
     let response = app
@@ -715,17 +686,17 @@ async fn test_metrics_endpoint_ok_with_no_backends() {
 #[tokio::test]
 async fn test_comprehensive_metrics_end_to_end() {
     // Setup: 2 healthy backends, 1 unhealthy
-    let b1 = create_test_backend("gpu-node-1", "GPU Node 1", "llama3:70b", 1);
+    let b1 = common::make_backend("gpu-node-1", "GPU Node 1", "llama3:70b", 1);
     b1.total_requests.store(500, Ordering::SeqCst);
     b1.avg_latency_ms.store(120, Ordering::SeqCst);
     b1.pending_requests.store(3, Ordering::SeqCst);
 
-    let b2 = create_test_backend("cpu-node-1", "CPU Node 1", "mistral:7b", 2);
+    let b2 = common::make_backend("cpu-node-1", "CPU Node 1", "mistral:7b", 2);
     b2.total_requests.store(200, Ordering::SeqCst);
     b2.avg_latency_ms.store(250, Ordering::SeqCst);
     b2.pending_requests.store(0, Ordering::SeqCst);
 
-    let mut b3 = create_test_backend("offline-node", "Offline Node", "phi3:mini", 3);
+    let mut b3 = common::make_backend("offline-node", "Offline Node", "phi3:mini", 3);
     b3.status = BackendStatus::Unhealthy;
 
     let mut app = create_app_with_backends(vec![b1, b2, b3]);

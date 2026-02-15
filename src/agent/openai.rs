@@ -440,7 +440,6 @@ mod tests {
         let agent = test_agent("http://invalid:9999".to_string(), "sk-test".to_string());
         let result = agent.health_check().await;
 
-        assert!(result.is_err());
-        matches!(result.unwrap_err(), AgentError::Network(_));
+        assert!(matches!(result, Err(AgentError::Network(_))));
     }
 }

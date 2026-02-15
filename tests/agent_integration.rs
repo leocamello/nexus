@@ -3,7 +3,7 @@
 //! Tests dual storage, agent-based health checking, and agent-based request forwarding.
 
 use nexus::agent::factory::create_agent;
-use nexus::registry::{Backend, BackendType, DiscoverySource, Registry};
+use nexus::registry::{Backend, BackendType, DiscoverySource, Registry, RegistryError};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -215,7 +215,10 @@ async fn test_dual_storage_duplicate_rejected() {
         HashMap::new(),
     )
     .unwrap();
-    assert!(registry.add_backend_with_agent(backend2, agent2).is_err());
+    assert!(matches!(
+        registry.add_backend_with_agent(backend2, agent2),
+        Err(RegistryError::DuplicateBackend(_))
+    ));
 }
 
 // T035a: HealthStatus maps to BackendStatus correctly (via agent profile)

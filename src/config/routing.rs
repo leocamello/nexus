@@ -134,14 +134,10 @@ mod tests {
         let result = validate_aliases(&aliases);
 
         // Then returns CircularAlias error
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            ConfigError::CircularAlias { start, cycle } => {
-                assert_eq!(start, "a");
-                assert_eq!(cycle, "a");
-            }
-            _ => panic!("Expected CircularAlias error"),
-        }
+        assert!(matches!(
+            result,
+            Err(ConfigError::CircularAlias { ref start, ref cycle }) if start == "a" && cycle == "a"
+        ));
     }
 
     #[test]
@@ -155,14 +151,11 @@ mod tests {
         let result = validate_aliases(&aliases);
 
         // Then returns CircularAlias error
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            ConfigError::CircularAlias { start, cycle } => {
-                assert!(start == "a" || start == "b");
-                assert!(cycle == "a" || cycle == "b");
-            }
-            _ => panic!("Expected CircularAlias error"),
-        }
+        assert!(matches!(
+            result,
+            Err(ConfigError::CircularAlias { ref start, ref cycle })
+                if (start == "a" || start == "b") && (cycle == "a" || cycle == "b")
+        ));
     }
 
     #[test]
@@ -177,13 +170,7 @@ mod tests {
         let result = validate_aliases(&aliases);
 
         // Then returns CircularAlias error
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            ConfigError::CircularAlias { .. } => {
-                // Success - circular reference detected
-            }
-            _ => panic!("Expected CircularAlias error"),
-        }
+        assert!(matches!(result, Err(ConfigError::CircularAlias { .. })));
     }
 
     #[test]
