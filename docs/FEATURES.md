@@ -40,7 +40,7 @@ Detailed specifications for each feature in the Nexus LLM Orchestrator.
 - **v0.4 Intelligence**: Planned (F15-F18)
 - **v0.5 Orchestration**: Planned (F19-F22)
 - **v1.0 Complete Product**: Planned (F23 — Management UI)
-- **Tests**: 462 passing, 81% coverage
+- **Tests**: 468 passing, 81% coverage
 
 ---
 
@@ -692,6 +692,9 @@ Simple web UI for monitoring.
 11. F11: Structured Request Logging ✅
 
 ### v0.3: Cloud Hybrid Gateway (Next)
+
+> **Architecture Note:** v0.3 features are built on top of **RFC-001: Platform Architecture**, which introduces the **Nexus Inference Interface (NII)** and **Reconciler Pipeline**. Phase 1 (NII Extraction) is a prerequisite — it creates the `InferenceAgent` trait and built-in agents that F12–F14 build upon.
+
 12. F12: Cloud Backend Support
 13. F13: Privacy Zones & Capability Tiers
 14. F14: Inference Budget Management
