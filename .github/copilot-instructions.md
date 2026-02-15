@@ -56,9 +56,22 @@ RUST_LOG=debug cargo run -- serve                  # Run with debug logging
 
 ```
 src/
+├── agent/        # NII: InferenceAgent trait and built-in implementations (v0.3+)
+│   ├── mod.rs    #   Trait definition, AgentProfile, AgentError, supporting types
+│   ├── ollama.rs #   OllamaAgent (health, inference, lifecycle)
+│   ├── openai.rs #   OpenAIAgent (cloud backends, tiktoken)
+│   ├── lmstudio.rs # LMStudioAgent
+│   └── generic.rs  # GenericOpenAIAgent (vLLM, exo, llama.cpp)
 ├── api/          # Axum HTTP server (completions, models, health, stats)
 ├── cli/          # Clap CLI (serve, backends, models, health, config, completions)
 ├── config/       # TOML config loading with env override (NEXUS_*)
+├── control/      # Control Plane: Reconciler pipeline (v0.3+)
+│   ├── mod.rs    #   Reconciler trait, RoutingIntent, pipeline runner
+│   ├── analyzer.rs # RequestAnalyzer (F15 foundation)
+│   ├── privacy.rs  # PrivacyReconciler (F13)
+│   ├── budget.rs   # BudgetReconciler (F14)
+│   ├── tier.rs     # TierReconciler (F13)
+│   └── scheduler.rs # SchedulerReconciler (scoring, queue decisions)
 ├── dashboard/    # Embedded web dashboard (rust-embed, WebSocket, real-time updates)
 ├── discovery/    # mDNS auto-discovery via mdns-sd
 ├── health/       # Background health checker with backend-specific endpoints
@@ -92,9 +105,16 @@ src/
 | `BackendView` | `registry/backend.rs` | Serializable snapshot of Backend (no atomics) |
 | `Model` | `registry/backend.rs` | id, name, context_length, vision, tools, json_mode, max_output_tokens |
 | `Registry` | `registry/mod.rs` | DashMap-based concurrent storage with model-to-backend index |
+| `InferenceAgent` | `agent/mod.rs` | NII trait: health_check, list_models, chat_completion, embeddings, count_tokens |
+| `AgentProfile` | `agent/mod.rs` | Agent metadata: type, version, privacy_zone, capabilities |
+| `HealthStatus` | `agent/mod.rs` | Healthy, Unhealthy, Loading { percent }, Draining |
+| `TokenCount` | `agent/mod.rs` | Exact(u32) or Heuristic(u32) — tiered token counting |
 | `RoutingStrategy` | `routing/strategies.rs` | Smart (default), RoundRobin, PriorityOnly, Random |
 | `Router` | `routing/mod.rs` | Alias resolution (max 3-level chaining), fallback chains, scoring |
 | `RequestRequirements` | `routing/requirements.rs` | Vision, tools, context window requirements extracted from request |
+| `Reconciler` | `control/mod.rs` | Trait: annotate RoutingIntent (Privacy, Budget, Tier, Quality, Scheduler) |
+| `RoutingIntent` | `control/mod.rs` | Per-request state: requirements, constraints, candidates, rejection_reasons |
+| `RoutingDecision` | `control/mod.rs` | Route \| Queue \| Reject — pipeline output |
 | `AppState` | `api/mod.rs` | Registry, config, HTTP client, router, startup time |
 | `NexusConfig` | `config/mod.rs` | Aggregates server, discovery, health_check, routing, backends, logging |
 | `StatsResponse` | `metrics/types.rs` | JSON response for `/v1/stats` with uptime, requests, backends, models |
@@ -133,6 +153,29 @@ handle.await?;
 // Token count estimate → requires sufficient context window
 ```
 
+**NII Agent Abstraction** (RFC-001): All backend interaction goes through the `InferenceAgent` trait:
+```rust
+// Agent factory — creates the right implementation from config
+let agent: Arc<dyn InferenceAgent> = create_agent(&backend_config);
+
+// All backends use the same interface — no match backend_type { } branching
+let health = agent.health_check().await?;
+let models = agent.list_models().await?;
+let response = agent.chat_completion(&request).await?;
+let tokens = agent.count_tokens("model-id", text).await; // Heuristic default
+```
+
+**Reconciler Pipeline** (RFC-001): Independent reconcilers annotate shared routing state:
+```rust
+// Each reconciler writes to its own fields in RoutingIntent
+// Privacy → Budget → Tier → Quality → Scheduler
+// Rejection reasons accumulate for actionable 503 responses
+for reconciler in &pipeline {
+    reconciler.reconcile(&mut intent).await?;
+}
+// Result: RoutingDecision::Route | Queue | Reject
+```
+
 ## Architectural Principles
 
 1. **Registry Source of Truth**: All backend status and model metadata live in `src/registry/mod.rs`
@@ -162,10 +205,29 @@ These capabilities were originally out of scope but are now planned:
 
 | Capability | Version | Rationale |
 |-----------|---------|-----------|
+| NII agent abstraction | v0.3 | RFC-001: Standardized backend interface eliminates type-branching |
+| Reconciler pipeline | v0.3 | RFC-001: Independent policy reconcilers replace imperative router |
 | Cloud backends | v0.3 | Hybrid local+cloud gateway with privacy enforcement |
 | Multi-tenant auth | v0.5 | API keys and quotas for team/enterprise use |
 | Model lifecycle | v0.5 | Load/unload/migrate via API (orchestration, not management) |
 | Rate limiting | v0.5 | Per-backend and per-tenant protection |
+
+### Architecture Evolution (RFC-001)
+
+The v0.3+ architecture follows the **Kubernetes Controller pattern** adapted for latency-sensitive request routing. See `docs/ARCHITECTURE.md` for the full topology diagram.
+
+**Key architectural decisions:**
+- **NII as Rust trait** (not gRPC) — zero overhead, compile-time safety, single binary
+- **Reconciler pipeline** — Privacy → Budget → Tier → Quality → Scheduler (< 1ms total)
+- **Embedded agents** — Built-in agents compile into the binary; NII enables future external plugins
+- **Tiered tokenization** — Heuristic default (chars/4), exact tiktoken for OpenAI, HF tokenizers behind feature flag
+- **RoutingDecision** — Three outcomes: Route, Queue (F18), Reject (with actionable 503)
+
+**Migration approach:** No big rewrites. Each phase delivers working software. All existing tests pass throughout.
+- **Phase 1** (v0.3-alpha): NII trait + built-in agents (`src/agent/`)
+- **Phase 2** (v0.3): Reconciler pipeline + Privacy/Budget (`src/control/`)
+- **Phase 2.5** (v0.4): Quality tracking, Embeddings, Queuing
+- **Phase 3** (v0.5): Fleet Intelligence, Model Lifecycle
 
 ## Git Workflow
 

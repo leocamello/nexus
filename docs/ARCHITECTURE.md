@@ -718,7 +718,102 @@ WantedBy=multi-user.target
 
 ## Future Architecture (v0.3-v0.5)
 
-The following components are planned extensions to the current architecture. They follow the same design principles: stateless, zero-cost routing, explicit contracts.
+> **Reference:** RFC-001 v2 ("Nexus Platform Architecture — From Monolithic Router to Controller/Agent Platform") defines the full architectural evolution. This section summarizes the key elements.
+
+The v0.3+ architecture adopts the **Kubernetes Controller pattern** — decoupling the Control Plane (policy decisions) from the Data Plane (backend communication) using a standardized interface — while preserving the "Zero Config" and "Single Binary" constraints.
+
+### Nexus Inference Interface (NII) — v0.3
+
+Every backend implements the `InferenceAgent` Rust trait, eliminating type-specific branching:
+
+```rust
+#[async_trait]
+pub trait InferenceAgent: Send + Sync + 'static {
+    fn id(&self) -> &str;
+    fn name(&self) -> &str;
+    fn profile(&self) -> AgentProfile;
+
+    async fn list_models(&self) -> Result<Vec<ModelCapability>, AgentError>;
+    async fn health_check(&self) -> Result<HealthStatus, AgentError>;
+    async fn chat_completion(&self, request: &ChatCompletionRequest)
+        -> Result<ChatCompletionResponse, AgentError>;
+    async fn chat_completion_stream(&self, request: &ChatCompletionRequest)
+        -> Result<BoxStream<'_, Result<StreamChunk, AgentError>>, AgentError>;
+
+    // Default implementations for optional capabilities
+    async fn embeddings(&self, _request: &EmbeddingsRequest) -> Result<...> { Err(Unsupported) }
+    async fn load_model(&self, _model_id: &str) -> Result<(), AgentError> { Err(Unsupported) }
+    async fn count_tokens(&self, _model_id: &str, text: &str) -> TokenCount {
+        TokenCount::Heuristic((text.len() / 4) as u32) // Binary-size-safe default
+    }
+}
+```
+
+**Built-in agents:** OllamaAgent, OpenAIAgent, LMStudioAgent, VLLMAgent, GenericOpenAIAgent.
+
+### Control Plane — Reconciler Pipeline (v0.3)
+
+Replaces the imperative `Router::select_backend()` with independent reconcilers:
+
+```
+ChatCompletionRequest
+    │
+    ▼
+┌──────────────────────────────┐
+│  RequestAnalyzer (F15)       │  Extract vision/tools/tokens, resolve aliases
+│  Budget: < 0.5ms             │  Build RoutingIntent with requirements
+└──────────┬───────────────────┘
+           ▼
+┌──────────────────────────────┐
+│  PrivacyReconciler (F13)     │  Exclude cloud agents if restricted
+└──────────┬───────────────────┘
+           ▼
+┌──────────────────────────────┐
+│  BudgetReconciler (F14)      │  Check spending, estimate costs
+└──────────┬───────────────────┘
+           ▼
+┌──────────────────────────────┐
+│  TierReconciler (F13)        │  Enforce minimum capability tier
+└──────────┬───────────────────┘
+           ▼
+┌──────────────────────────────┐
+│  QualityReconciler (F16)     │  Exclude high-error-rate agents
+└──────────┬───────────────────┘
+           ▼
+┌──────────────────────────────┐
+│  SchedulerReconciler (F06)   │  Score candidates → Route | Queue | Reject
+└──────────────────────────────┘
+```
+
+Each reconciler is independent — Privacy doesn't know about Budget, Budget doesn't know about Quality. They annotate shared `RoutingIntent` state. Rejection reasons accumulate for actionable 503 responses.
+
+### Architecture Topology (v0.3+)
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                      NEXUS BINARY (single process)                  │
+│                                                                     │
+│  ┌──────────────── CONTROL PLANE ─────────────────────────────────┐ │
+│  │                                                                │ │
+│  │  RequestAnalyzer → Reconciler Pipeline → RoutingDecision       │ │
+│  │                                                                │ │
+│  │  Agent Registry (DashMap)                                      │ │
+│  │    AgentSchedulingProfiles + ModelIndex + Quality Metrics       │ │
+│  │                                                                │ │
+│  │  Background Loops: Health | Budget | Quality | mDNS Discovery  │ │
+│  │                                                                │ │
+│  │  Request Queue (F18): Bounded queue with timeout + re-route    │ │
+│  └────────────────────────────────────────────────────────────────┘ │
+│                                                                     │
+│  ┌──────────────── DATA PLANE ────────────────────────────────────┐ │
+│  │                                                                │ │
+│  │  OllamaAgent │ OpenAIAgent │ LMStudioAgent │ GenericAgent │... │ │
+│  │  (NII impl)  │ (NII impl)  │ (NII impl)    │ (NII impl)      │ │
+│  └──────┬──────────────┬──────────────┬──────────────┬───────────┘ │
+└─────────┼──────────────┼──────────────┼──────────────┼─────────────┘
+          ▼              ▼              ▼              ▼
+      Ollama:11434   api.openai.com  LM Studio    vLLM/exo/llama.cpp
+```
 
 ### Nexus-Transparent Protocol (v0.3)
 

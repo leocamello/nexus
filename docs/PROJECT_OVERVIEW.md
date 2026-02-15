@@ -190,6 +190,8 @@ These were originally non-goals but are now planned for future versions:
 
 | Capability | Originally | Now | Version |
 |-----------|-----------|-----|---------|
+| NII agent abstraction | Implicit | Standardized `InferenceAgent` trait (RFC-001) | v0.3 |
+| Reconciler pipeline | Imperative router | Independent policy reconcilers (RFC-001) | v0.3 |
 | Authentication | Out of scope | Multi-tenant API keys | v0.5 |
 | Cloud backends | Fallback only | Full hybrid gateway | v0.3 |
 | Metrics | Prometheus + dashboard | Prometheus + dashboard | ✅ v0.2 |

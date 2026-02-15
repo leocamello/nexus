@@ -512,6 +512,7 @@ Below are ready-to-use prompts for all Nexus features, organized by priority.
 | F20 | Model Lifecycle Management | v0.5 | [Link](#f20-model-lifecycle-management) |
 | F21 | Multi-Tenant Support | v0.5 | [Link](#f21-multi-tenant-support) |
 | F22 | Rate Limiting | v0.5 | [Link](#f22-rate-limiting) |
+| F23 | Management UI | v1.0 | [Link](#f23-management-ui) |
 
 ---
 
@@ -1303,6 +1304,18 @@ gets a correlation ID that tracks it through retries and failovers.
 
 ## v0.3 Features (Cloud Hybrid)
 
+> **Architecture Foundation:** v0.3 features are built on top of **RFC-001: Platform Architecture**
+> (approved 2026-02-15), which introduces:
+> - **NII (Nexus Inference Interface)** — `InferenceAgent` Rust trait abstracting all backends
+> - **Reconciler Pipeline** — Independent policy reconcilers (Privacy, Budget, Tier, Quality, Scheduler)
+> - **Embedded Agent Model** — Built-in agents compile into the binary
+>
+> Phase 1 (NII Extraction) must be completed before implementing F12–F14. The NII trait includes
+> forward-looking methods (`embeddings`, `count_tokens`, `load_model`) with default implementations
+> so that F17 (v0.4) and F20 (v0.5) don't require breaking trait changes.
+>
+> See `docs/ARCHITECTURE.md` for the full topology diagram.
+
 ### F12: Cloud Backend Support
 ```
 Create a spec for: Cloud Backend Support with Nexus-Transparent Protocol (F12)
@@ -1312,6 +1325,15 @@ Register cloud LLM APIs (OpenAI, Anthropic, Google) as backends alongside local
 inference servers. Introduce the Nexus-Transparent Protocol: X-Nexus-* response
 headers that reveal routing decisions without modifying the OpenAI-compatible
 JSON response body.
+
+## Architecture Context (RFC-001)
+Cloud backends are implemented as NII agents (OpenAIAgent, AnthropicAgent).
+They implement the InferenceAgent trait with:
+- chat_completion: Forward to cloud API
+- embeddings: Forward to cloud embedding API
+- count_tokens: Exact counting via tiktoken-rs (for OpenAI)
+- health_check: Verify API key and connectivity
+The PrivacyReconciler (F13) controls when cloud agents can receive traffic.
 
 ## Constitution Alignment
 - Principle III (OpenAI-Compatible): Headers only, never modify response JSON
@@ -1363,6 +1385,15 @@ Structural enforcement of privacy boundaries and quality levels. Privacy is a
 backend property configured by the admin, NOT a request header that clients
 can forget. Capability tiers prevent silent quality downgrades during failover.
 
+## Architecture Context (RFC-001)
+Privacy and Tier enforcement are implemented as Reconcilers in the Control Plane:
+- PrivacyReconciler: Reads zone from AgentProfile, excludes mismatched agents,
+  logs RejectionReason for actionable 503 responses
+- TierReconciler: Reads capability_tier from AgentSchedulingProfile, enforces
+  minimum tier from TrafficPolicy
+Both run in the Reconciler Pipeline (Privacy → Budget → Tier → Quality → Scheduler).
+TrafficPolicies are optional TOML sections: [routing.policies."code-*"] = { privacy = "restricted" }
+
 ## Constitution Alignment
 - Principle IX (Explicit Contracts): Privacy is structural, not opt-in
 - Principle IX: Never silently downgrade quality
@@ -1402,6 +1433,14 @@ Create a spec for: Inference Budget Management (F14)
 Cost-aware routing with graceful degradation. Includes a tokenizer registry
 for audit-grade token counting across different providers.
 
+## Architecture Context (RFC-001)
+Budget enforcement is implemented as a BudgetReconciler in the Control Plane:
+- Uses agent.count_tokens() from the NII trait (tiered: heuristic default, exact for OpenAI)
+- Sets BudgetStatus (Normal/SoftLimit/HardLimit) on the RoutingIntent
+- At SoftLimit (80%): prefers local agents. At HardLimit (100%): excludes cloud agents
+- Background BudgetReconciliationLoop tracks spending every 60s
+- CostEstimate struct tracks input_tokens, estimated_output_tokens, cost_usd, token_count_tier
+
 ## Constitution Alignment
 - Principle X (Precise Measurement): Per-backend tokenizer, not generic estimates
 - Principle IX (Explicit Contracts): Budgets degrade gracefully, never hard-cut
@@ -1439,6 +1478,13 @@ hard_limit_action = "local-only"  # "local-only" | "queue" | "reject"
 
 ## v0.4 Features (Intelligence)
 
+> **Architecture Foundation:** v0.4 features build on the NII agents and Reconciler Pipeline
+> established in v0.3. Key architectural components:
+> - **RequestAnalyzer** (F15): The constructor for `RoutingIntent` — performs sub-ms payload inspection
+> - **QualityReconciler** (F16): Reads `error_rate_1h`, `avg_ttft_ms` from `AgentSchedulingProfile`
+> - **Embeddings** (F17): Delegates to `agent.embeddings()` via existing NII trait method
+> - **RequestQueue** (F18): `RoutingDecision::Queue` variant with bounded mpsc channel
+
 ### F15: Speculative Router
 ```
 Create a spec for: Speculative Router (F15)
@@ -1447,6 +1493,15 @@ Create a spec for: Speculative Router (F15)
 Request-content-aware routing using JSON payload inspection only. Zero ML,
 sub-millisecond decisions. Extracts routing signals from the request structure
 without analyzing prompt content semantics.
+
+## Architecture Context (RFC-001)
+F15 is implemented as the RequestAnalyzer — the constructor for RoutingIntent.
+It runs before the Reconciler Pipeline and produces the RoutingIntent that all
+reconcilers annotate. The analyzer:
+- Resolves aliases (3-level chaining from current Router)
+- Extracts RequestRequirements (vision, tools, JSON mode, token estimate)
+- Initializes empty reconciler annotation fields
+Budget: < 0.5ms for the entire analysis step.
 
 ## Constitution Alignment
 - Principle V (Intelligent Routing): Match capabilities to request requirements
@@ -1484,6 +1539,17 @@ Create a spec for: Quality Tracking & Backend Profiling (F16)
 Build performance profiles for each model+backend combination using rolling
 window statistics. Profiles feed into the router scoring algorithm.
 
+## Architecture Context (RFC-001)
+F16 is implemented as:
+- QualityReconciler: Reads quality metrics from AgentSchedulingProfile, excludes
+  agents with error_rate > threshold, penalizes high TTFT agents
+- Background quality_reconciliation_loop: Computes rolling 1h/24h metrics from
+  request history every 30s, updates AgentSchedulingProfile
+- AgentSchedulingProfile fields: error_rate_1h (f32), avg_ttft_ms (u32),
+  last_failure_ts (Option<u64>), success_rate_24h (f32)
+These fields are defined in Phase 2 (v0.3) with default values, populated with
+real data in Phase 2.5 (v0.4).
+
 ## Constitution Alignment
 - Principle X (Precise Measurement): Track real metrics, not assumptions
 - Principle V (Intelligent Routing): Use data to improve routing decisions
@@ -1510,6 +1576,15 @@ Create a spec for: Embeddings API (F17)
 ## Feature Description
 Support the OpenAI Embeddings API across backends that offer embedding models.
 
+## Architecture Context (RFC-001)
+The InferenceAgent trait includes an embeddings() method with a default
+Unsupported implementation. F17 enables this on capable agents:
+- OllamaAgent: Forward to /api/embeddings
+- OpenAIAgent: Forward to /v1/embeddings
+- LMStudioAgent: Forward to /v1/embeddings
+- GenericOpenAIAgent: Returns Unsupported (most don't support it)
+The endpoint POST /v1/embeddings routes through the same Reconciler Pipeline.
+
 ## Endpoint
 POST /v1/embeddings — OpenAI-compatible request/response format
 
@@ -1530,6 +1605,14 @@ Create a spec for: Request Queuing & Prioritization (F18)
 When all backends are busy, queue requests with configurable timeout and priority
 instead of immediately returning 503. Priority levels allow critical requests
 to preempt best-effort ones.
+
+## Architecture Context (RFC-001)
+F18 is implemented via the RoutingDecision::Queue variant:
+- SchedulerReconciler returns Queue when all candidates are Loading or busy
+- RequestQueue: bounded mpsc channel with drain task that re-runs the pipeline
+- QueueReason: AllAgentsBusy | BudgetHardLimit | ModelLoading { agent_id, progress }
+- Implementation note: standard mpsc is FIFO. For X-Nexus-Priority support,
+  use priority-queue crate or dual channels (high/normal) drained by same loop.
 
 ## Constitution Alignment
 - Principle IX (Explicit Contracts): Queued requests get actionable 503 with ETA on timeout
@@ -1560,6 +1643,11 @@ priority_header = "X-Nexus-Priority"
 
 ## v0.5 Features (Orchestration)
 
+> **Architecture Foundation:** v0.5 features leverage the full NII trait capabilities:
+> - **Model Lifecycle** (F20): Uses `agent.load_model()`, `agent.unload_model()`, `HealthStatus::Loading`
+> - **Fleet Intelligence** (F19): Uses `agent.resource_usage()` for VRAM awareness
+> - Implemented as FleetReconciler and LifecycleReconciler in the Control Plane
+
 ### F19: Pre-warming & Fleet Intelligence
 ```
 Create a spec for: Pre-warming & Fleet Intelligence (F19)
@@ -1567,6 +1655,14 @@ Create a spec for: Pre-warming & Fleet Intelligence (F19)
 ## Feature Description
 Predict model demand and proactively recommend loading models on idle nodes.
 v0.5 is a suggestion system — recommendations require admin/policy approval.
+
+## Architecture Context (RFC-001)
+F19 is implemented as a FleetReconciler in the Control Plane:
+- Analyzes request history patterns (time of day, model popularity)
+- Uses agent.resource_usage() to check VRAM headroom per backend
+- Produces recommendations via API/logs (suggestion-first, not autonomous)
+- LifecycleReconciler coordinates with HealthStatus::Loading state to prevent
+  routing to agents mid-model-pull
 
 ## Constitution Alignment
 - Principle X (Precise Measurement): VRAM headroom is tracked, not assumed
@@ -1593,6 +1689,14 @@ Create a spec for: Model Lifecycle Management (F20)
 
 ## Feature Description
 Control model loading, unloading, and migration across the fleet via Nexus API.
+
+## Architecture Context (RFC-001)
+F20 uses the NII lifecycle methods:
+- OllamaAgent.load_model() → POST /api/pull
+- OllamaAgent.unload_model() → DELETE /api/delete (or keepalive=0)
+- HealthStatus::Loading { percent, eta_ms } prevents routing during model pull
+- LifecycleReconciler coordinates load/unload operations
+- API endpoints: POST /v1/models/load, DELETE /v1/models/{id}
 
 ## Acceptance Criteria
 - [ ] API to trigger model load/unload on specific backends
@@ -1638,4 +1742,53 @@ Per-backend and per-tenant rate limiting using token bucket algorithm.
 - [ ] Token bucket algorithm with burst support
 - [ ] 429 Too Many Requests with Retry-After header
 - [ ] Rate limit metrics exposed via Prometheus
+```
+
+---
+
+## v1.0 Features (Complete Product)
+
+### F23: Management UI
+```
+Create a spec for: Management UI (F23)
+
+## Feature Description
+A full-featured web-based management interface that provides everything the CLI
+offers through an interactive UI. Evolves the existing monitoring dashboard (F10)
+into a complete control plane with backend management, model lifecycle,
+configuration editing, and routing controls — all embedded in the single binary.
+
+## Constitution Alignment
+- Principle I (Zero Configuration): Embedded in binary, no external setup
+- Principle II (Single Binary): Frontend assets compiled in via rust-embed
+- Principle III (OpenAI-Compatible): Management API extends, not replaces, existing API
+
+## Architecture
+- Hybrid same-repo approach: frontend source in `ui/` with its own package.json
+- Framework: Modern JS framework (React, Vue, or Svelte — TBD during spec phase)
+- Embedding: CI builds frontend to static assets, rust-embed bundles into binary
+- Development: `npm run dev` with hot reload, proxying API calls to running Nexus
+- Distribution: Single binary via crates.io, GitHub releases, Docker
+
+## Capabilities
+| Area | Features |
+|------|----------|
+| Monitoring (from F10) | System summary, backend status, model matrix, request history, WebSocket |
+| Backend Management | Add/remove/edit backends, health checks, priority, drain/undrain |
+| Model Management | Browse models, load/unload (F20), view capabilities |
+| Configuration | View/edit TOML config, aliases, fallback chains, routing strategy |
+| Routing | Visual strategy selector, alias editor, fallback chain builder |
+| Observability | Metrics charts, log viewer with filtering, Prometheus status |
+
+## Acceptance Criteria
+- [ ] All CLI capabilities accessible through the UI
+- [ ] Existing F10 dashboard migrated into monitoring tab
+- [ ] Backend CRUD operations (add, remove, edit, drain)
+- [ ] Model alias and fallback chain management
+- [ ] Routing strategy configuration
+- [ ] Real-time updates via WebSocket (existing F10 infrastructure)
+- [ ] Responsive design (desktop and tablet)
+- [ ] Embedded in single binary via rust-embed (zero-config)
+- [ ] Frontend dev workflow with hot reload (npm run dev with API proxy)
+- [ ] No-JS fallback for basic monitoring (existing F10 behavior)
 ```
