@@ -376,7 +376,12 @@ impl Registry {
         }
     }
 
-    /// Atomically increment total completed requests counter.
+    /// Atomically increment total completed requests counter for a backend.
+    ///
+    /// Called from `record_request_completion()` in the completions handler after
+    /// each successful or failed request to track aggregate throughput per backend.
+    ///
+    /// Returns the new total request count after incrementing.
     pub fn increment_total_requests(&self, id: &str) -> Result<u64, RegistryError> {
         let backend = self
             .backends

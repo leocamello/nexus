@@ -667,10 +667,10 @@ Simple web UI for monitoring.
 - Tailwind CSS for styling
 
 ### Acceptance Criteria
-- [ ] Shows backend status
-- [ ] Shows model list
-- [ ] Auto-refreshes
-- [ ] Works without JavaScript (graceful degradation)
+- [x] Shows backend status (cards with name, UUID, type, URL, status badge, metrics)
+- [x] Shows model list (availability matrix with per-backend columns)
+- [x] Auto-refreshes (WebSocket real-time updates + polling fallback)
+- [x] Works without JavaScript (graceful degradation via server-injected initial data)
 
 ---
 

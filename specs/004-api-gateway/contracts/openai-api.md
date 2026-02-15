@@ -208,7 +208,8 @@ data: [DONE]
 
 ## `GET /v1/models`
 
-Lists all models from healthy backends (deduplicated by model ID).
+Lists all models from healthy backends. Each model appears once per backend that
+serves it, with `owned_by` set to the backend name for multi-backend visibility.
 
 ### Response
 
@@ -223,7 +224,19 @@ Lists all models from healthy backends (deduplicated by model ID).
       "id": "llama3:70b",
       "object": "model",
       "created": 1699999999,
-      "owned_by": "nexus",
+      "owned_by": "local-ollama",
+      "context_length": 4096,
+      "capabilities": {
+        "vision": false,
+        "tools": false,
+        "json_mode": false
+      }
+    },
+    {
+      "id": "llama3:70b",
+      "object": "model",
+      "created": 1699999999,
+      "owned_by": "gpu-server",
       "context_length": 4096,
       "capabilities": {
         "vision": false,
@@ -235,7 +248,7 @@ Lists all models from healthy backends (deduplicated by model ID).
       "id": "mistral:7b",
       "object": "model",
       "created": 1699999999,
-      "owned_by": "nexus",
+      "owned_by": "local-ollama",
       "context_length": 4096,
       "capabilities": {
         "vision": false,
@@ -254,13 +267,14 @@ Lists all models from healthy backends (deduplicated by model ID).
 | `id` | string | Model identifier |
 | `object` | string | Always `"model"` |
 | `created` | integer | Unix timestamp (set at response time) |
-| `owned_by` | string | Always `"nexus"` |
+| `owned_by` | string | Backend name serving this model |
 | `context_length` | u32? | Maximum context window (Nexus extension) |
 | `capabilities` | object? | Model capability flags (Nexus extension) |
 
 **Notes**:
 - `context_length` and `capabilities` are Nexus extensions — serialized with `skip_serializing_if = "Option::is_none"`
-- Models sorted alphabetically by `id`; only healthy backends included; duplicates deduplicated (first seen wins)
+- Models sorted alphabetically by `id`, then by `owned_by`; only healthy backends included
+- Same model served by multiple backends appears multiple times (one entry per backend)
 
 ---
 

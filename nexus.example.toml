@@ -18,6 +18,10 @@ grace_period_seconds = 60
 enabled = true
 interval_seconds = 30
 timeout_seconds = 5
+# Consecutive failures before marking backend unhealthy
+failure_threshold = 3
+# Consecutive successes before marking backend healthy again
+recovery_threshold = 2
 
 [routing]
 # Routing strategy: smart | round_robin | priority_only | random

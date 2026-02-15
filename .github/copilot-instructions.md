@@ -56,11 +56,14 @@ RUST_LOG=debug cargo run -- serve                  # Run with debug logging
 
 ```
 src/
-├── api/          # Axum HTTP server (completions, models, health)
+├── api/          # Axum HTTP server (completions, models, health, stats)
 ├── cli/          # Clap CLI (serve, backends, models, health, config, completions)
 ├── config/       # TOML config loading with env override (NEXUS_*)
+├── dashboard/    # Embedded web dashboard (rust-embed, WebSocket, real-time updates)
 ├── discovery/    # mDNS auto-discovery via mdns-sd
 ├── health/       # Background health checker with backend-specific endpoints
+├── logging/      # Structured logging middleware (JSON/pretty, per-component levels)
+├── metrics/      # Prometheus metrics and JSON stats API (/metrics, /v1/stats)
 ├── registry/     # In-memory backend/model registry (DashMap, source of truth)
 ├── routing/      # Intelligent request routing (strategies, scoring, requirements)
 ├── lib.rs        # Module declarations
@@ -72,8 +75,11 @@ src/
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/v1/chat/completions` | Chat completion (streaming and non-streaming) |
-| `GET` | `/v1/models` | List available models from healthy backends |
+| `GET` | `/v1/models` | List available models from healthy backends (per-backend entries) |
+| `GET` | `/v1/stats` | JSON stats: uptime, request counts, per-backend metrics |
+| `GET` | `/metrics` | Prometheus metrics (counters, histograms, gauges) |
 | `GET` | `/health` | System health with backend/model counts |
+| `GET` | `/` | Web dashboard (embedded, real-time via WebSocket) |
 
 ### Key Types
 
@@ -83,6 +89,7 @@ src/
 | `BackendStatus` | `registry/backend.rs` | Healthy, Unhealthy, Unknown, Draining |
 | `DiscoverySource` | `registry/backend.rs` | Static (config), MDNS (auto), Manual (CLI) |
 | `Backend` | `registry/backend.rs` | Thread-safe registry entry with atomic counters (pending, total, latency EMA) |
+| `BackendView` | `registry/backend.rs` | Serializable snapshot of Backend (no atomics) |
 | `Model` | `registry/backend.rs` | id, name, context_length, vision, tools, json_mode, max_output_tokens |
 | `Registry` | `registry/mod.rs` | DashMap-based concurrent storage with model-to-backend index |
 | `RoutingStrategy` | `routing/strategies.rs` | Smart (default), RoundRobin, PriorityOnly, Random |
@@ -90,6 +97,9 @@ src/
 | `RequestRequirements` | `routing/requirements.rs` | Vision, tools, context window requirements extracted from request |
 | `AppState` | `api/mod.rs` | Registry, config, HTTP client, router, startup time |
 | `NexusConfig` | `config/mod.rs` | Aggregates server, discovery, health_check, routing, backends, logging |
+| `StatsResponse` | `metrics/types.rs` | JSON response for `/v1/stats` with uptime, requests, backends, models |
+| `BackendStats` | `metrics/types.rs` | Per-backend stats: id, name, requests, latency, pending |
+| `WebSocketUpdate` | `dashboard/types.rs` | Real-time dashboard updates: backend status, request history |
 
 ### Key Patterns
 
