@@ -3,6 +3,8 @@
 //! These tests verify that the structured logging system correctly captures
 //! and formats request metadata according to the specification.
 
+mod common;
+
 #[cfg(test)]
 mod us1_basic_logging {
     use nexus::api::{ChatCompletionResponse, Usage};
@@ -79,14 +81,12 @@ mod us1_basic_logging {
         let request_id = generate_request_id();
 
         // UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
-        assert_eq!(request_id.len(), 36);
+        assert_eq!(request_id.len(), super::common::UUID_V4_STRING_LEN);
         let parts: Vec<&str> = request_id.split('-').collect();
-        assert_eq!(parts.len(), 5);
-        assert_eq!(parts[0].len(), 8);
-        assert_eq!(parts[1].len(), 4);
-        assert_eq!(parts[2].len(), 4);
-        assert_eq!(parts[3].len(), 4);
-        assert_eq!(parts[4].len(), 12);
+        assert_eq!(parts.len(), super::common::UUID_V4_SEGMENT_COUNT);
+        for (i, &expected_len) in super::common::UUID_V4_SEGMENT_LENGTHS.iter().enumerate() {
+            assert_eq!(parts[i].len(), expected_len);
+        }
 
         // Version nibble must be '4'
         assert!(

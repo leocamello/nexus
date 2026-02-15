@@ -1,51 +1,35 @@
 //! Integration tests for intelligent routing
 
+mod common;
+
 use nexus::api::{types::*, AppState};
 use nexus::config::NexusConfig;
-use nexus::registry::{Backend, BackendStatus, BackendType, DiscoverySource, Model, Registry};
+use nexus::registry::Registry;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU32, AtomicU64};
 use std::sync::Arc;
-
-fn create_test_backend(id: &str, name: &str, model_id: &str, priority: i32) -> Backend {
-    Backend {
-        id: id.to_string(),
-        name: name.to_string(),
-        url: format!("http://{}", name),
-        backend_type: BackendType::Ollama,
-        status: BackendStatus::Healthy,
-        last_health_check: chrono::Utc::now(),
-        last_error: None,
-        models: vec![Model {
-            id: model_id.to_string(),
-            name: model_id.to_string(),
-            context_length: 4096,
-            supports_vision: false,
-            supports_tools: false,
-            supports_json_mode: false,
-            max_output_tokens: None,
-        }],
-        priority,
-        pending_requests: AtomicU32::new(0),
-        total_requests: AtomicU64::new(0),
-        avg_latency_ms: AtomicU32::new(50),
-        discovery_source: DiscoverySource::Static,
-        metadata: HashMap::new(),
-    }
-}
 
 #[test]
 fn test_routing_with_multiple_backends() {
     // Setup registry with multiple backends
     let registry = Arc::new(Registry::new());
     registry
-        .add_backend(create_test_backend("backend1", "Backend 1", "llama3:8b", 1))
+        .add_backend(common::make_backend(
+            "backend1",
+            "Backend 1",
+            "llama3:8b",
+            1,
+        ))
         .unwrap();
     registry
-        .add_backend(create_test_backend("backend2", "Backend 2", "llama3:8b", 2))
+        .add_backend(common::make_backend(
+            "backend2",
+            "Backend 2",
+            "llama3:8b",
+            2,
+        ))
         .unwrap();
     registry
-        .add_backend(create_test_backend(
+        .add_backend(common::make_backend(
             "backend3",
             "Backend 3",
             "mistral:7b",
@@ -96,7 +80,7 @@ fn test_routing_with_aliases() {
     // Setup registry
     let registry = Arc::new(Registry::new());
     registry
-        .add_backend(create_test_backend(
+        .add_backend(common::make_backend(
             "backend1",
             "Backend 1",
             "llama3:70b",
@@ -150,7 +134,7 @@ fn test_routing_with_fallbacks() {
     // Setup registry with only fallback model
     let registry = Arc::new(Registry::new());
     registry
-        .add_backend(create_test_backend(
+        .add_backend(common::make_backend(
             "backend1",
             "Backend 1",
             "mistral:7b",
@@ -203,7 +187,7 @@ fn test_routing_performance() {
     let registry = Arc::new(Registry::new());
     for i in 0..100 {
         registry
-            .add_backend(create_test_backend(
+            .add_backend(common::make_backend(
                 &format!("backend{}", i),
                 &format!("Backend {}", i),
                 "llama3:8b",
@@ -256,7 +240,7 @@ fn test_routing_with_chained_aliases() {
     // Setup registry with final backend
     let registry = Arc::new(Registry::new());
     registry
-        .add_backend(create_test_backend(
+        .add_backend(common::make_backend(
             "backend1",
             "Backend 1",
             "llama3:70b",
@@ -322,17 +306,11 @@ fn test_routing_rejects_circular_config() {
 
     // Validation should fail
     let result = config.validate();
-    assert!(result.is_err());
-    match result.unwrap_err() {
-        nexus::config::ConfigError::CircularAlias { start, cycle } => {
-            // Should detect the circular reference
-            assert!(
-                (start == "a" && cycle == "a") || (start == "b" && cycle == "b"),
-                "Expected circular alias error for a or b"
-            );
-        }
-        err => panic!("Expected CircularAlias error, got: {:?}", err),
-    }
+    assert!(matches!(
+        result,
+        Err(nexus::config::ConfigError::CircularAlias { ref start, ref cycle })
+            if (start == "a" && cycle == "a") || (start == "b" && cycle == "b")
+    ));
 }
 
 #[test]
@@ -340,10 +318,10 @@ fn test_routing_with_max_depth_chain() {
     // Setup registry with backends at different chain depths
     let registry = Arc::new(Registry::new());
     registry
-        .add_backend(create_test_backend("backend_c", "Backend C", "c", 1))
+        .add_backend(common::make_backend("backend_c", "Backend C", "c", 1))
         .unwrap();
     registry
-        .add_backend(create_test_backend("backend_d", "Backend D", "d", 2))
+        .add_backend(common::make_backend("backend_d", "Backend D", "d", 2))
         .unwrap();
 
     // Create config with 4-level chain: a → b → c → d → e
@@ -406,7 +384,7 @@ fn test_routing_result_with_alias_and_fallback() {
     // And only "fallback" is available
     let registry = Arc::new(Registry::new());
     registry
-        .add_backend(create_test_backend(
+        .add_backend(common::make_backend(
             "backend_fallback",
             "Backend Fallback",
             "fallback",
@@ -463,7 +441,7 @@ fn test_routing_result_no_fallback_info_when_no_fallback_configured() {
     // Given no fallback configured
     let registry = Arc::new(Registry::new());
     registry
-        .add_backend(create_test_backend("backend1", "Backend 1", "model1", 1))
+        .add_backend(common::make_backend("backend1", "Backend 1", "model1", 1))
         .unwrap();
 
     let config = Arc::new(NexusConfig::default());
@@ -502,7 +480,7 @@ fn test_routing_result_no_fallback_info_when_no_fallback_configured() {
 fn test_round_robin_routing_with_fallback() {
     let registry = Arc::new(Registry::new());
     registry
-        .add_backend(create_test_backend(
+        .add_backend(common::make_backend(
             "backend1",
             "Backend 1",
             "fallback-model",
@@ -510,7 +488,7 @@ fn test_round_robin_routing_with_fallback() {
         ))
         .unwrap();
     registry
-        .add_backend(create_test_backend(
+        .add_backend(common::make_backend(
             "backend2",
             "Backend 2",
             "fallback-model",
@@ -560,7 +538,7 @@ fn test_round_robin_routing_with_fallback() {
 fn test_priority_routing_with_fallback() {
     let registry = Arc::new(Registry::new());
     registry
-        .add_backend(create_test_backend(
+        .add_backend(common::make_backend(
             "backend1",
             "Backend Low",
             "fallback-model",
@@ -568,7 +546,7 @@ fn test_priority_routing_with_fallback() {
         ))
         .unwrap();
     registry
-        .add_backend(create_test_backend(
+        .add_backend(common::make_backend(
             "backend2",
             "Backend High",
             "fallback-model",
@@ -618,7 +596,7 @@ fn test_priority_routing_with_fallback() {
 fn test_random_routing_with_fallback() {
     let registry = Arc::new(Registry::new());
     registry
-        .add_backend(create_test_backend(
+        .add_backend(common::make_backend(
             "backend1",
             "Backend 1",
             "fallback-model",
@@ -667,10 +645,10 @@ fn test_random_routing_with_fallback() {
 fn test_round_robin_route_reason_multiple_backends() {
     let registry = Arc::new(Registry::new());
     registry
-        .add_backend(create_test_backend("b1", "B1", "model1", 1))
+        .add_backend(common::make_backend("b1", "B1", "model1", 1))
         .unwrap();
     registry
-        .add_backend(create_test_backend("b2", "B2", "model1", 1))
+        .add_backend(common::make_backend("b2", "B2", "model1", 1))
         .unwrap();
 
     let mut config = NexusConfig::default();
@@ -709,10 +687,10 @@ fn test_round_robin_route_reason_multiple_backends() {
 fn test_priority_route_reason_multiple_backends() {
     let registry = Arc::new(Registry::new());
     registry
-        .add_backend(create_test_backend("b1", "B1", "model1", 5))
+        .add_backend(common::make_backend("b1", "B1", "model1", 5))
         .unwrap();
     registry
-        .add_backend(create_test_backend("b2", "B2", "model1", 1))
+        .add_backend(common::make_backend("b2", "B2", "model1", 1))
         .unwrap();
 
     let mut config = NexusConfig::default();
@@ -751,10 +729,10 @@ fn test_priority_route_reason_multiple_backends() {
 fn test_random_route_reason_multiple_backends() {
     let registry = Arc::new(Registry::new());
     registry
-        .add_backend(create_test_backend("b1", "B1", "model1", 1))
+        .add_backend(common::make_backend("b1", "B1", "model1", 1))
         .unwrap();
     registry
-        .add_backend(create_test_backend("b2", "B2", "model1", 1))
+        .add_backend(common::make_backend("b2", "B2", "model1", 1))
         .unwrap();
 
     let mut config = NexusConfig::default();

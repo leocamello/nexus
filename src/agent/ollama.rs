@@ -411,11 +411,7 @@ mod tests {
         let agent = test_agent("http://invalid-host-that-does-not-exist:9999".to_string());
         let result = agent.health_check().await;
 
-        assert!(result.is_err());
-        match result {
-            Err(AgentError::Network(_)) => {}
-            _ => panic!("Expected Network error"),
-        }
+        assert!(matches!(result, Err(AgentError::Network(_))));
     }
 
     #[tokio::test]
@@ -588,12 +584,9 @@ mod tests {
         let result = agent.chat_completion(request, None).await;
 
         mock.assert_async().await;
-        assert!(result.is_err());
-        match result {
-            Err(AgentError::Upstream { status, .. }) => {
-                assert_eq!(status, 500);
-            }
-            _ => panic!("Expected Upstream error"),
-        }
+        assert!(matches!(
+            result,
+            Err(AgentError::Upstream { status: 500, .. })
+        ));
     }
 }

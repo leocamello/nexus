@@ -2,51 +2,14 @@
 //!
 //! These tests verify SSE streaming functionality for chat completions.
 
+mod common;
+
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use nexus::api::{create_router, AppState};
-use nexus::config::NexusConfig;
-use nexus::registry::{Backend, BackendStatus, BackendType, DiscoverySource, Model, Registry};
-use std::sync::Arc;
+use nexus::registry::BackendStatus;
 use tower::Service;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
-
-/// Create a test app with a mock backend registered.
-async fn create_test_app_with_mock(mock_server: &MockServer) -> (axum::Router, Arc<Registry>) {
-    let registry = Arc::new(Registry::new());
-    let config = Arc::new(NexusConfig::default());
-
-    // Register a backend pointing to the mock server
-    let backend = Backend::new(
-        "test-backend".to_string(),
-        "Test Backend".to_string(),
-        mock_server.uri(),
-        BackendType::Generic,
-        vec![],
-        DiscoverySource::Static,
-        std::collections::HashMap::new(),
-    );
-    registry.add_backend(backend).unwrap();
-
-    // Set backend as healthy with a model
-    let _ = registry.update_status("test-backend", BackendStatus::Healthy, None);
-    let _ = registry.update_models(
-        "test-backend",
-        vec![Model {
-            id: "test-model".to_string(),
-            name: "Test Model".to_string(),
-            context_length: 4096,
-            supports_vision: false,
-            supports_tools: false,
-            supports_json_mode: false,
-            max_output_tokens: None,
-        }],
-    );
-
-    let state = Arc::new(AppState::new(registry.clone(), config));
-    (create_router(state), registry)
-}
 
 /// Create SSE response body with chunks.
 fn create_sse_response(chunks: &[&str], include_done: bool) -> String {
@@ -91,7 +54,7 @@ async fn test_streaming_returns_sse_content_type() {
         .mount(&mock_server)
         .await;
 
-    let (mut app, _) = create_test_app_with_mock(&mock_server).await;
+    let (mut app, _) = common::make_app_with_mock(&mock_server).await;
 
     let request = Request::builder()
         .method("POST")
@@ -127,7 +90,7 @@ async fn test_streaming_sends_chunks() {
         .mount(&mock_server)
         .await;
 
-    let (mut app, _) = create_test_app_with_mock(&mock_server).await;
+    let (mut app, _) = common::make_app_with_mock(&mock_server).await;
 
     let request = Request::builder()
         .method("POST")
@@ -168,7 +131,7 @@ async fn test_streaming_done_message() {
         .mount(&mock_server)
         .await;
 
-    let (mut app, _) = create_test_app_with_mock(&mock_server).await;
+    let (mut app, _) = common::make_app_with_mock(&mock_server).await;
 
     let request = Request::builder()
         .method("POST")
@@ -203,7 +166,7 @@ async fn test_streaming_chunk_format() {
         .mount(&mock_server)
         .await;
 
-    let (mut app, _) = create_test_app_with_mock(&mock_server).await;
+    let (mut app, _) = common::make_app_with_mock(&mock_server).await;
 
     let request = Request::builder()
         .method("POST")
@@ -234,7 +197,7 @@ async fn test_streaming_chunk_format() {
 #[tokio::test]
 async fn test_streaming_model_not_found() {
     let mock_server = MockServer::start().await;
-    let (mut app, _) = create_test_app_with_mock(&mock_server).await;
+    let (mut app, _) = common::make_app_with_mock(&mock_server).await;
 
     let request = Request::builder()
         .method("POST")
@@ -254,7 +217,7 @@ async fn test_streaming_model_not_found() {
 #[tokio::test]
 async fn test_streaming_no_healthy_backends() {
     let mock_server = MockServer::start().await;
-    let (mut app, registry) = create_test_app_with_mock(&mock_server).await;
+    let (mut app, registry) = common::make_app_with_mock(&mock_server).await;
 
     // Mark backend as unhealthy
     let _ = registry.update_status("test-backend", BackendStatus::Unhealthy, None);
@@ -283,7 +246,7 @@ async fn test_streaming_backend_error() {
         .mount(&mock_server)
         .await;
 
-    let (mut app, _) = create_test_app_with_mock(&mock_server).await;
+    let (mut app, _) = common::make_app_with_mock(&mock_server).await;
 
     let request = Request::builder()
         .method("POST")
@@ -326,7 +289,7 @@ async fn test_streaming_forwards_auth_header() {
         .mount(&mock_server)
         .await;
 
-    let (mut app, _) = create_test_app_with_mock(&mock_server).await;
+    let (mut app, _) = common::make_app_with_mock(&mock_server).await;
 
     let request = Request::builder()
         .method("POST")

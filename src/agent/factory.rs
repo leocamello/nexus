@@ -161,13 +161,9 @@ mod tests {
             HashMap::new(),
         );
 
-        assert!(result.is_err());
-        match result {
-            Err(AgentError::Configuration(msg)) => {
-                assert!(msg.contains("api_key"));
-            }
-            _ => panic!("Expected Configuration error"),
-        }
+        assert!(
+            matches!(result, Err(AgentError::Configuration(ref msg)) if msg.contains("api_key"))
+        );
     }
 
     #[test]
