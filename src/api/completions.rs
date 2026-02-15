@@ -76,6 +76,7 @@ pub async fn handle(
             crate::routing::RoutingError::FallbackChainExhausted { .. } => "fallback_exhausted",
             crate::routing::RoutingError::NoHealthyBackend { .. } => "no_healthy_backend",
             crate::routing::RoutingError::CapabilityMismatch { .. } => "capability_mismatch",
+            crate::routing::RoutingError::ReconcilerError(_) => "policy_error",
         };
 
         let sanitized_model = state.metrics_collector.sanitize_label(&requested_model);
@@ -102,6 +103,9 @@ pub async fn handle(
                     model, missing
                 )
             }
+            crate::routing::RoutingError::ReconcilerError(msg) => {
+                format!("Routing policy error: {}", msg)
+            }
         };
 
         record_request_completion(
@@ -124,6 +128,7 @@ pub async fn handle(
             crate::routing::RoutingError::FallbackChainExhausted { .. } => 404u16,
             crate::routing::RoutingError::NoHealthyBackend { .. } => 503u16,
             crate::routing::RoutingError::CapabilityMismatch { .. } => 400u16,
+            crate::routing::RoutingError::ReconcilerError(_) => 400u16,
         };
         Span::current().record("status_code", status_code);
 
@@ -145,6 +150,9 @@ pub async fn handle(
                     "Model '{}' lacks required capabilities: {:?}",
                     model, missing
                 ))
+            }
+            crate::routing::RoutingError::ReconcilerError(msg) => {
+                ApiError::bad_request(&format!("Routing policy error: {}", msg))
             }
         }
     })?;
@@ -471,6 +479,9 @@ async fn handle_streaming(
                     "Model '{}' lacks required capabilities: {:?}",
                     model, missing
                 ))
+            }
+            crate::routing::RoutingError::ReconcilerError(msg) => {
+                ApiError::bad_request(&format!("Routing policy error: {}", msg))
             }
         }
     })?;

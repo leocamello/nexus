@@ -19,6 +19,16 @@ pub struct RequestRequirements {
 
     /// Whether the request requires JSON mode
     pub needs_json_mode: bool,
+
+    // Control plane extensions (RFC-001 Phase 2)
+    /// Privacy zone constraint (if specified)
+    pub privacy_zone: Option<crate::agent::types::PrivacyZone>,
+
+    /// Budget limit for this request (if specified)
+    pub budget_limit: Option<f64>,
+
+    /// Minimum capability tier required (if specified)
+    pub min_capability_tier: Option<u8>,
 }
 
 impl RequestRequirements {
@@ -68,6 +78,9 @@ impl RequestRequirements {
             needs_vision,
             needs_tools,
             needs_json_mode,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         }
     }
 }

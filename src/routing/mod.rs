@@ -18,6 +18,7 @@ pub use requirements::RequestRequirements;
 pub use scoring::{score_backend, ScoringWeights};
 pub use strategies::RoutingStrategy;
 
+use crate::control::reconciler::Reconciler;
 use crate::registry::{Backend, BackendStatus, Registry};
 
 /// Result of a successful routing decision
@@ -54,6 +55,9 @@ pub struct Router {
 
     /// Round-robin counter for round-robin strategy
     round_robin_counter: AtomicU64,
+
+    /// Control plane reconciler pipeline (optional)
+    pipeline: Option<Arc<crate::control::ReconcilerPipeline>>,
 }
 
 impl Router {
@@ -70,6 +74,7 @@ impl Router {
             aliases: HashMap::new(),
             fallbacks: HashMap::new(),
             round_robin_counter: AtomicU64::new(0),
+            pipeline: None,
         }
     }
 
@@ -88,6 +93,25 @@ impl Router {
             aliases,
             fallbacks,
             round_robin_counter: AtomicU64::new(0),
+            pipeline: None,
+        }
+    }
+
+    /// Create a new router with custom reconciler pipeline
+    pub fn with_pipeline(
+        registry: Arc<Registry>,
+        strategy: RoutingStrategy,
+        weights: ScoringWeights,
+        pipeline: Arc<crate::control::ReconcilerPipeline>,
+    ) -> Self {
+        Self {
+            registry,
+            strategy,
+            weights,
+            aliases: HashMap::new(),
+            fallbacks: HashMap::new(),
+            round_robin_counter: AtomicU64::new(0),
+            pipeline: Some(pipeline),
         }
     }
 
@@ -128,6 +152,63 @@ impl Router {
     /// Get fallback chain for a model
     fn get_fallbacks(&self, model: &str) -> Vec<String> {
         self.fallbacks.get(model).cloned().unwrap_or_default()
+    }
+
+    /// Select backend using control plane pipeline (async)
+    #[allow(dead_code)]
+    async fn select_backend_async(
+        &self,
+        requirements: &RequestRequirements,
+    ) -> Result<RoutingResult, RoutingError> {
+        // Resolve alias first
+        let model = self.resolve_alias(&requirements.model);
+
+        // Get candidate backends for the model
+        let candidates = self.filter_candidates(&model, requirements);
+
+        if candidates.is_empty() {
+            // Check if model exists at all
+            let all_backends = self.registry.get_backends_for_model(&model);
+            if all_backends.is_empty() {
+                return Err(RoutingError::ModelNotFound {
+                    model: requirements.model.clone(),
+                });
+            } else {
+                return Err(RoutingError::NoHealthyBackend {
+                    model: model.clone(),
+                });
+            }
+        }
+
+        // Convert candidates to Arc<Backend> for pipeline
+        let arc_candidates: Vec<Arc<Backend>> = candidates.into_iter().map(Arc::new).collect();
+
+        // Create routing intent
+        let mut intent = crate::control::RoutingIntent::new(requirements.clone(), arc_candidates);
+
+        // Execute pipeline
+        if let Some(pipeline) = &self.pipeline {
+            pipeline.execute(&mut intent).await?;
+        } else {
+            // No pipeline configured, use default selection logic
+            let selection_reconciler =
+                crate::control::selection::SelectionReconciler::new(self.strategy, self.weights);
+            selection_reconciler.reconcile(&mut intent).await?;
+        }
+
+        // Extract decision
+        if let Some(decision) = intent.decision {
+            Ok(RoutingResult {
+                backend: decision.backend,
+                actual_model: model.clone(),
+                fallback_used: intent.annotations.fallback_used,
+                route_reason: decision.reason,
+            })
+        } else {
+            Err(RoutingError::ReconcilerError(
+                "Pipeline did not produce a routing decision".to_string(),
+            ))
+        }
     }
 
     /// Select the best backend for the given requirements
@@ -648,6 +729,9 @@ mod filter_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -679,6 +763,9 @@ mod filter_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -710,6 +797,9 @@ mod filter_tests {
             needs_vision: true,
             needs_tools: false,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -741,6 +831,9 @@ mod filter_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -764,6 +857,9 @@ mod filter_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
 
         let candidates = router.filter_candidates("nonexistent", &requirements);
@@ -794,6 +890,9 @@ mod filter_tests {
             needs_vision: false,
             needs_tools: true,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -844,6 +943,9 @@ mod filter_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: true,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -885,6 +987,9 @@ mod filter_tests {
             needs_vision: true,
             needs_tools: true,
             needs_json_mode: true,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -959,6 +1064,9 @@ mod smart_strategy_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
 
         let result = router.select_backend(&requirements).unwrap();
@@ -980,6 +1088,9 @@ mod smart_strategy_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
 
         let result = router.select_backend(&requirements).unwrap();
@@ -1001,6 +1112,9 @@ mod smart_strategy_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
 
         let result = router.select_backend(&requirements).unwrap();
@@ -1024,6 +1138,9 @@ mod smart_strategy_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
 
         let result = router.select_backend(&requirements);
@@ -1093,6 +1210,9 @@ mod other_strategies_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
 
         // Should cycle through: A, B, C, A, B, C
@@ -1131,6 +1251,9 @@ mod other_strategies_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
 
         // Should always select Backend B (priority 1)
@@ -1155,6 +1278,9 @@ mod other_strategies_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
 
         // Should select from all three backends over many iterations
@@ -1236,6 +1362,9 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
 
         let result = router.select_backend(&requirements).unwrap();
@@ -1275,6 +1404,9 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
 
         let result = router.select_backend(&requirements).unwrap();
@@ -1314,6 +1446,9 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
 
         let result = router.select_backend(&requirements);
@@ -1356,6 +1491,9 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
 
         let result = router.select_backend(&requirements).unwrap();
@@ -1395,6 +1533,9 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
 
         // When resolving "gpt-4"
@@ -1436,6 +1577,9 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
 
         // When resolving "a"
@@ -1478,6 +1622,9 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
 
         // When resolving "a" (4-level chain)
@@ -1517,6 +1664,9 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
 
         let result = router.select_backend(&requirements).unwrap();
@@ -1556,6 +1706,9 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
 
         // When select_backend("primary")
@@ -1600,6 +1753,9 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
 
         // When select_backend("primary")

@@ -292,6 +292,9 @@ mod us3_routing_visibility {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
         let result = router.select_backend(&requirements).unwrap();
 
@@ -358,6 +361,9 @@ mod us3_routing_visibility {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
         let result = router.select_backend(&requirements).unwrap();
 
@@ -420,6 +426,9 @@ mod us3_routing_visibility {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
         };
         let result = router.select_backend(&requirements).unwrap();
 

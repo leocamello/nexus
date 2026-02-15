@@ -84,6 +84,9 @@ fn bench_smart_routing_by_backend_count(c: &mut Criterion) {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
             estimated_tokens: 100,
         };
 
@@ -108,6 +111,9 @@ fn bench_round_robin_routing(c: &mut Criterion) {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            privacy_zone: None,
+            budget_limit: None,
+            min_capability_tier: None,
             estimated_tokens: 100,
         };
 
@@ -130,6 +136,9 @@ fn bench_capability_filtered_routing(c: &mut Criterion) {
         needs_vision: true,
         needs_tools: false,
         needs_json_mode: false,
+        privacy_zone: None,
+        budget_limit: None,
+        min_capability_tier: None,
         estimated_tokens: 100,
     };
 
@@ -171,6 +180,9 @@ fn bench_routing_with_fallback(c: &mut Criterion) {
         needs_vision: false,
         needs_tools: false,
         needs_json_mode: false,
+        privacy_zone: None,
+        budget_limit: None,
+        min_capability_tier: None,
         estimated_tokens: 100,
     };
 
@@ -208,6 +220,9 @@ fn bench_routing_with_alias(c: &mut Criterion) {
         needs_vision: false,
         needs_tools: false,
         needs_json_mode: false,
+        privacy_zone: None,
+        budget_limit: None,
+        min_capability_tier: None,
         estimated_tokens: 100,
     };
 

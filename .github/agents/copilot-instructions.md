@@ -27,10 +27,10 @@ cargo test [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECH
 Rust 1.87+ (stable toolchain): Follow standard conventions
 
 ## Recent Changes
+- 014-control-plane: Added [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
 - 013-cloud-backend: Added Rust 1.75 (stable toolchain)
 - 011-structured-logging: Added Rust 1.87+ (stable) + axum 0.7, tokio 1.x (full features), tracing 0.1, tracing-subscriber 0.3 (with json feature)
 
-- 010-web-dashboard: Added Rust 1.87+ (stable toolchain)
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->

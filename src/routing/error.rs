@@ -20,4 +20,34 @@ pub enum RoutingError {
     /// All models in the fallback chain were exhausted
     #[error("All backends in fallback chain unavailable: {chain:?}")]
     FallbackChainExhausted { chain: Vec<String> },
+
+    /// Control plane reconciler error
+    #[error("Routing policy error: {0}")]
+    ReconcilerError(String),
+}
+
+impl From<crate::control::reconciler::ReconcileError> for RoutingError {
+    fn from(err: crate::control::reconciler::ReconcileError) -> Self {
+        use crate::control::reconciler::ReconcileError;
+        match err {
+            ReconcileError::NoCandidates => RoutingError::ReconcilerError(
+                "No backends available after policy filtering".to_string(),
+            ),
+            ReconcileError::PrivacyViolation(msg) => {
+                RoutingError::ReconcilerError(format!("Privacy violation: {}", msg))
+            }
+            ReconcileError::BudgetServiceError(msg) => {
+                RoutingError::ReconcilerError(format!("Budget service error: {}", msg))
+            }
+            ReconcileError::CapabilityUnavailable(msg) => {
+                RoutingError::ReconcilerError(format!("Capability unavailable: {}", msg))
+            }
+            ReconcileError::SelectionFailed(msg) => {
+                RoutingError::ReconcilerError(format!("Selection failed: {}", msg))
+            }
+            ReconcileError::Internal(msg) => {
+                RoutingError::ReconcilerError(format!("Internal error: {}", msg))
+            }
+        }
+    }
 }
