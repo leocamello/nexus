@@ -1,8 +1,8 @@
 //! Agent factory for creating InferenceAgent trait objects from configuration.
 
 use super::{
-    generic::GenericOpenAIAgent, lmstudio::LMStudioAgent, ollama::OllamaAgent, openai::OpenAIAgent,
-    AgentError, InferenceAgent,
+    anthropic::AnthropicAgent, generic::GenericOpenAIAgent, lmstudio::LMStudioAgent,
+    ollama::OllamaAgent, openai::OpenAIAgent, AgentError, InferenceAgent,
 };
 use crate::registry::BackendType;
 use reqwest::Client;
@@ -75,6 +75,27 @@ pub fn create_agent(
             };
 
             Ok(Arc::new(OpenAIAgent::new(id, name, url, api_key, client)))
+        }
+        BackendType::Anthropic => {
+            // Extract API key from metadata
+            let api_key = if let Some(key) = metadata.get("api_key") {
+                key.clone()
+            } else if let Some(env_var) = metadata.get("api_key_env") {
+                std::env::var(env_var).map_err(|e| {
+                    AgentError::Configuration(format!(
+                        "Failed to read API key from env var '{}': {}",
+                        env_var, e
+                    ))
+                })?
+            } else {
+                return Err(AgentError::Configuration(
+                    "Anthropic backend requires 'api_key' or 'api_key_env' in metadata".to_string(),
+                ));
+            };
+
+            Ok(Arc::new(AnthropicAgent::new(
+                id, name, url, api_key, client,
+            )))
         }
         BackendType::LMStudio => Ok(Arc::new(LMStudioAgent::new(id, name, url, client))),
         BackendType::VLLM | BackendType::LlamaCpp | BackendType::Exo | BackendType::Generic => Ok(

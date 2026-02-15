@@ -1,6 +1,7 @@
 //! Chat completions endpoint handler.
 
 use crate::api::{
+    headers::{BackendTypeHeader, NexusHeaders, RouteReason},
     ApiError, AppState, ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse,
     ChunkChoice, ChunkDelta,
 };
@@ -260,8 +261,32 @@ pub async fn handle(
                     None,
                 );
 
-                // Create response with fallback header if applicable
+                // Create response with X-Nexus-* headers
                 let mut resp = Json(response).into_response();
+
+                // Inject Nexus-Transparent Protocol headers
+                let route_reason = if fallback_used {
+                    RouteReason::BackendFailover
+                } else {
+                    RouteReason::CapabilityMatch
+                };
+                let agent_profile = state.registry.get_agent(&backend.id).map(|a| a.profile());
+                let privacy_zone = agent_profile
+                    .as_ref()
+                    .map(|p| p.privacy_zone)
+                    .unwrap_or(crate::agent::PrivacyZone::Restricted);
+                let backend_type_header =
+                    BackendTypeHeader::from_backend_type(backend.backend_type);
+
+                let nexus_headers = NexusHeaders::new(
+                    backend.name.clone(),
+                    backend_type_header,
+                    route_reason,
+                    privacy_zone,
+                    None, // Cost estimation deferred to F14
+                );
+                nexus_headers.inject_into(resp.headers_mut());
+
                 if fallback_used {
                     if let Ok(header_value) = HeaderValue::from_str(&actual_model) {
                         resp.headers_mut()
@@ -464,11 +489,34 @@ async fn handle_streaming(
 
     info!(backend_id = %backend_id, "Starting streaming request");
 
+    // Build Nexus headers before state is moved into stream
+    let route_reason = if fallback_used {
+        RouteReason::BackendFailover
+    } else {
+        RouteReason::CapabilityMatch
+    };
+    let agent_profile = state.registry.get_agent(&backend_id).map(|a| a.profile());
+    let privacy_zone = agent_profile
+        .as_ref()
+        .map(|p| p.privacy_zone)
+        .unwrap_or(crate::agent::PrivacyZone::Restricted);
+    let backend_type_header = BackendTypeHeader::from_backend_type(backend.backend_type);
+
+    let nexus_headers = NexusHeaders::new(
+        backend.name.clone(),
+        backend_type_header,
+        route_reason,
+        privacy_zone,
+        None, // Cost estimation deferred to F14
+    );
+
     // Create SSE stream - pass cloned backend data
     let stream = create_sse_stream(state, Arc::clone(&backend), headers, request);
 
-    // Create SSE response and add fallback header if needed
+    // Create SSE response with X-Nexus-* headers
     let mut resp = Sse::new(stream).into_response();
+    nexus_headers.inject_into(resp.headers_mut());
+
     if fallback_used {
         if let Ok(header_value) = HeaderValue::from_str(&actual_model) {
             resp.headers_mut()

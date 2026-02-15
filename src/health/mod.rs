@@ -88,6 +88,7 @@ impl HealthChecker {
             BackendType::VLLM
             | BackendType::Exo
             | BackendType::OpenAI
+            | BackendType::Anthropic
             | BackendType::LMStudio
             | BackendType::Generic => "/v1/models",
         }
@@ -265,6 +266,7 @@ impl HealthChecker {
             BackendType::VLLM
             | BackendType::Exo
             | BackendType::OpenAI
+            | BackendType::Anthropic
             | BackendType::LMStudio
             | BackendType::Generic => match parser::parse_openai_response(body) {
                 Ok(models) => HealthCheckResult::Success { latency_ms, models },

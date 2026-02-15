@@ -1,0 +1,261 @@
+# Cloud Backend Configuration Examples
+# TOML format for registering cloud LLM APIs as Nexus backends
+
+# =============================================================================
+# OpenAI Configuration
+# =============================================================================
+
+[[backends]]
+name = "openai-gpt4"
+url = "https://api.openai.com"
+type = "openai"
+api_key_env = "OPENAI_API_KEY"       # Environment variable containing API key
+zone = "open"                        # Privacy zone: "open" (cloud) or "restricted" (local)
+tier = 4                             # Capability tier: 0-4 (4 = highest capability)
+priority = 70                        # Routing priority (higher = preferred)
+
+[[backends]]
+name = "openai-gpt35-turbo"
+url = "https://api.openai.com"
+type = "openai"
+api_key_env = "OPENAI_API_KEY"
+zone = "open"
+tier = 3
+priority = 60
+
+# =============================================================================
+# Anthropic Configuration
+# =============================================================================
+
+[[backends]]
+name = "anthropic-claude-opus"
+url = "https://api.anthropic.com"
+type = "anthropic"
+api_key_env = "ANTHROPIC_API_KEY"    # Anthropic API key (starts with sk-ant-)
+zone = "open"
+tier = 4
+priority = 65
+
+[[backends]]
+name = "anthropic-claude-sonnet"
+url = "https://api.anthropic.com"
+type = "anthropic"
+api_key_env = "ANTHROPIC_API_KEY"
+zone = "open"
+tier = 3
+priority = 55
+
+# =============================================================================
+# Google AI (Gemini) Configuration
+# =============================================================================
+
+[[backends]]
+name = "google-gemini-2-flash"
+url = "https://generativelanguage.googleapis.com"
+type = "google"
+api_key_env = "GOOGLE_API_KEY"       # Google AI API key
+zone = "open"
+tier = 4
+priority = 60
+
+[[backends]]
+name = "google-gemini-15-pro"
+url = "https://generativelanguage.googleapis.com"
+type = "google"
+api_key_env = "GOOGLE_API_KEY"
+zone = "open"
+tier = 4
+priority = 55
+
+# =============================================================================
+# Pricing Configuration (Optional)
+# For X-Nexus-Cost-Estimated header
+# =============================================================================
+
+[pricing.openai]
+"gpt-4" = { input_per_1k = 0.03, output_per_1k = 0.06 }
+"gpt-4-turbo" = { input_per_1k = 0.01, output_per_1k = 0.03 }
+"gpt-4o" = { input_per_1k = 0.0025, output_per_1k = 0.01 }
+"gpt-4o-mini" = { input_per_1k = 0.00015, output_per_1k = 0.0006 }
+"gpt-3.5-turbo" = { input_per_1k = 0.0005, output_per_1k = 0.0015 }
+
+[pricing.anthropic]
+"claude-3-opus-20240229" = { input_per_1k = 0.015, output_per_1k = 0.075 }
+"claude-3-sonnet-20240229" = { input_per_1k = 0.003, output_per_1k = 0.015 }
+"claude-3-haiku-20240307" = { input_per_1k = 0.00025, output_per_1k = 0.00125 }
+
+[pricing.google]
+"gemini-2.0-flash" = { input_per_1k = 0.0001, output_per_1k = 0.0004 }
+"gemini-1.5-pro" = { input_per_1k = 0.00125, output_per_1k = 0.005 }
+"gemini-1.5-flash" = { input_per_1k = 0.000075, output_per_1k = 0.0003 }
+
+# =============================================================================
+# Environment Variables Setup
+# =============================================================================
+
+# Set these in your shell or .env file:
+#
+# export OPENAI_API_KEY="sk-..."
+# export ANTHROPIC_API_KEY="sk-ant-..."
+# export GOOGLE_API_KEY="AIza..."
+
+# =============================================================================
+# Field Descriptions
+# =============================================================================
+
+# name (required)
+#   - Unique identifier for this backend
+#   - Used in X-Nexus-Backend response header
+#   - Must be unique across all backends
+
+# url (required)
+#   - Base URL for the provider's API
+#   - Examples:
+#     - OpenAI: https://api.openai.com
+#     - Anthropic: https://api.anthropic.com
+#     - Google: https://generativelanguage.googleapis.com
+
+# type (required)
+#   - Backend type: "openai", "anthropic", "google"
+#   - Determines which agent implementation to use
+#   - Triggers API format translation if needed
+
+# api_key_env (required for cloud backends)
+#   - Name of environment variable containing API key
+#   - Never put the actual key in this file
+#   - Multiple backends can reference the same env var
+
+# zone (required)
+#   - Privacy zone: "open" or "restricted"
+#   - "open": Cloud backends, data leaves local network
+#   - "restricted": Local backends, data stays on-premises
+#   - Used by Privacy Reconciler (F13) for routing decisions
+
+# tier (optional)
+#   - Capability tier: 0 (lowest) to 4 (highest)
+#   - Used for capability-based routing
+#   - If omitted, auto-detected from model capabilities
+#   - Recommended to set explicitly for consistent routing
+
+# priority (optional, default: 50)
+#   - Routing priority when multiple backends match
+#   - Higher values = more preferred
+#   - Range: typically 0-100
+#   - Local backends often have higher priority than cloud
+
+# =============================================================================
+# Routing Behavior Examples
+# =============================================================================
+
+# Scenario 1: Local capacity overflow
+# - Request arrives for GPT-4-level model
+# - Local backends at capacity
+# - Nexus routes to "openai-gpt4" (priority 70)
+# - Response includes: X-Nexus-Route-Reason: capacity-overflow
+
+# Scenario 2: Privacy-constrained request
+# - Request marked as privacy-sensitive (F13)
+# - Only "restricted" zone backends eligible
+# - Cloud backends excluded automatically
+# - If no restricted backend available → 503 with context
+
+# Scenario 3: Capability matching
+# - Request needs tier 4 capability (e.g., large context)
+# - Multiple tier 4 backends healthy
+# - Nexus selects highest priority: "openai-gpt4" (70)
+# - Response includes: X-Nexus-Route-Reason: capability-match
+
+# Scenario 4: Failover
+# - Request routed to "openai-gpt4"
+# - OpenAI returns 503 (rate limit or outage)
+# - Nexus fails over to "anthropic-claude-opus" (priority 65)
+# - Response includes: X-Nexus-Route-Reason: backend-failover
+
+# =============================================================================
+# Health Checks
+# =============================================================================
+
+# Cloud backends participate in periodic health checks (default: 30s)
+# Health check endpoints:
+# - OpenAI: GET /v1/models
+# - Anthropic: GET /v1/models (or health endpoint if available)
+# - Google: GET /v1beta/models
+
+# Failed health checks mark backend unhealthy:
+# - Invalid API key → unhealthy
+# - Network timeout → unhealthy
+# - 5xx errors → unhealthy
+# - Recovery: next successful health check → healthy
+
+# =============================================================================
+# Cost Estimation
+# =============================================================================
+
+# If [pricing.{provider}] section exists:
+# - Nexus calculates per-request cost from token usage
+# - Cost added to X-Nexus-Cost-Estimated header
+# - Format: "$0.0042" (4 decimal places)
+
+# If pricing missing for a model:
+# - X-Nexus-Cost-Estimated header omitted (graceful degradation)
+# - Warning logged during request
+
+# Cost calculation:
+# cost = (prompt_tokens / 1000 * input_per_1k) + 
+#        (completion_tokens / 1000 * output_per_1k)
+
+# =============================================================================
+# Complete Example Configuration
+# =============================================================================
+
+# Below is a complete Nexus config with cloud backends alongside local:
+
+[server]
+host = "0.0.0.0"
+port = 8000
+
+[discovery]
+enabled = true
+service_name = "_openai._tcp"
+
+[health_check]
+interval_seconds = 30
+timeout_seconds = 5
+
+[routing]
+strategy = "priority"
+max_retries = 2
+
+# Local backends (discovered or static)
+[[backends]]
+name = "local-llama-70b"
+url = "http://localhost:11434"
+type = "ollama"
+zone = "restricted"
+tier = 3
+priority = 80  # Prefer local over cloud
+
+# Cloud backends
+[[backends]]
+name = "openai-gpt4"
+url = "https://api.openai.com"
+type = "openai"
+api_key_env = "OPENAI_API_KEY"
+zone = "open"
+tier = 4
+priority = 70  # Use when local unavailable
+
+[[backends]]
+name = "anthropic-claude"
+url = "https://api.anthropic.com"
+type = "anthropic"
+api_key_env = "ANTHROPIC_API_KEY"
+zone = "open"
+tier = 4
+priority = 65  # Fallback to Anthropic
+
+[pricing.openai]
+"gpt-4" = { input_per_1k = 0.03, output_per_1k = 0.06 }
+
+[pricing.anthropic]
+"claude-3-opus-20240229" = { input_per_1k = 0.015, output_per_1k = 0.075 }

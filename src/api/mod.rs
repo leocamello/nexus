@@ -61,10 +61,12 @@
 //! ```
 
 mod completions;
+pub mod headers;
 mod health;
 pub mod models;
 pub mod types;
 
+pub use headers::{BackendTypeHeader, NexusHeaders, RouteReason};
 pub use types::*;
 
 use crate::config::NexusConfig;

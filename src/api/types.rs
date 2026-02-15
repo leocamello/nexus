@@ -140,6 +140,36 @@ pub struct ApiErrorBody {
     pub param: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub code: Option<String>,
+    /// Additional context for actionable errors (503)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context: Option<ActionableErrorContext>,
+}
+
+/// Actionable error context for 503 Service Unavailable responses.
+///
+/// Provides structured information to help clients understand why their
+/// request couldn't be served and what alternatives are available.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ActionableErrorContext {
+    /// Required capability tier (if tier constraint was the reason)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required_tier: Option<u8>,
+    /// List of backends that could serve this request (with status)
+    pub available_backends: Vec<BackendStatus>,
+    /// Estimated time until capacity becomes available (seconds)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eta_seconds: Option<u32>,
+}
+
+/// Backend status for actionable error context.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BackendStatus {
+    pub name: String,
+    pub status: String, // "healthy" | "unhealthy" | "at_capacity"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zone: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tier: Option<u8>,
 }
 
 impl ApiError {
@@ -151,6 +181,7 @@ impl ApiError {
                 r#type: "invalid_request_error".to_string(),
                 param: None,
                 code: Some("invalid_request_error".to_string()),
+                context: None,
             },
         }
     }
@@ -168,6 +199,7 @@ impl ApiError {
                 r#type: "invalid_request_error".to_string(),
                 param: Some("model".to_string()),
                 code: Some("model_not_found".to_string()),
+                context: None,
             },
         }
     }
@@ -180,6 +212,7 @@ impl ApiError {
                 r#type: "server_error".to_string(),
                 param: None,
                 code: Some("bad_gateway".to_string()),
+                context: None,
             },
         }
     }
@@ -192,6 +225,7 @@ impl ApiError {
                 r#type: "server_error".to_string(),
                 param: None,
                 code: Some("gateway_timeout".to_string()),
+                context: None,
             },
         }
     }
@@ -204,6 +238,23 @@ impl ApiError {
                 r#type: "server_error".to_string(),
                 param: None,
                 code: Some("service_unavailable".to_string()),
+                context: None,
+            },
+        }
+    }
+
+    /// Create a service unavailable error (503) with actionable context.
+    pub fn service_unavailable_with_context(
+        message: &str,
+        context: ActionableErrorContext,
+    ) -> Self {
+        Self {
+            error: ApiErrorBody {
+                message: message.to_string(),
+                r#type: "server_error".to_string(),
+                param: None,
+                code: Some("service_unavailable".to_string()),
+                context: Some(context),
             },
         }
     }
@@ -225,6 +276,7 @@ impl ApiError {
                             r#type: "invalid_request_error".to_string(),
                             param: None,
                             code: Some("not_found".to_string()),
+                            context: None,
                         },
                     }
                 } else {
@@ -387,6 +439,7 @@ mod tests {
                 r#type: "invalid_request_error".to_string(),
                 param: Some("model".to_string()),
                 code: Some("model_not_found".to_string()),
+                context: None,
             },
         };
         let json = serde_json::to_value(&error).unwrap();
@@ -516,6 +569,7 @@ mod tests {
                 r#type: "server_error".to_string(),
                 param: None,
                 code: Some("unknown_code".to_string()),
+                context: None,
             },
         };
         assert_eq!(
@@ -532,6 +586,7 @@ mod tests {
                 r#type: "server_error".to_string(),
                 param: None,
                 code: None,
+                context: None,
             },
         };
         assert_eq!(

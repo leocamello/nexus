@@ -51,6 +51,7 @@ name = "local-ollama"
 url = "http://localhost:11434"
 type = "ollama"
 priority = 1
+zone = "Restricted"  # Local-only, no cloud overflow
 
 # [[backends]]
 # name = "lmstudio"
@@ -64,12 +65,24 @@ priority = 1
 # type = "vllm"
 # priority = 3
 
+# Cloud backend examples (for overflow capacity)
 # [[backends]]
-# name = "cloud-fallback"
+# name = "openai-gpt4"
 # url = "https://api.openai.com"
 # type = "openai"
 # priority = 100
 # api_key_env = "OPENAI_API_KEY"
+# zone = "Open"        # Cloud backend, can receive overflow
+# tier = 4             # Capability tier (0-4, auto-detect if omitted)
+
+# [[backends]]
+# name = "anthropic-claude"
+# url = "https://api.anthropic.com"
+# type = "anthropic"
+# priority = 110
+# api_key_env = "ANTHROPIC_API_KEY"
+# zone = "Open"
+# tier = 4
 
 [logging]
 # Global log level: trace | debug | info | warn | error

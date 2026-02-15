@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use axum::http::HeaderMap;
 use futures_util::stream::BoxStream;
 
+pub mod anthropic;
 pub mod error;
 pub mod factory;
 pub mod generic;

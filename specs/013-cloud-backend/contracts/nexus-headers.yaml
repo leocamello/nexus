@@ -1,0 +1,198 @@
+# X-Nexus-* Response Headers Specification
+# OpenAPI 3.0 header definitions for Nexus-Transparent Protocol
+
+openapi: 3.0.0
+info:
+  title: Nexus-Transparent Protocol Headers
+  description: |
+    Response header definitions for the Nexus-Transparent Protocol.
+    These headers reveal routing decisions without modifying the OpenAI-compatible JSON response body.
+    
+    Constitution Principle III: "Nexus-Transparent outputs: routing metadata in X-Nexus-* response 
+    headers (never in JSON body)"
+  version: 0.3.0
+  contact:
+    name: Nexus Project
+    url: https://github.com/nexus-ai/nexus
+
+paths: {}  # Headers only, no endpoints defined here
+
+components:
+  headers:
+    X-Nexus-Backend:
+      description: |
+        Name of the backend that served this request.
+        Matches the `name` field from backend configuration.
+        Always present in responses.
+      required: true
+      schema:
+        type: string
+        example: "openai-gpt4"
+      
+    X-Nexus-Backend-Type:
+      description: |
+        Type of backend that served this request.
+        Distinguishes between local inference servers and cloud APIs.
+        Always present in responses.
+      required: true
+      schema:
+        type: string
+        enum:
+          - local
+          - cloud
+        example: "cloud"
+      
+    X-Nexus-Route-Reason:
+      description: |
+        Reason why this backend was selected for routing.
+        Enables debugging and understanding of routing decisions.
+        Always present in responses.
+      required: true
+      schema:
+        type: string
+        enum:
+          - capability-match      # Backend matched capability requirements
+          - capacity-overflow     # Local backends at capacity, routed to cloud
+          - privacy-requirement   # Privacy zone constraint required this backend
+          - backend-failover      # Previous backend failed, failed over to this one
+        example: "capacity-overflow"
+      
+    X-Nexus-Privacy-Zone:
+      description: |
+        Privacy zone of the backend that served this request.
+        Indicates whether request was handled in restricted or open zone.
+        Always present in responses.
+      required: true
+      schema:
+        type: string
+        enum:
+          - restricted    # Local/on-premises backend, no data leaves network
+          - open          # Cloud backend, data sent to external API
+        example: "open"
+      
+    X-Nexus-Cost-Estimated:
+      description: |
+        Estimated cost in USD for this request.
+        Based on token counts from response and configured pricing rates.
+        Only present for cloud backends. Omitted for local backends and when pricing unknown.
+      required: false
+      schema:
+        type: string
+        pattern: '^\$\d+\.\d{4}$'
+        example: "$0.0042"
+
+  responses:
+    ChatCompletionWithHeaders:
+      description: |
+        Standard OpenAI chat completion response with Nexus-Transparent headers.
+        Response body is unmodified OpenAI format. Routing metadata in headers only.
+      headers:
+        X-Nexus-Backend:
+          $ref: '#/components/headers/X-Nexus-Backend'
+        X-Nexus-Backend-Type:
+          $ref: '#/components/headers/X-Nexus-Backend-Type'
+        X-Nexus-Route-Reason:
+          $ref: '#/components/headers/X-Nexus-Route-Reason'
+        X-Nexus-Privacy-Zone:
+          $ref: '#/components/headers/X-Nexus-Privacy-Zone'
+        X-Nexus-Cost-Estimated:
+          $ref: '#/components/headers/X-Nexus-Cost-Estimated'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ChatCompletionResponse'
+
+  schemas:
+    ChatCompletionResponse:
+      description: Standard OpenAI chat completion response (unchanged)
+      type: object
+      required:
+        - id
+        - object
+        - created
+        - model
+        - choices
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the completion
+        object:
+          type: string
+          enum: [chat.completion]
+        created:
+          type: integer
+          description: Unix timestamp of creation
+        model:
+          type: string
+          description: Model used for completion
+        choices:
+          type: array
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+              message:
+                type: object
+                properties:
+                  role:
+                    type: string
+                    enum: [assistant]
+                  content:
+                    type: string
+              finish_reason:
+                type: string
+                enum: [stop, length, content_filter, null]
+        usage:
+          type: object
+          properties:
+            prompt_tokens:
+              type: integer
+            completion_tokens:
+              type: integer
+            total_tokens:
+              type: integer
+
+# Example Response with Headers
+# HTTP/1.1 200 OK
+# Content-Type: application/json
+# X-Nexus-Backend: openai-gpt4
+# X-Nexus-Backend-Type: cloud
+# X-Nexus-Route-Reason: capacity-overflow
+# X-Nexus-Privacy-Zone: open
+# X-Nexus-Cost-Estimated: $0.0042
+#
+# {
+#   "id": "chatcmpl-123",
+#   "object": "chat.completion",
+#   "created": 1700000000,
+#   "model": "gpt-4",
+#   "choices": [{
+#     "index": 0,
+#     "message": {
+#       "role": "assistant",
+#       "content": "Hello! How can I help you today?"
+#     },
+#     "finish_reason": "stop"
+#   }],
+#   "usage": {
+#     "prompt_tokens": 10,
+#     "completion_tokens": 9,
+#     "total_tokens": 19
+#   }
+# }
+
+# Streaming Response Headers
+# For streaming responses (Server-Sent Events), headers are sent before first chunk:
+#
+# HTTP/1.1 200 OK
+# Content-Type: text/event-stream
+# X-Nexus-Backend: openai-gpt4
+# X-Nexus-Backend-Type: cloud
+# X-Nexus-Route-Reason: capability-match
+# X-Nexus-Privacy-Zone: open
+# X-Nexus-Cost-Estimated: $0.0018
+#
+# data: {"id":"chatcmpl-123","object":"chat.completion.chunk",...}
+# data: {"id":"chatcmpl-123","object":"chat.completion.chunk",...}
+# data: [DONE]

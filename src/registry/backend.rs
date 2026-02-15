@@ -19,6 +19,8 @@ pub enum BackendType {
     Exo,
     /// OpenAI-compatible API
     OpenAI,
+    /// Anthropic Claude API
+    Anthropic,
     /// LM Studio backend (<https://lmstudio.ai>)
     LMStudio,
     /// Generic/unknown backend type

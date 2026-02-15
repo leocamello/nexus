@@ -1,0 +1,196 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Actionable 503 Error Context",
+  "description": "Structured context object for 503 Service Unavailable responses. Embedded in OpenAI-compatible error envelope. Enables intelligent client retry logic by providing information about backend availability and estimated wait times.",
+  "type": "object",
+  "required": ["error"],
+  "properties": {
+    "error": {
+      "type": "object",
+      "required": ["message", "type"],
+      "properties": {
+        "message": {
+          "type": "string",
+          "description": "Human-readable error message",
+          "examples": [
+            "No backend available for request",
+            "All backends at capacity",
+            "No backend supports required tier"
+          ]
+        },
+        "type": {
+          "type": "string",
+          "description": "OpenAI-compatible error type",
+          "const": "service_unavailable"
+        },
+        "code": {
+          "type": "string",
+          "description": "Machine-readable error code",
+          "enum": [
+            "capacity_exceeded",
+            "no_capable_backend",
+            "privacy_constraint_violation"
+          ]
+        },
+        "param": {
+          "type": ["string", "null"],
+          "description": "Parameter that caused the error (if applicable)"
+        },
+        "context": {
+          "$ref": "#/definitions/ActionableErrorContext"
+        }
+      }
+    }
+  },
+  "definitions": {
+    "ActionableErrorContext": {
+      "type": "object",
+      "description": "Actionable context providing information for retry logic",
+      "properties": {
+        "required_tier": {
+          "type": ["integer", "null"],
+          "description": "Capability tier required for this request (0-4). Present when request needs specific tier.",
+          "minimum": 0,
+          "maximum": 4,
+          "examples": [4, 3, null]
+        },
+        "available_backends": {
+          "type": "array",
+          "description": "Status of all backends that could potentially serve this request",
+          "items": {
+            "$ref": "#/definitions/BackendStatus"
+          },
+          "minItems": 0
+        },
+        "eta_seconds": {
+          "type": ["integer", "null"],
+          "description": "Estimated seconds until capacity may be available. Based on queue depth or average request time. Null if unknown.",
+          "minimum": 0,
+          "examples": [45, 120, null]
+        }
+      },
+      "additionalProperties": false
+    },
+    "BackendStatus": {
+      "type": "object",
+      "description": "Status information for a single backend",
+      "required": ["name", "status", "zone"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Backend name from configuration",
+          "examples": ["openai-gpt4", "local-llama-70b", "anthropic-claude"]
+        },
+        "status": {
+          "type": "string",
+          "description": "Current backend status",
+          "enum": ["healthy", "unhealthy", "at_capacity"],
+          "examples": ["at_capacity", "unhealthy", "healthy"]
+        },
+        "zone": {
+          "type": "string",
+          "description": "Privacy zone of the backend",
+          "enum": ["restricted", "open"],
+          "examples": ["open", "restricted"]
+        },
+        "tier": {
+          "type": ["integer", "null"],
+          "description": "Capability tier of the backend (0-4). Null if unknown.",
+          "minimum": 0,
+          "maximum": 4
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "examples": [
+    {
+      "error": {
+        "message": "No backend available for request",
+        "type": "service_unavailable",
+        "code": "capacity_exceeded",
+        "context": {
+          "required_tier": 4,
+          "available_backends": [
+            {
+              "name": "openai-gpt4",
+              "status": "at_capacity",
+              "zone": "open",
+              "tier": 4
+            },
+            {
+              "name": "local-llama-70b",
+              "status": "unhealthy",
+              "zone": "restricted",
+              "tier": 3
+            }
+          ],
+          "eta_seconds": 45
+        }
+      }
+    },
+    {
+      "error": {
+        "message": "No backend supports required tier",
+        "type": "service_unavailable",
+        "code": "no_capable_backend",
+        "context": {
+          "required_tier": 4,
+          "available_backends": [
+            {
+              "name": "local-llama-13b",
+              "status": "healthy",
+              "zone": "restricted",
+              "tier": 2
+            }
+          ],
+          "eta_seconds": null
+        }
+      }
+    },
+    {
+      "error": {
+        "message": "All backends at capacity",
+        "type": "service_unavailable",
+        "code": "capacity_exceeded",
+        "context": {
+          "required_tier": null,
+          "available_backends": [
+            {
+              "name": "openai-gpt4",
+              "status": "at_capacity",
+              "zone": "open",
+              "tier": 4
+            },
+            {
+              "name": "anthropic-claude",
+              "status": "at_capacity",
+              "zone": "open",
+              "tier": 4
+            }
+          ],
+          "eta_seconds": 120
+        }
+      }
+    },
+    {
+      "error": {
+        "message": "Privacy constraint excludes available backends",
+        "type": "service_unavailable",
+        "code": "privacy_constraint_violation",
+        "context": {
+          "required_tier": 4,
+          "available_backends": [
+            {
+              "name": "openai-gpt4",
+              "status": "healthy",
+              "zone": "open",
+              "tier": 4
+            }
+          ],
+          "eta_seconds": null
+        }
+      }
+    }
+  ]
+}
