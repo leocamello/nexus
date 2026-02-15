@@ -10,8 +10,13 @@
 │  │                        API Layer (Axum)                          │ │
 │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │ │
 │  │  │ /v1/chat/    │  │ /v1/models   │  │ /health              │  │ │
-│  │  │ completions  │  │              │  │                      │  │ │
+│  │  │ completions  │  │ /v1/stats    │  │ /metrics             │  │ │
 │  │  └──────┬───────┘  └──────┬───────┘  └──────────┬───────────┘  │ │
+│  │                                                                  │ │
+│  │  ┌──────────────────────────────────────────────────────────┐   │ │
+│  │  │ / (Dashboard) — embedded HTML/JS/CSS via rust-embed       │   │ │
+│  │  │   Real-time updates via WebSocket                         │   │ │
+│  │  └──────────────────────────────────────────────────────────┘   │ │
 │  └─────────┼─────────────────┼─────────────────────┼───────────────┘ │
 │            │                 │                     │                  │
 │            ▼                 ▼                     ▼                  │
@@ -73,6 +78,9 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/chat/completions", post(chat::completions))
         .route("/v1/models", get(models::list))
         .route("/health", get(health::check))
+        .route("/v1/stats", get(stats::handle))
+        .route("/metrics", get(metrics::handle))
+        .route("/", get(dashboard::handler))
         .with_state(state)
 }
 ```
@@ -82,8 +90,11 @@ pub fn router(state: AppState) -> Router {
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/v1/chat/completions` | POST | Chat completion (streaming or not) |
-| `/v1/models` | GET | List all available models |
+| `/v1/models` | GET | List all available models (per-backend entries with `owned_by` = backend name) |
+| `/v1/stats` | GET | JSON stats: uptime, request counts, per-backend metrics |
+| `/metrics` | GET | Prometheus metrics (counters, histograms, gauges) |
 | `/health` | GET | System and backend health |
+| `/` | GET | Embedded web dashboard with real-time WebSocket updates |
 
 #### Request Flow
 
@@ -339,6 +350,29 @@ impl MdnsDiscovery {
     }
 }
 ```
+
+### 6. Metrics Layer
+
+Exposes operational statistics via two formats.
+
+**Prometheus** (`GET /metrics`): Counters, histograms, and gauges for scraping by Prometheus/Grafana.
+
+**JSON Stats** (`GET /v1/stats`): Human-friendly JSON breakdown:
+- Aggregate request counts (total, success, errors)
+- Per-backend stats (id, name, requests, average latency, pending)
+- Per-model stats (name, requests, average duration)
+- Uptime in seconds
+
+### 7. Web Dashboard
+
+Embedded single-page dashboard served at `GET /`.
+
+- **Technology**: Vanilla JS + CSS, embedded via `rust-embed` (no build step)
+- **Real-time updates**: WebSocket connection pushes backend status changes, request completions
+- **Sections**: Backend status cards, model availability matrix, request history (last 100)
+- **Backend cards**: Show name, UUID, type, URL, status badge, and metrics (requests, latency, pending, model count)
+- **Request history**: Displays backend name with UUID tooltip for traceability
+- **No-JS fallback**: Initial server-rendered data injected via `<script id="initial-data">` tag
 
 ---
 
