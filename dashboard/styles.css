@@ -478,6 +478,10 @@ tbody tr:last-child td {
     background: #27ae60;
 }
 
+.capability-badge.basic {
+    background: #7f8c8d;
+}
+
 /* Loading spinner */
 .loading {
     display: inline-block;
