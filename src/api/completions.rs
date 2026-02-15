@@ -577,6 +577,9 @@ fn record_request_completion(
     use crate::dashboard::types::HistoryEntry;
     use crate::dashboard::websocket::create_request_complete_update;
 
+    // Increment total completed requests for this backend
+    let _ = state.registry.increment_total_requests(backend_id);
+
     let entry = HistoryEntry {
         timestamp: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

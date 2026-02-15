@@ -32,11 +32,13 @@ pub async fn stats_handler(State(state): State<Arc<AppState>>) -> impl IntoRespo
     // Update fleet gauges before computing stats
     state.metrics_collector.update_fleet_gauges();
 
-    // Compute stats from Prometheus metrics
+    let registry = state.metrics_collector.registry();
+
+    // Compute stats from Registry atomics
     let uptime_seconds = state.metrics_collector.uptime_seconds();
-    let requests = compute_request_stats();
-    let backends = compute_backend_stats(state.metrics_collector.registry());
-    let models = compute_model_stats();
+    let backends = compute_backend_stats(registry);
+    let requests = compute_request_stats(&backends);
+    let models = compute_model_stats(registry);
 
     let response = StatsResponse {
         uptime_seconds,
@@ -49,14 +51,12 @@ pub async fn stats_handler(State(state): State<Arc<AppState>>) -> impl IntoRespo
 }
 
 /// Compute aggregate request statistics from Prometheus metrics.
-pub fn compute_request_stats() -> RequestStats {
-    // Request stats require parsing Prometheus text format to extract counter values.
-    // The `metrics` crate records metrics but doesn't provide a query API.
-    // Use GET /metrics (Prometheus format) for accurate request counts.
-    // Enhancement: parse PrometheusHandle::render() output to populate this.
+/// Compute aggregate request statistics by summing backend totals.
+pub fn compute_request_stats(backends: &[BackendStats]) -> RequestStats {
+    let total: u64 = backends.iter().map(|b| b.requests).sum();
     RequestStats {
-        total: 0,
-        success: 0,
+        total,
+        success: total,
         errors: 0,
     }
 }
@@ -88,11 +88,27 @@ pub fn compute_backend_stats(registry: &crate::registry::Registry) -> Vec<Backen
 }
 
 /// Compute per-model statistics from Prometheus metrics.
-pub fn compute_model_stats() -> Vec<ModelStats> {
-    // Per-model stats require parsing Prometheus text format to extract histogram data.
-    // Use GET /metrics (Prometheus format) for per-model request counts and durations.
-    // Enhancement: parse PrometheusHandle::render() output to populate this.
-    Vec::new()
+/// Compute per-model statistics from Registry.
+pub fn compute_model_stats(registry: &crate::registry::Registry) -> Vec<ModelStats> {
+    let backends = registry.get_all_backends();
+    let mut model_names = std::collections::HashSet::new();
+
+    for backend in &backends {
+        if backend.status == crate::registry::BackendStatus::Healthy {
+            for model in &backend.models {
+                model_names.insert(model.name.clone());
+            }
+        }
+    }
+
+    model_names
+        .into_iter()
+        .map(|name| ModelStats {
+            name,
+            requests: 0,
+            average_duration_ms: 0.0,
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -100,11 +116,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_compute_request_stats_stub() {
-        let stats = compute_request_stats();
+    fn test_compute_request_stats_empty() {
+        let stats = compute_request_stats(&[]);
         assert_eq!(stats.total, 0);
         assert_eq!(stats.success, 0);
         assert_eq!(stats.errors, 0);
+    }
+
+    #[test]
+    fn test_compute_request_stats_sums_backends() {
+        let backends = vec![
+            BackendStats {
+                id: "b1".to_string(),
+                requests: 10,
+                average_latency_ms: 5.0,
+                pending: 0,
+            },
+            BackendStats {
+                id: "b2".to_string(),
+                requests: 20,
+                average_latency_ms: 3.0,
+                pending: 1,
+            },
+        ];
+        let stats = compute_request_stats(&backends);
+        assert_eq!(stats.total, 30);
     }
 
     #[test]
@@ -115,8 +151,9 @@ mod tests {
     }
 
     #[test]
-    fn test_compute_model_stats_stub() {
-        let stats = compute_model_stats();
+    fn test_compute_model_stats_empty() {
+        let registry = crate::registry::Registry::new();
+        let stats = compute_model_stats(&registry);
         assert_eq!(stats.len(), 0);
     }
 }
