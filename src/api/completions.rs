@@ -153,6 +153,10 @@ pub async fn handle(
     let fallback_used = routing_result.fallback_used;
     let actual_model = routing_result.actual_model.clone();
 
+    // Replace alias with resolved model name before forwarding to backend
+    let mut request = request;
+    request.model = actual_model.clone();
+
     // Record routing fields in span
     Span::current().record("backend", backend.id.as_str());
     Span::current().record(
@@ -439,6 +443,10 @@ async fn handle_streaming(
     let fallback_used = routing_result.fallback_used;
     let actual_model = routing_result.actual_model.clone();
     let backend_id = backend.id.clone();
+
+    // Replace alias with resolved model name before forwarding to backend
+    let mut request = request;
+    request.model = actual_model.clone();
 
     // Increment pending requests
     let _ = state.registry.increment_pending(&backend_id);
