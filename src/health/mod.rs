@@ -125,7 +125,7 @@ impl HealthChecker {
 
                 // Parse response based on backend type
                 match response.text().await {
-                    Ok(body) => self.parse_response(backend.backend_type, &body, latency_ms),
+                    Ok(body) => self.parse_and_enrich(backend, &body, latency_ms).await,
                     Err(e) => HealthCheckResult::Failure {
                         error: HealthCheckError::ParseError(e.to_string()),
                     },
@@ -138,19 +138,29 @@ impl HealthChecker {
     }
 
     /// Parse response based on backend type.
-    fn parse_response(
+    ///
+    /// For Ollama backends, also fetches per-model capabilities via /api/show.
+    async fn parse_and_enrich(
         &self,
-        backend_type: BackendType,
+        backend: &Backend,
         body: &str,
         latency_ms: u32,
     ) -> HealthCheckResult {
-        match backend_type {
+        match backend.backend_type {
             BackendType::Ollama => match parser::parse_ollama_response(body) {
-                Ok(models) => HealthCheckResult::Success { latency_ms, models },
+                Ok(mut models) => {
+                    parser::enrich_ollama_models(
+                        &mut models,
+                        &backend.url,
+                        &self.client,
+                        Duration::from_secs(self.config.timeout_seconds),
+                    )
+                    .await;
+                    HealthCheckResult::Success { latency_ms, models }
+                }
                 Err(error) => {
-                    // Backend returned 200 but invalid JSON - treat as healthy, preserve models
                     tracing::warn!(
-                        backend_type = ?backend_type,
+                        backend_type = ?backend.backend_type,
                         error = %error,
                         "Backend returned 200 but invalid JSON, treating as healthy"
                     );
@@ -170,9 +180,8 @@ impl HealthChecker {
                         error: HealthCheckError::HttpError(500),
                     },
                     Err(error) => {
-                        // Backend returned 200 but invalid JSON - treat as healthy
                         tracing::warn!(
-                            backend_type = ?backend_type,
+                            backend_type = ?backend.backend_type,
                             error = %error,
                             "Backend returned 200 but invalid JSON, treating as healthy"
                         );
@@ -187,23 +196,20 @@ impl HealthChecker {
             | BackendType::Exo
             | BackendType::OpenAI
             | BackendType::LMStudio
-            | BackendType::Generic => {
-                match parser::parse_openai_response(body) {
-                    Ok(models) => HealthCheckResult::Success { latency_ms, models },
-                    Err(error) => {
-                        // Backend returned 200 but invalid JSON - treat as healthy, preserve models
-                        tracing::warn!(
-                            backend_type = ?backend_type,
-                            error = %error,
-                            "Backend returned 200 but invalid JSON, treating as healthy"
-                        );
-                        HealthCheckResult::SuccessWithParseError {
-                            latency_ms,
-                            parse_error: error.to_string(),
-                        }
+            | BackendType::Generic => match parser::parse_openai_response(body) {
+                Ok(models) => HealthCheckResult::Success { latency_ms, models },
+                Err(error) => {
+                    tracing::warn!(
+                        backend_type = ?backend.backend_type,
+                        error = %error,
+                        "Backend returned 200 but invalid JSON, treating as healthy"
+                    );
+                    HealthCheckResult::SuccessWithParseError {
+                        latency_ms,
+                        parse_error: error.to_string(),
                     }
                 }
-            }
+            },
         }
     }
 

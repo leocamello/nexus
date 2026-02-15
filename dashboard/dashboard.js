@@ -1,4 +1,16 @@
-// Nexus Dashboard JavaScript
+/**
+ * Nexus Dashboard
+ *
+ * Single-page monitoring UI for the Nexus LLM orchestrator.
+ * Connects via WebSocket for real-time updates, falls back to
+ * polling when WebSocket is unavailable.
+ *
+ * Sections:
+ *   - System Summary: uptime, total requests, backend/model counts
+ *   - Backend Status: cards showing health, metrics, model count per backend
+ *   - Model Availability: matrix of models × backends with capability badges
+ *   - Request History: last 100 requests with model, backend, duration, status
+ */
 
 // State
 let ws = null;
@@ -6,7 +18,7 @@ let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const BASE_RECONNECT_DELAY = 3000; // Start at 3 seconds
 let currentReconnectDelay = BASE_RECONNECT_DELAY;
-// Maps backend UUID → display name for request history
+/** @type {Map<string, string>} Maps backend UUID → display name for request history */
 const backendNameMap = new Map();
 
 // Initialize dashboard
@@ -25,7 +37,10 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(fetchModels, 30000);
 });
 
-// Load initial data from script tag
+/**
+ * Load server-injected initial data from a <script id="initial-data"> tag.
+ * Populates stats, backend cards, and model matrix before WebSocket connects.
+ */
 function loadInitialData() {
     const dataElement = document.getElementById('initial-data');
     if (dataElement) {
@@ -50,7 +65,7 @@ function loadInitialData() {
     }
 }
 
-// Fetch system summary from /v1/stats
+/** Fetch system summary from GET /v1/stats and update the dashboard. */
 async function fetchSystemSummary() {
     try {
         const response = await fetch('/v1/stats');
@@ -69,7 +84,10 @@ async function fetchSystemSummary() {
     }
 }
 
-// Update system summary display
+/**
+ * Update system summary counters (uptime, requests, backends, models).
+ * @param {Object} stats - StatsResponse from /v1/stats
+ */
 function updateSystemSummary(stats) {
     // Update uptime
     const uptimeElement = document.getElementById('uptime');
@@ -97,7 +115,7 @@ function updateSystemSummary(stats) {
     }
 }
 
-// WebSocket connection
+/** Establish WebSocket connection for real-time dashboard updates. */
 function connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws`;
@@ -117,6 +135,7 @@ function connectWebSocket() {
     }
 }
 
+/** @param {Event} event */
 function handleWebSocketOpen(event) {
     console.log('WebSocket connected');
     reconnectAttempts = 0;
@@ -125,6 +144,11 @@ function handleWebSocketOpen(event) {
     updateConnectionStatus('connected');
 }
 
+/**
+ * Dispatch incoming WebSocket messages by update_type.
+ * Types: BackendStatus, RequestComplete, ModelChange.
+ * @param {MessageEvent} event
+ */
 function handleWebSocketMessage(event) {
     try {
         const update = JSON.parse(event.data);
@@ -171,7 +195,10 @@ function handleWebSocketClose(event) {
     }
 }
 
-// Connection status indicator
+/**
+ * Update connection status indicator (dot + text).
+ * @param {'connected'|'disconnected'|'polling'|'error'} status
+ */
 function updateConnectionStatus(status) {
     const statusDot = document.querySelector('.status-dot');
     const statusText = document.querySelector('.status-text');
@@ -202,7 +229,7 @@ function updateConnectionStatus(status) {
     }
 }
 
-// Update handlers
+/** Handle BackendStatus WebSocket update — re-render backend cards. */
 function handleBackendStatusUpdate(data) {
     console.log('Backend status update:', data);
     if (Array.isArray(data)) {
@@ -212,12 +239,14 @@ function handleBackendStatusUpdate(data) {
     fetchModels();
 }
 
+/** Handle RequestComplete WebSocket update — prepend to request history. */
 function handleRequestCompleteUpdate(data) {
     console.log('Request complete update:', data);
     // Add to request history
     addRequestToHistory(data);
 }
 
+/** Handle ModelChange WebSocket update — refresh model matrix. */
 function handleModelChangeUpdate(data) {
     console.log('Model change update:', data);
     // Refresh the model matrix when models change
@@ -227,6 +256,7 @@ function handleModelChangeUpdate(data) {
 // Polling fallback
 let pollingInterval = null;
 
+/** Start 5-second polling fallback after WebSocket reconnection exhausted. */
 function startPolling() {
     if (pollingInterval) return;
     
@@ -255,18 +285,21 @@ function stopPolling() {
 }
 
 // Format helpers
+/** @param {number} ms - Duration in milliseconds. @returns {string} */
 function formatDuration(ms) {
     if (ms == null || ms === undefined || isNaN(ms)) return 'N/A';
     if (ms < 1000) return `${ms}ms`;
     return `${(ms / 1000).toFixed(2)}s`;
 }
 
+/** @param {number} timestamp - Unix epoch seconds. @returns {string} */
 function formatTimestamp(timestamp) {
     if (!timestamp) return 'N/A';
     const date = new Date(timestamp * 1000);
     return date.toLocaleTimeString();
 }
 
+/** @param {number} seconds - Uptime in seconds. @returns {string} e.g. "2d 5h" */
 function formatUptime(seconds) {
     if (seconds == null || isNaN(seconds)) return 'N/A';
     const days = Math.floor(seconds / 86400);
@@ -278,6 +311,7 @@ function formatUptime(seconds) {
     return `${minutes}m`;
 }
 
+/** @param {number} contextLength - Token count. @returns {string} e.g. "128k" */
 function formatContextLength(contextLength) {
     if (!contextLength || contextLength === 0) return '—';
     if (contextLength >= 1000) {
@@ -293,10 +327,13 @@ function truncateModelName(name, maxLength = 50) {
     return name.substring(0, maxLength - 3) + '...';
 }
 
-// Backend card rendering
+/**
+ * Render backend cards from full BackendView data (WebSocket source).
+ * Sets hasFullBackendData flag to prevent stats-based rendering from overwriting.
+ * @param {Array<Object>} backends - Array of BackendView objects
+ */
 let hasFullBackendData = false;
 
-// Render backend cards from WebSocket BackendView data (full details)
 function renderBackendCards(backends) {
     const container = document.getElementById('backend-cards');
     const noBackends = document.getElementById('no-backends');
@@ -350,7 +387,11 @@ function renderBackendCards(backends) {
     });
 }
 
-// Render backend cards from /v1/stats data (minimal info, only if no full data yet)
+/**
+ * Render backend cards from /v1/stats data (minimal info).
+ * Only renders if WebSocket hasn't provided full data yet (prevents flickering).
+ * @param {Array<Object>} backends - Array of BackendStats from /v1/stats
+ */
 function renderBackendCardsFromStats(backends) {
     if (hasFullBackendData) return;
     const container = document.getElementById('backend-cards');
@@ -399,6 +440,7 @@ function renderBackendCardsFromStats(backends) {
     });
 }
 
+/** Sanitize a string for safe HTML insertion. */
 function escapeHtml(str) {
     if (!str) return '';
     const div = document.createElement('div');
@@ -406,7 +448,7 @@ function escapeHtml(str) {
     return div.innerHTML;
 }
 
-// Fetch models from /v1/models endpoint
+/** Fetch models from GET /v1/models and render the availability matrix. */
 async function fetchModels() {
     try {
         const response = await fetch('/v1/models');
@@ -421,7 +463,11 @@ async function fetchModels() {
     }
 }
 
-// Render model availability matrix
+/**
+ * Render model availability matrix: models × backends with capability badges.
+ * Groups per-backend model entries by model ID, adds backend availability columns.
+ * @param {Object} data - ModelsResponse from /v1/models ({object, data[]})
+ */
 function renderModelMatrix(data) {
     const tbody = document.getElementById('model-matrix-tbody');
     const thead = document.querySelector('#model-matrix thead tr');
@@ -527,7 +573,12 @@ function renderModelMatrix(data) {
     });
 }
 
-// Render model capabilities badges
+/**
+ * Render capability badges (Vision, Tools, JSON) for a model.
+ * Shows "Basic" if no capabilities are detected.
+ * @param {Object} model - Model object with supports_vision, supports_tools, supports_json_mode
+ * @returns {HTMLElement} Container div with badge spans
+ */
 function renderModelCapabilities(model) {
     const container = document.createElement('div');
     container.className = 'capability-badges';
@@ -566,7 +617,7 @@ function renderModelCapabilities(model) {
     return container;
 }
 
-// Request History Functions
+/** Fetch request history from GET /v1/history. */
 async function fetchRequestHistory() {
     try {
         const response = await fetch('/v1/history');
@@ -581,6 +632,10 @@ async function fetchRequestHistory() {
     }
 }
 
+/**
+ * Prepend a new request entry to the history table (max 100 rows).
+ * @param {Object} entry - HistoryEntry with timestamp, model, backend_id, duration_ms, status
+ */
 function addRequestToHistory(entry) {
     // Add new entry to the top of the history
     const tbody = document.getElementById('history-tbody');
@@ -599,6 +654,10 @@ function addRequestToHistory(entry) {
     }
 }
 
+/**
+ * Render full request history (reverse chronological).
+ * @param {Array<Object>} entries - Array of HistoryEntry objects
+ */
 function renderRequestHistory(entries) {
     const tbody = document.getElementById('history-tbody');
     const noHistoryElement = document.getElementById('no-history');
@@ -618,6 +677,12 @@ function renderRequestHistory(entries) {
     });
 }
 
+/**
+ * Create a table row for a single request history entry.
+ * Backend column shows name (resolved from backendNameMap) with UUID tooltip.
+ * @param {Object} entry - HistoryEntry
+ * @returns {HTMLTableRowElement}
+ */
 function renderRequestRow(entry) {
     const row = document.createElement('tr');
     

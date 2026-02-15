@@ -552,7 +552,10 @@ async fn test_models_deduplication_across_backends() {
         "Should list per-backend model entries for multi-backend visibility"
     );
     // Verify owned_by is the backend name, not "nexus"
-    let owners: Vec<&str> = models.iter().map(|m| m["owned_by"].as_str().unwrap()).collect();
+    let owners: Vec<&str> = models
+        .iter()
+        .map(|m| m["owned_by"].as_str().unwrap())
+        .collect();
     assert!(owners.contains(&"Backend1"));
     assert!(owners.contains(&"Backend2"));
     assert!(owners.contains(&"Backend3"));
