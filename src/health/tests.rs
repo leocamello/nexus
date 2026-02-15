@@ -1,6 +1,7 @@
 //! Unit tests for health module.
 
 use super::*;
+use crate::registry::Model;
 
 // ============================================================================
 // T02: HealthCheckConfig Tests
@@ -160,15 +161,19 @@ fn test_parse_ollama_invalid_json() {
 
 #[test]
 fn test_parse_ollama_vision_detection() {
+    // parse_ollama_response returns defaults; enrichment happens via /api/show
+    // Test name heuristics via apply_name_heuristics as fallback
     let body = r#"{"models": [{"name": "llava:13b"}]}"#;
-    let models = parser::parse_ollama_response(body).unwrap();
+    let mut models = parser::parse_ollama_response(body).unwrap();
+    parser::apply_name_heuristics(&mut models[0]);
     assert!(models[0].supports_vision);
 }
 
 #[test]
 fn test_parse_ollama_tool_detection() {
     let body = r#"{"models": [{"name": "mistral:7b"}]}"#;
-    let models = parser::parse_ollama_response(body).unwrap();
+    let mut models = parser::parse_ollama_response(body).unwrap();
+    parser::apply_name_heuristics(&mut models[0]);
     assert!(models[0].supports_tools);
 }
 
@@ -190,6 +195,8 @@ fn test_parse_openai_single_model() {
     assert_eq!(models.len(), 1);
     assert_eq!(models[0].id, "mistral-7b");
     assert_eq!(models[0].name, "mistral-7b");
+    // Name heuristics applied: mistral supports tools
+    assert!(models[0].supports_tools);
 }
 
 #[test]
@@ -199,6 +206,130 @@ fn test_parse_openai_multiple_models() {
     assert_eq!(models.len(), 2);
     assert_eq!(models[0].id, "gpt-4");
     assert_eq!(models[1].id, "gpt-3.5-turbo");
+}
+
+#[test]
+fn test_parse_openai_vision_model_heuristics() {
+    // LM Studio serving gemma-3-4b should be detected as vision-capable
+    let body = r#"{"data": [{"id": "google/gemma-3-4b"}]}"#;
+    let models = parser::parse_openai_response(body).unwrap();
+    assert!(
+        models[0].supports_vision,
+        "gemma-3-4b should be vision-capable"
+    );
+}
+
+#[test]
+fn test_parse_openai_no_false_positive_vision() {
+    let body = r#"{"data": [{"id": "text-embedding-nomic-embed-text-v1.5"}]}"#;
+    let models = parser::parse_openai_response(body).unwrap();
+    assert!(
+        !models[0].supports_vision,
+        "embedding model should not be vision-capable"
+    );
+    assert!(
+        !models[0].supports_tools,
+        "embedding model should not be tool-capable"
+    );
+}
+
+// ============================================================================
+// T06a: Name-Based Heuristics Tests
+// ============================================================================
+
+#[test]
+fn test_heuristics_vision_models() {
+    let vision_models = [
+        "llava:13b",
+        "llava:34b",
+        "bakllava:7b",
+        "llama4:latest",
+        "google/gemma-3-4b",
+        "google/gemma-3-12b",
+        "google/gemma-3-27b",
+        "pixtral:12b",
+        "moondream:latest",
+        "minicpm-v:latest",
+    ];
+    for name in vision_models {
+        let mut model = Model {
+            id: name.to_string(),
+            name: name.to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+        };
+        parser::apply_name_heuristics(&mut model);
+        assert!(model.supports_vision, "{name} should be vision-capable");
+    }
+}
+
+#[test]
+fn test_heuristics_tool_models() {
+    let tool_models = [
+        "mistral:7b",
+        "llama3.1:8b",
+        "llama3.2:3b",
+        "llama3.3:70b",
+        "llama4:latest",
+        "qwen2.5:7b",
+        "qwen3:8b",
+        "command-r:latest",
+        "firefunction:latest",
+    ];
+    for name in tool_models {
+        let mut model = Model {
+            id: name.to_string(),
+            name: name.to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+        };
+        parser::apply_name_heuristics(&mut model);
+        assert!(model.supports_tools, "{name} should be tool-capable");
+    }
+}
+
+#[test]
+fn test_heuristics_no_false_positives() {
+    let basic_models = ["phi3:mini", "tinyllama:latest", "codellama:7b"];
+    for name in basic_models {
+        let mut model = Model {
+            id: name.to_string(),
+            name: name.to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+        };
+        parser::apply_name_heuristics(&mut model);
+        assert!(
+            !model.supports_vision,
+            "{name} should not be vision-capable"
+        );
+    }
+}
+
+#[test]
+fn test_heuristics_preserve_existing_true() {
+    // If already set to true (e.g., from /api/show), heuristics should not revert
+    let mut model = Model {
+        id: "custom-model".to_string(),
+        name: "custom-model".to_string(),
+        context_length: 4096,
+        supports_vision: true,
+        supports_tools: true,
+        supports_json_mode: false,
+        max_output_tokens: None,
+    };
+    parser::apply_name_heuristics(&mut model);
+    assert!(model.supports_vision, "should preserve existing true");
+    assert!(model.supports_tools, "should preserve existing true");
 }
 
 #[test]
