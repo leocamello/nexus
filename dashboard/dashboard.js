@@ -294,6 +294,7 @@ function truncateModelName(name, maxLength = 50) {
 }
 
 // Backend card rendering
+let hasFullBackendData = false;
 
 // Render backend cards from WebSocket BackendView data (full details)
 function renderBackendCards(backends) {
@@ -308,38 +309,52 @@ function renderBackendCards(backends) {
     }
 
     if (noBackends) noBackends.style.display = 'none';
-    container.innerHTML = '';
+    hasFullBackendData = true;
 
+    // Update name map
+    backends.forEach(b => backendNameMap.set(b.id, b.name || b.id));
+
+    container.innerHTML = '';
     backends.forEach(backend => {
-        backendNameMap.set(backend.id, backend.name || backend.id);
+        const statusClass = (backend.status || 'Unknown').toLowerCase();
         const card = document.createElement('div');
         card.className = `backend-card ${statusClass}`;
 
-        const statusDot = statusClass === 'healthy' ? '🟢'
-            : statusClass === 'unhealthy' ? '🔴' : '🟡';
-
+        const modelCount = (backend.models || []).length;
         card.innerHTML = `
             <div class="backend-header">
-                <span class="backend-name">${statusDot} ${escapeHtml(backend.name || backend.id)}</span>
-                <span class="badge">${escapeHtml(backend.backend_type || 'Unknown')}</span>
+                <span class="backend-name">${escapeHtml(backend.name || backend.id)}</span>
+                <span class="status-badge ${statusClass}">${statusClass}</span>
             </div>
-            <div class="backend-url">${escapeHtml(backend.url || '')}</div>
+            <div class="backend-url">${escapeHtml(backend.url || '')} · ${escapeHtml(backend.backend_type || 'Unknown')}</div>
             <div class="backend-metrics">
-                <div><strong>${backend.total_requests || 0}</strong> requests</div>
-                <div><strong>${formatDuration(backend.avg_latency_ms)}</strong> avg</div>
-                <div><strong>${backend.pending_requests || 0}</strong> pending</div>
-                <div><strong>${(backend.models || []).length}</strong> models</div>
+                <div class="metric">
+                    <div class="metric-value">${backend.total_requests || 0}</div>
+                    <div class="metric-label">Requests</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">${formatDuration(backend.avg_latency_ms)}</div>
+                    <div class="metric-label">Avg Latency</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">${backend.pending_requests || 0}</div>
+                    <div class="metric-label">Pending</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">${modelCount}</div>
+                    <div class="metric-label">Models</div>
+                </div>
             </div>
         `;
         container.appendChild(card);
     });
 }
 
-// Render backend cards from /v1/stats data (minimal: id, requests, latency, pending)
+// Render backend cards from /v1/stats data (minimal info, only if no full data yet)
 function renderBackendCardsFromStats(backends) {
-    // Only render from stats if we haven't received full WebSocket data yet
+    if (hasFullBackendData) return;
     const container = document.getElementById('backend-cards');
-    if (!container || container.children.length > 0) return;
+    if (!container) return;
 
     const noBackends = document.getElementById('no-backends');
     if (!backends || backends.length === 0) {
@@ -348,20 +363,36 @@ function renderBackendCardsFromStats(backends) {
     }
 
     if (noBackends) noBackends.style.display = 'none';
-    container.innerHTML = '';
 
+    // Update name map from stats
+    backends.forEach(b => {
+        if (b.name) backendNameMap.set(b.id, b.name);
+    });
+
+    container.innerHTML = '';
     backends.forEach(backend => {
+        const displayName = backend.name || backend.id;
         const card = document.createElement('div');
         card.className = 'backend-card healthy';
 
         card.innerHTML = `
             <div class="backend-header">
-                <span class="backend-name">🟢 ${escapeHtml(backend.id)}</span>
+                <span class="backend-name">${escapeHtml(displayName)}</span>
+                <span class="status-badge healthy">healthy</span>
             </div>
             <div class="backend-metrics">
-                <div><strong>${backend.requests || 0}</strong> requests</div>
-                <div><strong>${formatDuration(backend.average_latency_ms)}</strong> avg</div>
-                <div><strong>${backend.pending || 0}</strong> pending</div>
+                <div class="metric">
+                    <div class="metric-value">${backend.requests || 0}</div>
+                    <div class="metric-label">Requests</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">${formatDuration(backend.average_latency_ms)}</div>
+                    <div class="metric-label">Avg Latency</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">${backend.pending || 0}</div>
+                    <div class="metric-label">Pending</div>
+                </div>
             </div>
         `;
         container.appendChild(card);
@@ -602,7 +633,11 @@ function renderRequestRow(entry) {
     
     // Backend
     const backendCell = document.createElement('td');
-    backendCell.textContent = backendNameMap.get(entry.backend_id) || entry.backend_id || '—';
+    const backendName = backendNameMap.get(entry.backend_id) || entry.backend_id || '—';
+    backendCell.textContent = backendName;
+    if (entry.backend_id && backendName !== entry.backend_id) {
+        backendCell.title = entry.backend_id;
+    }
     row.appendChild(backendCell);
     
     // Duration
