@@ -30,6 +30,7 @@ Detailed specifications for each feature in the Nexus LLM Orchestrator.
 | F20 | Model Lifecycle Management | v0.5 | Planned | - |
 | F21 | Multi-Tenant Support | v0.5 | Planned | - |
 | F22 | Rate Limiting | v0.5 | Planned | - |
+| F23 | Management UI | v0.5 | Planned | - |
 
 ### Current Status
 
@@ -37,7 +38,7 @@ Detailed specifications for each feature in the Nexus LLM Orchestrator.
 - **v0.2 Observability**: ✅ Released (F09-F11, 3 features)
 - **v0.3 Cloud Hybrid**: 🎯 Next (F12-F14)
 - **v0.4 Intelligence**: Planned (F15-F18)
-- **v0.5 Orchestration**: Planned (F19-F22)
+- **v0.5 Orchestration**: Planned (F19-F23)
 - **Tests**: 462 passing, 81% coverage
 
 ---
@@ -1080,3 +1081,40 @@ Per-backend and per-tenant rate limiting to prevent resource exhaustion.
 - [ ] Per-tenant rate limits
 - [ ] Token bucket algorithm with burst support
 - [ ] 429 responses with `Retry-After` header
+
+---
+
+## F23: Management UI (v0.5)
+
+### Overview
+A full-featured web-based management interface that provides everything the CLI offers through an interactive UI. Evolves the existing monitoring dashboard (F10) into a complete control plane with backend management, model lifecycle, configuration editing, and routing controls — all embedded in the single Nexus binary.
+
+### Architecture
+- **Hybrid same-repo approach**: Frontend source in `ui/` with its own `package.json` and build pipeline
+- **Framework**: Modern JS framework (React, Vue, or Svelte — TBD during spec phase)
+- **Embedding**: CI builds frontend to static assets, `rust-embed` bundles into the binary
+- **Development**: `npm run dev` with hot reload, proxying API calls to a running Nexus instance
+- **Distribution**: Single binary via crates.io, GitHub releases, and Docker — zero extra setup
+
+### Capabilities
+| Area | Features |
+|------|----------|
+| **Monitoring** (migrate from F10) | System summary, backend status cards, model matrix, request history, real-time WebSocket updates |
+| **Backend Management** | Add/remove/edit backends, health check controls, priority adjustment, drain/undrain |
+| **Model Management** | Browse models across backends, load/unload models (F20), view capabilities |
+| **Configuration** | View/edit TOML config, alias and fallback chain management, routing strategy selection |
+| **Routing** | Visual routing strategy selector, alias editor, fallback chain builder |
+| **Observability** | Metrics charts (latency, throughput), log viewer with filtering, Prometheus integration status |
+
+### Acceptance Criteria
+- [ ] All CLI capabilities accessible through the UI
+- [ ] Existing F10 dashboard migrated into monitoring tab
+- [ ] Backend CRUD operations (add, remove, edit, drain)
+- [ ] Model alias and fallback chain management
+- [ ] Routing strategy configuration
+- [ ] Real-time updates via WebSocket (existing F10 infrastructure)
+- [ ] Responsive design (desktop and tablet)
+- [ ] Embedded in single binary via `rust-embed` (zero-config)
+- [ ] Works across all distribution channels (crates.io, Docker, GitHub releases)
+- [ ] Frontend dev workflow with hot reload (`npm run dev` with API proxy)
+- [ ] No-JS fallback for basic monitoring (existing F10 behavior)

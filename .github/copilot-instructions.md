@@ -24,7 +24,7 @@ You are an expert Rust developer building **Nexus**, a distributed LLM orchestra
 | v0.4 | Intelligence — Speculative router, Quality tracking, Embeddings, Queuing | Planned |
 | v0.5 | Orchestration — Pre-warming, Model lifecycle, Multi-tenant, Rate limiting | Planned |
 
-See `docs/FEATURES.md` for detailed feature specs (F01-F22).
+See `docs/FEATURES.md` for detailed feature specs (F01-F23).
 
 ## Build, Test, and Lint
 
