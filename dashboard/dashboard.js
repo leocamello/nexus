@@ -491,9 +491,9 @@ function renderModelMatrix(data) {
                 id: model.id,
                 name: model.id,
                 context_length: model.context_length || 0,
-                supports_vision: model.supports_vision || false,
-                supports_tools: model.supports_tools || false,
-                supports_json_mode: model.supports_json_mode || false,
+                supports_vision: (model.capabilities && model.capabilities.vision) || false,
+                supports_tools: (model.capabilities && model.capabilities.tools) || false,
+                supports_json_mode: (model.capabilities && model.capabilities.json_mode) || false,
                 backends: new Set()
             });
         }
