@@ -163,6 +163,10 @@ pub fn setup_metrics(
         128000.0,
     ];
 
+    let cost_buckets = &[
+        0.0001, 0.001, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 50.0, 100.0,
+    ];
+
     let handle = PrometheusBuilder::new()
         .set_buckets_for_metric(
             Matcher::Full("nexus_request_duration_seconds".to_string()),
@@ -176,9 +180,56 @@ pub fn setup_metrics(
             Matcher::Full("nexus_tokens_total".to_string()),
             token_buckets,
         )?
+        .set_buckets_for_metric(
+            Matcher::Full("nexus_cost_estimate_usd".to_string()),
+            cost_buckets,
+        )?
         .install_recorder()?;
 
     Ok(handle)
+}
+
+/// Budget metrics functions for Prometheus export
+pub mod budget {
+    use metrics::{counter, gauge, histogram};
+
+    /// Update budget gauges from current state
+    pub fn update_budget_metrics(
+        current_spending_usd: f64,
+        monthly_limit_usd: f64,
+        budget_percent_used: f64,
+    ) {
+        gauge!("nexus_budget_current_spending_usd").set(current_spending_usd);
+        gauge!("nexus_budget_limit_usd").set(monthly_limit_usd);
+        gauge!("nexus_budget_percent_used").set(budget_percent_used.min(999.0));
+        // Cap at 999%
+    }
+
+    /// Record cost estimate in histogram with labels
+    pub fn record_cost_estimate(cost_usd: f64, provider: &str, model: &str, tier: &str) {
+        let labels = [
+            ("provider", provider.to_string()),
+            ("model", model.to_string()),
+            ("tier", tier.to_string()),
+        ];
+        histogram!("nexus_cost_estimate_usd", &labels).record(cost_usd);
+    }
+
+    /// Increment soft limit activation counter
+    pub fn increment_soft_limit_activation() {
+        counter!("nexus_budget_soft_limit_activations_total").increment(1);
+    }
+
+    /// Increment hard limit activation counter
+    pub fn increment_hard_limit_activation() {
+        counter!("nexus_budget_hard_limit_activations_total").increment(1);
+    }
+
+    /// Increment blocked request counter with reason label
+    pub fn increment_blocked_request(reason: &str) {
+        let labels = [("reason", reason.to_string())];
+        counter!("nexus_budget_requests_blocked_total", &labels).increment(1);
+    }
 }
 
 #[cfg(test)]

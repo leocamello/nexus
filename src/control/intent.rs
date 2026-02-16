@@ -61,8 +61,11 @@ pub struct RoutingAnnotations {
     pub privacy_excluded: HashMap<String, PrivacyViolation>,
 
     // Budget Policy
-    /// Estimated cost for this request
+    /// Estimated cost for this request (simple f64 for backwards compat)
     pub estimated_cost: Option<f64>,
+
+    /// Detailed cost estimate with token counts and tier
+    pub cost_estimate: Option<crate::control::budget::CostEstimate>,
 
     /// Current budget status (normal, soft limit, hard limit)
     pub budget_status: Option<BudgetStatus>,

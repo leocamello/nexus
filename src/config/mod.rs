@@ -28,6 +28,7 @@
 //! ```
 
 pub mod backend;
+pub mod budget;
 pub mod discovery;
 pub mod error;
 pub mod logging;
@@ -35,6 +36,7 @@ pub mod routing;
 pub mod server;
 
 pub use backend::{BackendConfig, BackendType};
+pub use budget::{BudgetConfig, HardLimitAction};
 pub use discovery::DiscoveryConfig;
 pub use error::ConfigError;
 pub use logging::{LogFormat, LoggingConfig};
@@ -76,6 +78,8 @@ pub struct NexusConfig {
     pub backends: Vec<BackendConfig>,
     /// Logging configuration
     pub logging: LoggingConfig,
+    /// Budget management configuration
+    pub budget: BudgetConfig,
 }
 
 impl NexusConfig {
@@ -160,6 +164,14 @@ impl NexusConfig {
 
         // Validate routing aliases for circular references
         routing::validate_aliases(&self.routing.aliases)?;
+
+        // Validate budget config
+        self.budget
+            .validate()
+            .map_err(|msg| ConfigError::Validation {
+                field: "budget".to_string(),
+                message: msg,
+            })?;
 
         Ok(())
     }

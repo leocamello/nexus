@@ -1,0 +1,199 @@
+# Budget Configuration Schema
+
+# This file demonstrates the budget configuration schema for nexus.toml
+# Copy these settings to your nexus.toml to enable budget enforcement
+
+[budget]
+# ==============================================================================
+# Monthly Spending Limit (REQUIRED to enable budget enforcement)
+# ==============================================================================
+# - Type: float (USD) or null
+# - Default: null (budget enforcement disabled)
+# - Valid range: >= 0.0
+# 
+# If null or omitted, budget enforcement is disabled and all requests are
+# treated as BudgetStatus::Normal (no cost tracking or limit enforcement).
+# 
+# Examples:
+#   monthly_limit = 100.00   # $100/month
+#   monthly_limit = 0.01     # Minimal budget for testing
+#   monthly_limit = null     # Disabled (same as omitting [budget] section)
+monthly_limit = 100.00
+
+# ==============================================================================
+# Soft Limit Percentage (OPTIONAL)
+# ==============================================================================
+# - Type: integer (0-100)
+# - Default: 80
+# 
+# Percentage of monthly_limit at which soft limit warning is triggered.
+# When reached, Nexus strongly prefers local agents over cloud agents to
+# extend budget runway while maintaining service availability.
+# 
+# Behavior:
+#   0-79%:  Normal routing (local-first with cloud overflow)
+#   80-99%: SoftLimit routing (strongly prefer local, warn on cloud)
+#   100%+:  HardLimit routing (apply hard_limit_action)
+# 
+# Examples:
+#   soft_limit_percent = 80   # Default (trigger at 80% spent)
+#   soft_limit_percent = 75   # Earlier warning (trigger at 75% spent)
+#   soft_limit_percent = 90   # Later warning (more cloud usage before degradation)
+soft_limit_percent = 80
+
+# ==============================================================================
+# Hard Limit Action (OPTIONAL)
+# ==============================================================================
+# - Type: enum ("local-only", "queue", "reject")
+# - Default: "local-only"
+# 
+# Action to take when monthly_limit is reached (100% budget consumed).
+# 
+# Options:
+# 
+# 1. "local-only" (RECOMMENDED)
+#    - Routes only to local agents (Ollama, vLLM, llama.cpp)
+#    - Blocks all cloud agents (OpenAI, Anthropic)
+#    - Maintains service availability with reduced capacity
+#    - Best for: Home labs, teams with local GPU capacity
+# 
+# 2. "queue" (FUTURE: v0.4)
+#    - Queues requests requiring cloud agents
+#    - Processes queue when budget resets
+#    - Currently returns 429 error (queuing not yet implemented)
+#    - Best for: Batch workloads, non-urgent requests
+# 
+# 3. "reject"
+#    - Returns 429 error for requests requiring cloud agents
+#    - Allows local-only requests to proceed
+#    - Logs rejection reason
+#    - Best for: Strict cost control, fail-fast behavior
+# 
+# Examples:
+#   hard_limit_action = "local-only"  # Default (graceful degradation)
+#   hard_limit_action = "queue"       # Queue for later (v0.4)
+#   hard_limit_action = "reject"      # Hard fail with 429 error
+hard_limit_action = "local-only"
+
+# ==============================================================================
+# Billing Cycle Start Day (OPTIONAL)
+# ==============================================================================
+# - Type: integer (1-31)
+# - Default: 1
+# 
+# Day of month when billing cycle resets (spending counter → $0.00).
+# Reset occurs at 00:00 UTC on this day each month.
+# 
+# Notes:
+# - If day > days_in_month (e.g., 31 in February), resets on last day
+# - Background reconciliation loop checks date every 60 seconds
+# - Budget reset is logged: "Monthly budget reset: $X.XX available"
+# 
+# Examples:
+#   billing_cycle_start_day = 1   # Reset on 1st of each month (default)
+#   billing_cycle_start_day = 15  # Reset on 15th of each month
+#   billing_cycle_start_day = 31  # Reset on last day of each month
+billing_cycle_start_day = 1
+
+# ==============================================================================
+# Validation Rules
+# ==============================================================================
+# 
+# The following validation rules are enforced at Nexus startup:
+# 
+# 1. monthly_limit:
+#    - If Some(value), value must be >= 0.0
+#    - If None, budget enforcement is disabled
+# 
+# 2. soft_limit_percent:
+#    - Must be 0-100 (inclusive)
+#    - Values > 100 are invalid (budget enforcement starts at 100%)
+# 
+# 3. hard_limit_action:
+#    - Must be one of: "local-only", "queue", "reject"
+#    - Case-sensitive (kebab-case)
+# 
+# 4. billing_cycle_start_day:
+#    - Must be 1-31 (inclusive)
+#    - Values > days_in_month are clamped to last day
+# 
+# If validation fails, Nexus exits with error message and non-zero exit code.
+
+# ==============================================================================
+# Example Configurations
+# ==============================================================================
+
+# --- Example 1: Budget enforcement disabled ---
+# [budget]
+# monthly_limit = null
+# 
+# (or omit [budget] section entirely)
+
+# --- Example 2: Conservative budget with early warning ---
+# [budget]
+# monthly_limit = 50.00
+# soft_limit_percent = 70
+# hard_limit_action = "local-only"
+# billing_cycle_start_day = 1
+
+# --- Example 3: Strict cost control with hard rejection ---
+# [budget]
+# monthly_limit = 100.00
+# soft_limit_percent = 80
+# hard_limit_action = "reject"
+# billing_cycle_start_day = 1
+
+# --- Example 4: Testing configuration (minimal budget) ---
+# [budget]
+# monthly_limit = 1.00
+# soft_limit_percent = 50
+# hard_limit_action = "local-only"
+# billing_cycle_start_day = 1
+
+# ==============================================================================
+# Metrics & Monitoring
+# ==============================================================================
+# 
+# Budget metrics are exposed via Prometheus at GET /metrics:
+# 
+# Gauges (current state):
+#   - nexus_budget_current_spending_usd: Current monthly spending
+#   - nexus_budget_limit_usd: Configured monthly limit
+#   - nexus_budget_percent_used: Percentage of budget consumed (0-100+)
+# 
+# Counters (events):
+#   - nexus_budget_requests_blocked_total{reason}: Blocked requests
+#   - nexus_budget_soft_limit_activations_total: Soft limit triggers
+#   - nexus_budget_hard_limit_activations_total: Hard limit triggers
+# 
+# Histograms (distributions):
+#   - nexus_cost_estimate_usd{provider,model,tier}: Per-request costs
+# 
+# See quickstart.md for Grafana dashboard examples and alert rules.
+
+# ==============================================================================
+# Integration with Existing Config
+# ==============================================================================
+# 
+# Budget configuration integrates with existing nexus.toml sections:
+# 
+# [routing]
+# strategy = "smart"  # Budget affects smart routing decisions
+# 
+# [[backends]]
+# name = "local-ollama"
+# type = "ollama"
+# priority = 1  # Lower priority = preferred when budget constrained
+# zone = "Restricted"  # Local-only, never counts against budget
+# 
+# [[backends]]
+# name = "openai"
+# type = "openai"
+# priority = 100  # Higher priority = used only for overflow
+# zone = "Open"  # Cloud backend, counts against budget
+# api_key_env = "OPENAI_API_KEY"
+# 
+# Budget enforcement respects backend priorities:
+# - Normal: Use priorities as configured
+# - SoftLimit: Strongly prefer local (priority 1-50) over cloud (priority 51+)
+# - HardLimit: Block cloud backends (depending on hard_limit_action)
