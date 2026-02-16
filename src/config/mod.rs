@@ -39,7 +39,8 @@ pub use discovery::DiscoveryConfig;
 pub use error::ConfigError;
 pub use logging::{LogFormat, LoggingConfig};
 pub use routing::{
-    PolicyMatcher, PrivacyConstraint, RoutingConfig, RoutingStrategy, RoutingWeights, TrafficPolicy,
+    BudgetConfig, HardLimitAction, PolicyMatcher, PrivacyConstraint, RoutingConfig,
+    RoutingStrategy, RoutingWeights, TrafficPolicy,
 };
 pub use server::ServerConfig;
 

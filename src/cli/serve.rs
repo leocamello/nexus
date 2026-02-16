@@ -5,6 +5,8 @@ use crate::cli::ServeArgs;
 use crate::config::{LogFormat, NexusConfig};
 use crate::health::HealthChecker;
 use crate::registry::{Backend, DiscoverySource, Registry};
+use crate::routing::reconciler::budget::{BudgetMetrics, BudgetReconciliationLoop};
+use dashmap::DashMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
@@ -222,6 +224,20 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
         None
     };
 
+    // 4.6. Start budget reconciliation loop (if budget is configured)
+    let budget_handle = if config.routing.budget.monthly_limit_usd.is_some() {
+        tracing::info!("Starting budget reconciliation loop");
+        let budget_state: Arc<DashMap<String, BudgetMetrics>> = Arc::new(DashMap::new());
+        let budget_loop = BudgetReconciliationLoop::new(
+            Arc::clone(&budget_state),
+            config.routing.budget.reconciliation_interval_secs,
+        );
+        Some(budget_loop.start(cancel_token.clone()))
+    } else {
+        tracing::debug!("Budget management disabled (no monthly limit configured)");
+        None
+    };
+
     // 6. Bind and serve
     let addr = format!("{}:{}", config.server.host, config.server.port);
     tracing::info!(addr = %addr, "Nexus API server listening");
@@ -240,6 +256,11 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
 
     if let Some(handle) = discovery_handle {
         tracing::info!("Waiting for mDNS discovery to stop");
+        handle.await?;
+    }
+
+    if let Some(handle) = budget_handle {
+        tracing::info!("Waiting for budget reconciliation loop to stop");
         handle.await?;
     }
 

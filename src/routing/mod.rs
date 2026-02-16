@@ -19,8 +19,11 @@ pub use requirements::RequestRequirements;
 pub use scoring::{score_backend, ScoringWeights};
 pub use strategies::RoutingStrategy;
 
-use crate::config::PolicyMatcher;
+use crate::config::{BudgetConfig, PolicyMatcher};
 use crate::registry::{Backend, BackendStatus, Registry};
+use crate::routing::reconciler::budget::BudgetMetrics;
+use dashmap::DashMap;
+use reconciler::budget::BudgetReconciler;
 use reconciler::decision::RoutingDecision;
 use reconciler::intent::RoutingIntent;
 use reconciler::privacy::PrivacyReconciler;
@@ -68,6 +71,12 @@ pub struct Router {
 
     /// Pre-compiled traffic policy matcher for privacy enforcement
     policy_matcher: PolicyMatcher,
+
+    /// Budget configuration for cost enforcement
+    budget_config: BudgetConfig,
+
+    /// Shared budget state for spending tracking
+    budget_state: Arc<DashMap<String, BudgetMetrics>>,
 }
 
 impl Router {
@@ -85,6 +94,8 @@ impl Router {
             fallbacks: HashMap::new(),
             round_robin_counter: Arc::new(AtomicU64::new(0)),
             policy_matcher: PolicyMatcher::default(),
+            budget_config: BudgetConfig::default(),
+            budget_state: Arc::new(DashMap::new()),
         }
     }
 
@@ -104,6 +115,8 @@ impl Router {
             fallbacks,
             round_robin_counter: Arc::new(AtomicU64::new(0)),
             policy_matcher: PolicyMatcher::default(),
+            budget_config: BudgetConfig::default(),
+            budget_state: Arc::new(DashMap::new()),
         }
     }
 
@@ -124,6 +137,33 @@ impl Router {
             fallbacks,
             round_robin_counter: Arc::new(AtomicU64::new(0)),
             policy_matcher,
+            budget_config: BudgetConfig::default(),
+            budget_state: Arc::new(DashMap::new()),
+        }
+    }
+
+    /// Create a new router with full configuration including budget
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_full_config(
+        registry: Arc<Registry>,
+        strategy: RoutingStrategy,
+        weights: ScoringWeights,
+        aliases: HashMap<String, String>,
+        fallbacks: HashMap<String, Vec<String>>,
+        policy_matcher: PolicyMatcher,
+        budget_config: BudgetConfig,
+        budget_state: Arc<DashMap<String, BudgetMetrics>>,
+    ) -> Self {
+        Self {
+            registry,
+            strategy,
+            weights,
+            aliases,
+            fallbacks,
+            round_robin_counter: Arc::new(AtomicU64::new(0)),
+            policy_matcher,
+            budget_config,
+            budget_state,
         }
     }
 
@@ -167,11 +207,16 @@ impl Router {
     }
 
     /// Build a reconciler pipeline for the given model
-    /// Order: RequestAnalyzer → PrivacyReconciler → SchedulerReconciler
+    /// Order: RequestAnalyzer → PrivacyReconciler → BudgetReconciler → SchedulerReconciler
     fn build_pipeline(&self, model_aliases: HashMap<String, String>) -> ReconcilerPipeline {
         let analyzer = RequestAnalyzer::new(model_aliases, Arc::clone(&self.registry));
         let privacy =
             PrivacyReconciler::new(Arc::clone(&self.registry), self.policy_matcher.clone());
+        let budget = BudgetReconciler::new(
+            Arc::clone(&self.registry),
+            self.budget_config.clone(),
+            Arc::clone(&self.budget_state),
+        );
         let scheduler = SchedulerReconciler::new(
             Arc::clone(&self.registry),
             self.strategy,
@@ -181,6 +226,7 @@ impl Router {
         ReconcilerPipeline::new(vec![
             Box::new(analyzer),
             Box::new(privacy),
+            Box::new(budget),
             Box::new(scheduler),
         ])
     }

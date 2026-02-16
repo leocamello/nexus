@@ -131,6 +131,62 @@ impl PolicyMatcher {
     }
 }
 
+/// Action to take when hard budget limit is reached (FR-021)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum HardLimitAction {
+    /// Log a warning but allow all requests
+    #[default]
+    Warn,
+    /// Block cloud agents only (keep local agents)
+    BlockCloud,
+    /// Block all agents
+    BlockAll,
+}
+
+/// Budget management configuration (FR-016 to FR-022)
+///
+/// When not configured, budget enforcement is disabled (zero-config default).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BudgetConfig {
+    /// Monthly spending limit in USD. None means no limit (FR-016).
+    #[serde(default)]
+    pub monthly_limit_usd: Option<f64>,
+
+    /// Percentage of monthly limit that triggers SoftLimit status (FR-019).
+    /// Default: 75%. At SoftLimit, local agents are preferred over cloud.
+    #[serde(default = "default_soft_limit_percent")]
+    pub soft_limit_percent: f64,
+
+    /// Action to take when hard limit (100%) is reached (FR-021).
+    #[serde(default)]
+    pub hard_limit_action: HardLimitAction,
+
+    /// Reconciliation interval in seconds (FR-022).
+    #[serde(default = "default_reconciliation_interval")]
+    pub reconciliation_interval_secs: u64,
+}
+
+fn default_soft_limit_percent() -> f64 {
+    75.0
+}
+
+fn default_reconciliation_interval() -> u64 {
+    60
+}
+
+impl Default for BudgetConfig {
+    fn default() -> Self {
+        Self {
+            monthly_limit_usd: None,
+            soft_limit_percent: default_soft_limit_percent(),
+            hard_limit_action: HardLimitAction::default(),
+            reconciliation_interval_secs: default_reconciliation_interval(),
+        }
+    }
+}
+
 /// Routing configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -146,6 +202,10 @@ pub struct RoutingConfig {
     /// Optional: zero-config by default (no policies = unrestricted)
     #[serde(default)]
     pub policies: Vec<TrafficPolicy>,
+    /// Budget management configuration (FR-016)
+    /// Optional: zero-config by default (no budget = no enforcement)
+    #[serde(default)]
+    pub budget: BudgetConfig,
 }
 
 /// Routing weights for backend selection
@@ -165,6 +225,7 @@ impl Default for RoutingConfig {
             aliases: HashMap::new(),
             fallbacks: HashMap::new(),
             policies: Vec::new(),
+            budget: BudgetConfig::default(),
         }
     }
 }

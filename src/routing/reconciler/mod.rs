@@ -3,6 +3,7 @@
 //! Implements the reconciler pipeline architecture for intelligent routing decisions.
 //! Each reconciler reads and annotates RoutingIntent without removing constraints.
 
+pub mod budget;
 pub mod decision;
 pub mod intent;
 pub mod privacy;

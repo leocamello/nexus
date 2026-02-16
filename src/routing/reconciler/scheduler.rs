@@ -3,7 +3,9 @@
 //! Filters candidates by health and capabilities, scores remaining candidates,
 //! and annotates the intent for the pipeline to produce a Route/Queue/Reject decision.
 
-use super::{intent::RoutingIntent, Reconciler};
+use super::intent::{BudgetStatus, RoutingIntent};
+use super::Reconciler;
+use crate::agent::PrivacyZone;
 use crate::registry::{Backend, BackendStatus, Registry};
 use crate::routing::error::RoutingError;
 use crate::routing::scoring::{score_backend, ScoringWeights};
@@ -63,6 +65,31 @@ impl SchedulerReconciler {
         } else {
             false
         }
+    }
+
+    /// Determine the effective privacy zone for a backend (FR-020).
+    fn get_backend_privacy_zone(&self, backend: &Backend) -> PrivacyZone {
+        if let Some(agent) = self.registry.get_agent(&backend.id) {
+            return agent.profile().privacy_zone;
+        }
+        backend.backend_type.default_privacy_zone()
+    }
+
+    /// Apply budget-aware score adjustment (FR-020).
+    /// At SoftLimit, cloud agent scores are reduced by 50% to prefer local agents.
+    fn apply_budget_adjustment(
+        &self,
+        score: u32,
+        backend: &Backend,
+        intent: &RoutingIntent,
+    ) -> u32 {
+        if intent.budget_status == BudgetStatus::SoftLimit {
+            let zone = self.get_backend_privacy_zone(backend);
+            if zone == PrivacyZone::Open {
+                return score / 2;
+            }
+        }
+        score
     }
 }
 
@@ -143,24 +170,26 @@ impl Reconciler for SchedulerReconciler {
                         let best = candidates
                             .iter()
                             .max_by_key(|b| {
-                                score_backend(
+                                let raw_score = score_backend(
                                     b.priority as u32,
                                     b.pending_requests.load(Ordering::Relaxed),
                                     b.avg_latency_ms.load(Ordering::Relaxed),
                                     &self.weights,
-                                )
+                                );
+                                self.apply_budget_adjustment(raw_score, b, intent)
                             })
                             .unwrap();
-                        let score = score_backend(
+                        let raw_score = score_backend(
                             best.priority as u32,
                             best.pending_requests.load(Ordering::Relaxed),
                             best.avg_latency_ms.load(Ordering::Relaxed),
                             &self.weights,
                         );
+                        let adjusted_score = self.apply_budget_adjustment(raw_score, best, intent);
                         let reason = if candidates.len() == 1 {
                             "only_healthy_backend".to_string()
                         } else {
-                            format!("highest_score:{}:{:.2}", best.name, score)
+                            format!("highest_score:{}:{:.2}", best.name, adjusted_score)
                         };
                         (best.id.clone(), reason)
                     }
