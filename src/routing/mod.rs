@@ -49,6 +49,12 @@ pub struct RoutingResult {
     /// Estimated cost in USD (F12: Cloud Backend Support)
     /// Populated for cloud backends with token counting capability
     pub cost_estimated: Option<f64>,
+    /// Budget status at routing time (F14: Budget Management)
+    pub budget_status: reconciler::intent::BudgetStatus,
+    /// Budget utilization percentage at routing time (F14: Budget Management)
+    pub budget_utilization: Option<f64>,
+    /// Budget remaining in USD at routing time (F14: Budget Management)
+    pub budget_remaining: Option<f64>,
 }
 
 /// Router selects the best backend for each request
@@ -326,7 +332,7 @@ impl Router {
             agent_id,
             model: resolved_model,
             reason,
-            ..
+            cost_estimate,
         } = decision
         {
             let backend = self.registry.get_backend(&agent_id).ok_or_else(|| {
@@ -343,12 +349,18 @@ impl Router {
                 "routing decision made"
             );
 
+            // Calculate budget utilization from current state
+            let (budget_status, budget_utilization, budget_remaining) = self.get_budget_status_and_utilization();
+
             return Ok(RoutingResult {
                 backend: Arc::new(backend),
                 actual_model: resolved_model,
                 fallback_used: false,
                 route_reason: reason,
-                cost_estimated: None,
+                cost_estimated: Some(cost_estimate.cost_usd),
+                budget_status,
+                budget_utilization,
+                budget_remaining,
             });
         }
 
@@ -359,7 +371,10 @@ impl Router {
                 self.run_pipeline_for_model(requirements, fallback_model, tier_enforcement_mode)?;
 
             if let RoutingDecision::Route {
-                agent_id, reason, ..
+                agent_id,
+                cost_estimate,
+                reason,
+                ..
             } = decision
             {
                 let backend = self.registry.get_backend(&agent_id).ok_or_else(|| {
@@ -377,12 +392,18 @@ impl Router {
                     "Using fallback model"
                 );
 
+                // Calculate budget utilization from current state
+                let (budget_status, budget_utilization, budget_remaining) = self.get_budget_status_and_utilization();
+
                 return Ok(RoutingResult {
                     backend: Arc::new(backend),
                     actual_model: fallback_model.clone(),
                     fallback_used: true,
                     route_reason,
-                    cost_estimated: None,
+                    cost_estimated: Some(cost_estimate.cost_usd),
+                    budget_status,
+                    budget_utilization,
+                    budget_remaining,
                 });
             }
         }
@@ -575,6 +596,42 @@ impl Router {
     /// Get reference to the budget state (F14).
     pub fn budget_state(&self) -> &Arc<DashMap<String, BudgetMetrics>> {
         &self.budget_state
+    }
+
+    /// Get current budget status and utilization percentage (F14).
+    /// 
+    /// Returns (BudgetStatus, Option<f64>, Option<f64>) where:
+    /// - First f64 is utilization percentage
+    /// - Second f64 is remaining budget in USD
+    /// Returns None for both if no monthly limit is configured.
+    fn get_budget_status_and_utilization(&self) -> (reconciler::intent::BudgetStatus, Option<f64>, Option<f64>) {
+        use reconciler::budget::GLOBAL_BUDGET_KEY;
+        use reconciler::intent::BudgetStatus;
+        
+        let monthly_limit = match self.budget_config.monthly_limit_usd {
+            Some(limit) if limit > 0.0 => limit,
+            _ => return (BudgetStatus::Normal, None, None),
+        };
+        
+        let current_spending = self
+            .budget_state
+            .get(GLOBAL_BUDGET_KEY)
+            .map(|m| m.current_month_spending)
+            .unwrap_or(0.0);
+        
+        let utilization_percent = (current_spending / monthly_limit) * 100.0;
+        let remaining = (monthly_limit - current_spending).max(0.0);
+        let soft_threshold = self.budget_config.soft_limit_percent;
+        
+        let status = if utilization_percent >= 100.0 {
+            BudgetStatus::HardLimit
+        } else if utilization_percent >= soft_threshold {
+            BudgetStatus::SoftLimit
+        } else {
+            BudgetStatus::Normal
+        };
+        
+        (status, Some(utilization_percent), Some(remaining))
     }
 }
 

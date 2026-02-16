@@ -117,9 +117,9 @@
 - [ ] T031 [P] [US4] Add nexus_budget_utilization_percent gauge recording in BudgetReconciliationLoop::reconcile() in src/routing/reconciler/budget.rs
 - [ ] T032 [P] [US4] Add nexus_budget_status gauge recording in BudgetReconciliationLoop::reconcile() in src/routing/reconciler/budget.rs
 - [ ] T033 [P] [US4] Add nexus_budget_limit_usd gauge recording on config load in src/routing/reconciler/budget.rs
-- [ ] T034 [US4] Add BudgetStats struct with fields from contracts/stats-api.json schema in src/metrics/types.rs
-- [ ] T035 [US4] Add optional budget field to StatsResponse struct in src/metrics/types.rs
-- [ ] T036 [US4] Populate StatsResponse.budget from BudgetMetrics in /v1/stats handler in src/metrics/handler.rs
+- [X] T034 [US4] Add BudgetStats struct with fields from contracts/stats-api.json schema in src/metrics/types.rs
+- [X] T035 [US4] Add optional budget field to StatsResponse struct in src/metrics/types.rs
+- [X] T036 [US4] Populate StatsResponse.budget from BudgetMetrics in /v1/stats handler in src/metrics/handler.rs
 - [ ] T037 [US4] Add X-Nexus-Budget-Status response header when budget_status != Normal in src/api/completions.rs
 - [ ] T038 [US4] Add X-Nexus-Budget-Utilization response header when budget_status != Normal in src/api/completions.rs
 - [ ] T039 [US4] Add X-Nexus-Budget-Remaining response header when budget_status != Normal in src/api/completions.rs

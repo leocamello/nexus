@@ -65,6 +65,57 @@ fn extract_tier_enforcement_mode(headers: &HeaderMap) -> TierEnforcementMode {
     TierEnforcementMode::Strict
 }
 
+/// Inject budget-related response headers (F14: T037-T040).
+///
+/// Adds the following headers based on budget status:
+/// - X-Nexus-Cost-Estimated: Always included (cost in USD, 4 decimals)
+/// - X-Nexus-Budget-Status: When status != Normal (Normal/SoftLimit/HardLimit)
+/// - X-Nexus-Budget-Utilization: When status != Normal (percentage, 2 decimals)
+/// - X-Nexus-Budget-Remaining: When status != Normal (USD remaining, 2 decimals)
+fn inject_budget_headers<B>(response: &mut Response<B>, routing_result: &crate::routing::RoutingResult) {
+    use crate::routing::reconciler::intent::BudgetStatus;
+    
+    let headers = response.headers_mut();
+    
+    // T040: Always include estimated cost
+    if let Some(cost) = routing_result.cost_estimated {
+        let _ = headers.insert(
+            HeaderName::from_static("x-nexus-cost-estimated"),
+            HeaderValue::from_str(&format!("{:.4}", cost)).unwrap_or_else(|_| HeaderValue::from_static("0.0000")),
+        );
+    }
+    
+    // T037-T039: Only add budget headers when not in Normal status
+    if routing_result.budget_status != BudgetStatus::Normal {
+        // T037: Budget status
+        let status_str = match routing_result.budget_status {
+            BudgetStatus::Normal => "Normal",
+            BudgetStatus::SoftLimit => "SoftLimit",
+            BudgetStatus::HardLimit => "HardLimit",
+        };
+        let _ = headers.insert(
+            HeaderName::from_static("x-nexus-budget-status"),
+            HeaderValue::from_static(status_str),
+        );
+        
+        // T038: Budget utilization percentage
+        if let Some(utilization) = routing_result.budget_utilization {
+            let _ = headers.insert(
+                HeaderName::from_static("x-nexus-budget-utilization"),
+                HeaderValue::from_str(&format!("{:.2}", utilization)).unwrap_or_else(|_| HeaderValue::from_static("0.00")),
+            );
+        }
+        
+        // T039: Budget remaining in USD
+        if let Some(remaining) = routing_result.budget_remaining {
+            let _ = headers.insert(
+                HeaderName::from_static("x-nexus-budget-remaining"),
+                HeaderValue::from_str(&format!("{:.2}", remaining)).unwrap_or_else(|_| HeaderValue::from_static("0.00")),
+            );
+        }
+    }
+}
+
 /// Build a structured 503 response for routing rejections with actionable details.
 ///
 /// Extracts privacy zone and tier info from rejection reasons to populate
@@ -485,6 +536,10 @@ pub async fn handle(
                             .insert(HeaderName::from_static(FALLBACK_HEADER), header_value);
                     }
                 }
+
+                // Inject budget headers (F14: T037-T040)
+                inject_budget_headers(&mut resp, &routing_result);
+
                 return Ok(resp);
             }
             Err(e) => {
@@ -711,7 +766,7 @@ async fn handle_streaming(
         }
     };
 
-    let backend = routing_result.backend;
+    let backend = &routing_result.backend;
     let fallback_used = routing_result.fallback_used;
     let actual_model = routing_result.actual_model.clone();
     let backend_id = backend.id.clone();
@@ -726,7 +781,7 @@ async fn handle_streaming(
     info!(backend_id = %backend_id, "Starting streaming request");
 
     // Create SSE stream - pass cloned backend data
-    let stream = create_sse_stream(state.clone(), Arc::clone(&backend), headers, request);
+    let stream = create_sse_stream(state.clone(), Arc::clone(backend), headers, request);
 
     // Create SSE response and add headers
     let mut resp = Sse::new(stream).into_response();
@@ -766,6 +821,9 @@ async fn handle_streaming(
                 .insert(HeaderName::from_static(FALLBACK_HEADER), header_value);
         }
     }
+
+    // Inject budget headers (F14: T037-T040)
+    inject_budget_headers(&mut resp, &routing_result);
 
     Ok(resp)
 }
