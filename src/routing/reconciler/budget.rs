@@ -171,6 +171,18 @@ impl BudgetReconciler {
             .and_modify(|metrics| {
                 // Check for month rollover
                 if metrics.month_key != current_month {
+                    // T027: Log budget reset on month rollover
+                    tracing::info!(
+                        old_month = %metrics.month_key,
+                        new_month = %current_month,
+                        previous_spending = metrics.current_month_spending,
+                        "Budget reset: new billing cycle started"
+                    );
+                    
+                    // T028: Record month rollover event
+                    metrics::counter!("nexus_budget_events_total", "event_type" => "month_rollover")
+                        .increment(1);
+                    
                     metrics.current_month_spending = 0.0;
                     metrics.month_key = current_month.clone();
                 }
