@@ -99,16 +99,16 @@
 - [X] T030 [US2] Parse X-Nexus-Flexible request header in extract_tier_enforcement_mode() in src/api/completions.rs
 - [X] T031 [US2] Handle conflicting headers (X-Nexus-Strict takes precedence) in extract_tier_enforcement_mode() in src/api/completions.rs
 - [X] T032 [US2] Set tier_enforcement_mode on RoutingIntent from parsed headers in src/api/completions.rs
-- [ ] T033 [US2] Verify TierReconciler reads AgentProfile.capability_tier from Registry
-- [ ] T034 [US2] Verify TierReconciler excludes under-tier agents in Strict mode
-- [ ] T035 [US2] Verify TierReconciler allows higher-tier substitution in Flexible mode
-- [ ] T036 [US2] Populate required_tier in ActionableErrorContext from RoutingIntent in src/api/completions.rs
-- [ ] T037 [US2] Integration test: no headers → strict mode (default) → only exact/higher tier accepted
-- [ ] T038 [US2] Integration test: X-Nexus-Strict: true → exact model matching enforced
-- [ ] T039 [US2] Integration test: X-Nexus-Flexible: true → higher tier substitution allowed
-- [ ] T040 [US2] Integration test: tier 3 backend offline, tier 2 available, flexible mode → 503 (never downgrade)
-- [ ] T041 [US2] Integration test: tier 3 backend offline, tier 4 available, flexible mode → routes to tier 4
-- [ ] T042 [US2] Integration test: conflicting headers (both strict and flexible) → strict wins
+- [X] T033 [US2] Verify TierReconciler reads AgentProfile.capability_tier from Registry
+- [X] T034 [US2] Verify TierReconciler excludes under-tier agents in Strict mode
+- [X] T035 [US2] Verify TierReconciler allows higher-tier substitution in Flexible mode
+- [X] T036 [US2] Populate required_tier in ActionableErrorContext from RoutingIntent in src/api/completions.rs
+- [X] T037 [US2] Integration test: no headers → strict mode (default) → only exact/higher tier accepted
+- [X] T038 [US2] Integration test: X-Nexus-Strict: true → exact model matching enforced
+- [X] T039 [US2] Integration test: X-Nexus-Flexible: true → higher tier substitution allowed
+- [X] T040 [US2] Integration test: tier 3 backend offline, tier 2 available, flexible mode → 503 (never downgrade)
+- [X] T041 [US2] Integration test: tier 3 backend offline, tier 4 available, flexible mode → routes to tier 4
+- [X] T042 [US2] Integration test: conflicting headers (both strict and flexible) → strict wins
 
 **Checkpoint**: Tier enforcement fully functional with strict/flexible mode control
 
