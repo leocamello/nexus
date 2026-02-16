@@ -19,9 +19,11 @@ pub use requirements::RequestRequirements;
 pub use scoring::{score_backend, ScoringWeights};
 pub use strategies::RoutingStrategy;
 
+use crate::config::PolicyMatcher;
 use crate::registry::{Backend, BackendStatus, Registry};
 use reconciler::decision::RoutingDecision;
 use reconciler::intent::RoutingIntent;
+use reconciler::privacy::PrivacyReconciler;
 use reconciler::request_analyzer::RequestAnalyzer;
 use reconciler::scheduler::SchedulerReconciler;
 use reconciler::ReconcilerPipeline;
@@ -63,6 +65,9 @@ pub struct Router {
 
     /// Round-robin counter for round-robin strategy (shared with pipeline)
     round_robin_counter: Arc<AtomicU64>,
+
+    /// Pre-compiled traffic policy matcher for privacy enforcement
+    policy_matcher: PolicyMatcher,
 }
 
 impl Router {
@@ -79,6 +84,7 @@ impl Router {
             aliases: HashMap::new(),
             fallbacks: HashMap::new(),
             round_robin_counter: Arc::new(AtomicU64::new(0)),
+            policy_matcher: PolicyMatcher::default(),
         }
     }
 
@@ -97,6 +103,27 @@ impl Router {
             aliases,
             fallbacks,
             round_robin_counter: Arc::new(AtomicU64::new(0)),
+            policy_matcher: PolicyMatcher::default(),
+        }
+    }
+
+    /// Create a new router with aliases, fallbacks, and traffic policies
+    pub fn with_aliases_fallbacks_and_policies(
+        registry: Arc<Registry>,
+        strategy: RoutingStrategy,
+        weights: ScoringWeights,
+        aliases: HashMap<String, String>,
+        fallbacks: HashMap<String, Vec<String>>,
+        policy_matcher: PolicyMatcher,
+    ) -> Self {
+        Self {
+            registry,
+            strategy,
+            weights,
+            aliases,
+            fallbacks,
+            round_robin_counter: Arc::new(AtomicU64::new(0)),
+            policy_matcher,
         }
     }
 
@@ -140,15 +167,22 @@ impl Router {
     }
 
     /// Build a reconciler pipeline for the given model
+    /// Order: RequestAnalyzer → PrivacyReconciler → SchedulerReconciler
     fn build_pipeline(&self, model_aliases: HashMap<String, String>) -> ReconcilerPipeline {
         let analyzer = RequestAnalyzer::new(model_aliases, Arc::clone(&self.registry));
+        let privacy =
+            PrivacyReconciler::new(Arc::clone(&self.registry), self.policy_matcher.clone());
         let scheduler = SchedulerReconciler::new(
             Arc::clone(&self.registry),
             self.strategy,
             self.weights,
             Arc::clone(&self.round_robin_counter),
         );
-        ReconcilerPipeline::new(vec![Box::new(analyzer), Box::new(scheduler)])
+        ReconcilerPipeline::new(vec![
+            Box::new(analyzer),
+            Box::new(privacy),
+            Box::new(scheduler),
+        ])
     }
 
     /// Run the pipeline for a specific model (primary or fallback) and return the decision

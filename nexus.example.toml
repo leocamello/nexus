@@ -43,6 +43,20 @@ latency = 20
 [routing.fallbacks]
 "llama3:70b" = ["qwen2:72b", "mixtral:8x7b"]
 
+# Traffic policies - model-pattern-based routing constraints (optional)
+# Policies are evaluated in declaration order (first match wins).
+# If no policies are configured, all models are unrestricted (zero-config default).
+
+# Example: Restrict GPT-4 models to local-only backends (no cloud overflow)
+# [[routing.policies]]
+# model_pattern = "gpt-4*"
+# privacy = "restricted"
+
+# Example: Allow all other models to use any backend
+# [[routing.policies]]
+# model_pattern = "*"
+# privacy = "unrestricted"
+
 # Static backend configuration
 # Backends can also be auto-discovered via mDNS
 
