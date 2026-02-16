@@ -29,6 +29,7 @@ use reconciler::intent::RoutingIntent;
 use reconciler::privacy::PrivacyReconciler;
 use reconciler::request_analyzer::RequestAnalyzer;
 use reconciler::scheduler::SchedulerReconciler;
+use reconciler::tier::TierReconciler;
 use reconciler::ReconcilerPipeline;
 
 /// Result of a successful routing decision
@@ -217,6 +218,7 @@ impl Router {
             self.budget_config.clone(),
             Arc::clone(&self.budget_state),
         );
+        let tier = TierReconciler::new(Arc::clone(&self.registry), self.policy_matcher.clone());
         let scheduler = SchedulerReconciler::new(
             Arc::clone(&self.registry),
             self.strategy,
@@ -227,6 +229,7 @@ impl Router {
             Box::new(analyzer),
             Box::new(privacy),
             Box::new(budget),
+            Box::new(tier),
             Box::new(scheduler),
         ])
     }

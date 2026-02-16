@@ -10,6 +10,7 @@ pub mod privacy;
 pub mod request_analyzer;
 pub mod scheduler;
 pub mod scheduling;
+pub mod tier;
 
 use crate::routing::error::RoutingError;
 use decision::RoutingDecision;

@@ -5,6 +5,17 @@
 use crate::agent::PrivacyZone;
 use crate::routing::RequestRequirements;
 
+/// Tier enforcement mode from request headers (FR-027, FR-028)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TierEnforcementMode {
+    /// Default: strict enforcement — reject agents below min_tier (FR-027)
+    #[default]
+    Strict,
+
+    /// Flexible: allow fallback to lower tiers when no capable agents remain (FR-028)
+    Flexible,
+}
+
 /// Current budget status affecting routing decisions (FR-019)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BudgetStatus {
@@ -77,6 +88,9 @@ pub struct RoutingIntent {
     /// Minimum capability tier from TrafficPolicy (FR-024)
     pub min_capability_tier: Option<u8>,
 
+    /// Tier enforcement mode from request headers (FR-027, FR-028)
+    pub tier_enforcement_mode: TierEnforcementMode,
+
     // === Budget State ===
     /// Current budget status from BudgetReconciler (FR-019)
     pub budget_status: BudgetStatus,
@@ -114,6 +128,7 @@ impl RoutingIntent {
             requirements,
             privacy_constraint: None,
             min_capability_tier: None,
+            tier_enforcement_mode: TierEnforcementMode::default(),
             budget_status: BudgetStatus::Normal,
             cost_estimate: CostEstimate::default(),
             candidate_agents: all_agents,

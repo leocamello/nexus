@@ -158,14 +158,14 @@ This is a single Rust project with structure:
 
 ### Implementation for User Story 4
 
-- [ ] T068 [P] [US4] Add capability_tier field to AgentProfile or separate metadata in src/agent/types.rs per research.md
-- [ ] T069 [P] [US4] Create TierReconciler struct in src/routing/reconciler/tier.rs
-- [ ] T070 [US4] Implement AgentSchedulingProfile::capability_tier() accessor in src/routing/reconciler/scheduling.rs per FR-025
-- [ ] T071 [US4] Implement Reconciler trait for TierReconciler in src/routing/reconciler/tier.rs
-- [ ] T072 [US4] Implement policy matching for min_tier in TierReconciler in src/routing/reconciler/tier.rs per FR-024
-- [ ] T073 [US4] Implement capability_tier filtering in TierReconciler in src/routing/reconciler/tier.rs per FR-026
-- [ ] T074 [US4] Implement X-Nexus-Strict header handling in TierReconciler in src/routing/reconciler/tier.rs per FR-027
-- [ ] T075 [US4] Implement X-Nexus-Flexible header fallback logic in TierReconciler in src/routing/reconciler/tier.rs per FR-028
+- [X] T068 [P] [US4] Add capability_tier field to AgentProfile or separate metadata in src/agent/types.rs per research.md
+- [X] T069 [P] [US4] Create TierReconciler struct in src/routing/reconciler/tier.rs
+- [X] T070 [US4] Implement AgentSchedulingProfile::capability_tier() accessor in src/routing/reconciler/scheduling.rs per FR-025
+- [X] T071 [US4] Implement Reconciler trait for TierReconciler in src/routing/reconciler/tier.rs
+- [X] T072 [US4] Implement policy matching for min_tier in TierReconciler in src/routing/reconciler/tier.rs per FR-024
+- [X] T073 [US4] Implement capability_tier filtering in TierReconciler in src/routing/reconciler/tier.rs per FR-026
+- [X] T074 [US4] Implement X-Nexus-Strict header handling in TierReconciler in src/routing/reconciler/tier.rs per FR-027
+- [X] T075 [US4] Implement X-Nexus-Flexible header fallback logic in TierReconciler in src/routing/reconciler/tier.rs per FR-028
 - [ ] T076 [US4] Add TierReconciler to pipeline construction in Router::select_backend() in src/routing/mod.rs between BudgetReconciler and SchedulerReconciler per FR-005
 
 **Checkpoint**: User Story 4 complete - tier constraints enforced, explicit quality control available
