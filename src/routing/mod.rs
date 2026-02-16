@@ -27,6 +27,7 @@ use reconciler::budget::BudgetReconciler;
 use reconciler::decision::RoutingDecision;
 use reconciler::intent::RoutingIntent;
 use reconciler::privacy::PrivacyReconciler;
+use reconciler::quality::QualityReconciler;
 use reconciler::request_analyzer::RequestAnalyzer;
 use reconciler::scheduler::SchedulerReconciler;
 use reconciler::tier::TierReconciler;
@@ -208,7 +209,8 @@ impl Router {
     }
 
     /// Build a reconciler pipeline for the given model
-    /// Order: RequestAnalyzer → PrivacyReconciler → BudgetReconciler → SchedulerReconciler
+    /// Order: RequestAnalyzer → PrivacyReconciler → BudgetReconciler → TierReconciler
+    ///        → QualityReconciler → SchedulerReconciler
     fn build_pipeline(&self, model_aliases: HashMap<String, String>) -> ReconcilerPipeline {
         let analyzer = RequestAnalyzer::new(model_aliases, Arc::clone(&self.registry));
         let privacy =
@@ -219,6 +221,7 @@ impl Router {
             Arc::clone(&self.budget_state),
         );
         let tier = TierReconciler::new(Arc::clone(&self.registry), self.policy_matcher.clone());
+        let quality = QualityReconciler::new();
         let scheduler = SchedulerReconciler::new(
             Arc::clone(&self.registry),
             self.strategy,
@@ -230,6 +233,7 @@ impl Router {
             Box::new(privacy),
             Box::new(budget),
             Box::new(tier),
+            Box::new(quality),
             Box::new(scheduler),
         ])
     }

@@ -180,8 +180,8 @@ This is a single Rust project with structure:
 
 ### Implementation for User Story 5
 
-- [ ] T077 [P] [US5] Create QualityReconciler stub struct in src/routing/reconciler/quality.rs (reserved for future, minimal implementation)
-- [ ] T078 [US5] Implement minimal Reconciler trait for QualityReconciler in src/routing/reconciler/quality.rs (pass-through, no filtering)
+- [X] T077 [P] [US5] Create QualityReconciler stub struct in src/routing/reconciler/quality.rs (reserved for future, minimal implementation)
+- [X] T078 [US5] Implement minimal Reconciler trait for QualityReconciler in src/routing/reconciler/quality.rs (pass-through, no filtering)
 - [ ] T079 [US5] Add QualityReconciler to pipeline construction in Router::select_backend() in src/routing/mod.rs between TierReconciler and SchedulerReconciler per FR-005
 - [ ] T080 [US5] Implement rejection_reasons aggregation in ReconcilerPipeline::execute() in src/routing/reconciler/mod.rs for Reject decision per FR-032
 - [ ] T081 [US5] Extend RoutingError::Reject variant in src/routing/error.rs to include structured rejection_reasons per FR-004

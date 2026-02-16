@@ -4,6 +4,7 @@
 
 use crate::agent::PrivacyZone;
 use crate::routing::RequestRequirements;
+use serde::Serialize;
 
 /// Tier enforcement mode from request headers (FR-027, FR-028)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -47,7 +48,7 @@ pub struct CostEstimate {
 }
 
 /// Rejection reason for excluded agent (FR-004)
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RejectionReason {
     /// Agent that was excluded
     pub agent_id: String,

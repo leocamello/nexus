@@ -7,6 +7,7 @@ use crate::api::{
 };
 use crate::logging::generate_request_id;
 use crate::registry::Backend;
+use crate::routing::reconciler::intent::RejectionReason;
 use crate::routing::RequestRequirements;
 use axum::{
     extract::State,
@@ -17,11 +18,51 @@ use axum::{
     },
     Json,
 };
+use std::collections::HashSet;
 use std::sync::Arc;
 use tracing::{info, instrument, warn, Span};
 
 /// Header name for fallback model notification (lowercase for HTTP/2 compatibility)
 pub const FALLBACK_HEADER: &str = "x-nexus-fallback-model";
+
+/// Header name for rejection reasons summary (lowercase for HTTP/2 compatibility)
+const REJECTION_REASONS_HEADER: &str = "x-nexus-rejection-reasons";
+
+/// Build a structured 503 response for routing rejections with actionable details.
+fn rejection_response(rejection_reasons: Vec<RejectionReason>) -> Response {
+    let count = rejection_reasons.len();
+    let reconcilers: HashSet<&str> = rejection_reasons
+        .iter()
+        .map(|r| r.reconciler.as_str())
+        .collect();
+    let reconciler_list: Vec<&str> = reconcilers.into_iter().collect();
+
+    // Build X-Nexus-Rejection-Reasons header value
+    let header_value = format!(
+        "{} agents rejected by {}",
+        count,
+        reconciler_list.join(", ")
+    );
+
+    // Build structured JSON body
+    let body = serde_json::json!({
+        "error": {
+            "type": "routing_rejected",
+            "message": format!("Request rejected: {} agents excluded", count),
+            "rejection_reasons": rejection_reasons,
+        }
+    });
+
+    let mut response = (axum::http::StatusCode::SERVICE_UNAVAILABLE, Json(body)).into_response();
+
+    if let Ok(val) = HeaderValue::from_str(&header_value) {
+        response
+            .headers_mut()
+            .insert(HeaderName::from_static(REJECTION_REASONS_HEADER), val);
+    }
+
+    response
+}
 
 /// POST /v1/chat/completions - Handle chat completion requests.
 #[instrument(
@@ -188,10 +229,7 @@ pub async fn handle(
                     )));
                 }
                 crate::routing::RoutingError::Reject { rejection_reasons } => {
-                    return Err(ApiError::service_unavailable(&format!(
-                        "Request rejected: {} reasons",
-                        rejection_reasons.len()
-                    )));
+                    return Ok(rejection_response(rejection_reasons));
                 }
             }
         }
@@ -572,10 +610,7 @@ async fn handle_streaming(
                     )));
                 }
                 crate::routing::RoutingError::Reject { rejection_reasons } => {
-                    return Err(ApiError::service_unavailable(&format!(
-                        "Request rejected: {} reasons",
-                        rejection_reasons.len()
-                    )));
+                    return Ok(rejection_response(rejection_reasons));
                 }
             }
         }

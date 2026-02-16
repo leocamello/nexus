@@ -7,6 +7,7 @@ pub mod budget;
 pub mod decision;
 pub mod intent;
 pub mod privacy;
+pub mod quality;
 pub mod request_analyzer;
 pub mod scheduler;
 pub mod scheduling;
