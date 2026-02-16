@@ -164,11 +164,7 @@ fn test_tier_range_boundaries() {
         let backend = &config.backends[0];
 
         assert_eq!(backend.effective_tier(), tier);
-        assert!(
-            backend.validate().is_ok(),
-            "tier {} should be valid",
-            tier
-        );
+        assert!(backend.validate().is_ok(), "tier {} should be valid", tier);
     }
 
     // Test invalid tiers

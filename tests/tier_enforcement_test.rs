@@ -16,7 +16,9 @@ use nexus::registry::{Backend, BackendStatus, BackendType, DiscoverySource, Regi
 use nexus::routing::reconciler::decision::RoutingDecision;
 use nexus::routing::reconciler::intent::{RoutingIntent, TierEnforcementMode};
 use nexus::routing::reconciler::tier::TierReconciler;
-use nexus::routing::reconciler::{ReconcilerPipeline, request_analyzer::RequestAnalyzer, scheduler::SchedulerReconciler};
+use nexus::routing::reconciler::{
+    request_analyzer::RequestAnalyzer, scheduler::SchedulerReconciler, ReconcilerPipeline,
+};
 use nexus::routing::{RequestRequirements, RoutingStrategy, ScoringWeights};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -215,7 +217,10 @@ fn test_strict_header_enforces_exact_tier_matching() {
             .rejection_reasons
             .iter()
             .any(|r| r.agent_id == "backend-tier2" && r.reconciler == "TierReconciler");
-        assert!(tier2_rejected, "Tier 2 backend should be rejected in strict mode");
+        assert!(
+            tier2_rejected,
+            "Tier 2 backend should be rejected in strict mode"
+        );
     } else {
         panic!("Expected Route decision, got: {:?}", result);
     }
@@ -457,17 +462,21 @@ fn test_conflicting_headers_strict_wins() {
     // T042: Both strict and flexible headers → strict takes precedence
     // This behavior is verified by the extract_tier_enforcement_mode() tests in completions.rs
     // Here we verify that when Strict mode is set, it behaves correctly
-    
+
     let registry = Arc::new(Registry::new());
-    
+
     // Create tier 2 and tier 3 backends
     let (backend_tier2, agent_tier2) =
         create_test_backend_with_tier("backend-tier2", "Tier 2", 2, BackendStatus::Healthy);
     let (backend_tier3, agent_tier3) =
         create_test_backend_with_tier("backend-tier3", "Tier 3", 3, BackendStatus::Healthy);
-    
-    registry.add_backend_with_agent(backend_tier2, agent_tier2).unwrap();
-    registry.add_backend_with_agent(backend_tier3, agent_tier3).unwrap();
+
+    registry
+        .add_backend_with_agent(backend_tier2, agent_tier2)
+        .unwrap();
+    registry
+        .add_backend_with_agent(backend_tier3, agent_tier3)
+        .unwrap();
 
     let policy = TrafficPolicy {
         model_pattern: "test-*".to_string(),
@@ -485,13 +494,13 @@ fn test_conflicting_headers_strict_wins() {
         ScoringWeights::default(),
         Arc::new(std::sync::atomic::AtomicU64::new(0)),
     );
-    
+
     let mut pipeline = ReconcilerPipeline::new(vec![
         Box::new(RequestAnalyzer::new(HashMap::new(), Arc::clone(&registry))),
         Box::new(tier),
         Box::new(scheduler),
     ]);
-    
+
     let requirements = RequestRequirements {
         model: "test-model".to_string(),
         estimated_tokens: 100,
@@ -518,13 +527,16 @@ fn test_conflicting_headers_strict_wins() {
     assert!(result.is_ok());
     if let Ok(RoutingDecision::Route { agent_id, .. }) = result {
         assert_eq!(agent_id, "backend-tier3");
-        
+
         // Verify tier 2 was rejected
         let tier2_rejected = intent
             .rejection_reasons
             .iter()
             .any(|r| r.agent_id == "backend-tier2");
-        assert!(tier2_rejected, "Tier 2 should be rejected when Strict mode is active");
+        assert!(
+            tier2_rejected,
+            "Tier 2 should be rejected when Strict mode is active"
+        );
     } else {
         panic!("Expected Route decision, got: {:?}", result);
     }

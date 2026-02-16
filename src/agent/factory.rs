@@ -52,6 +52,7 @@ use std::sync::Arc;
 ///
 /// assert_eq!(agent.id(), "backend-1");
 /// ```
+#[allow(clippy::too_many_arguments)]
 pub fn create_agent(
     id: String,
     name: String,
@@ -64,7 +65,12 @@ pub fn create_agent(
 ) -> Result<Arc<dyn InferenceAgent>, AgentError> {
     match backend_type {
         BackendType::Ollama => Ok(Arc::new(OllamaAgent::new(
-            id, name, url, client, privacy_zone, capability_tier,
+            id,
+            name,
+            url,
+            client,
+            privacy_zone,
+            capability_tier,
         ))),
         BackendType::OpenAI => {
             // Extract API key from metadata
@@ -85,11 +91,22 @@ pub fn create_agent(
             };
 
             Ok(Arc::new(OpenAIAgent::new(
-                id, name, url, api_key, client, privacy_zone, capability_tier,
+                id,
+                name,
+                url,
+                api_key,
+                client,
+                privacy_zone,
+                capability_tier,
             )))
         }
         BackendType::LMStudio => Ok(Arc::new(LMStudioAgent::new(
-            id, name, url, client, privacy_zone, capability_tier,
+            id,
+            name,
+            url,
+            client,
+            privacy_zone,
+            capability_tier,
         ))),
         BackendType::VLLM | BackendType::LlamaCpp | BackendType::Exo | BackendType::Generic => {
             Ok(Arc::new(GenericOpenAIAgent::new(
@@ -120,7 +137,13 @@ pub fn create_agent(
             };
 
             Ok(Arc::new(AnthropicAgent::new(
-                id, name, url, api_key, client, privacy_zone, capability_tier,
+                id,
+                name,
+                url,
+                api_key,
+                client,
+                privacy_zone,
+                capability_tier,
             )))
         }
         BackendType::Google => {
@@ -141,7 +164,13 @@ pub fn create_agent(
             };
 
             Ok(Arc::new(GoogleAIAgent::new(
-                id, name, url, api_key, client, privacy_zone, capability_tier,
+                id,
+                name,
+                url,
+                api_key,
+                client,
+                privacy_zone,
+                capability_tier,
             )))
         }
     }

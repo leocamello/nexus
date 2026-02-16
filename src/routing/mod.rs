@@ -330,7 +330,8 @@ impl Router {
         // Step 4: Try fallback chain
         let fallbacks = self.get_fallbacks(&model);
         for fallback_model in &fallbacks {
-            let decision = self.run_pipeline_for_model(requirements, fallback_model, tier_enforcement_mode)?;
+            let decision =
+                self.run_pipeline_for_model(requirements, fallback_model, tier_enforcement_mode)?;
 
             if let RoutingDecision::Route {
                 agent_id, reason, ..

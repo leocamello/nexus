@@ -16,6 +16,8 @@ mod tests {
             "https://api.openai.com".to_string(),
             "test-key".to_string(),
             Arc::new(Client::new()),
+            nexus::agent::PrivacyZone::Open,
+            Some(5),
         )
     }
 

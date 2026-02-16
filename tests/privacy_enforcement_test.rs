@@ -6,6 +6,7 @@
 //! - T026: Response includes X-Nexus-Privacy-Zone header matching backend's configured zone
 //! - T027: Verify cross-zone failover never happens (restricted never routes to open)
 
+use chrono::Utc;
 use nexus::agent::factory::create_agent;
 use nexus::agent::PrivacyZone;
 use nexus::config::{PolicyMatcher, TrafficPolicy};
@@ -13,11 +14,10 @@ use nexus::registry::{Backend, BackendStatus, BackendType, DiscoverySource, Regi
 use nexus::routing::reconciler::decision::RoutingDecision;
 use nexus::routing::reconciler::intent::RoutingIntent;
 use nexus::routing::reconciler::privacy::PrivacyReconciler;
-use nexus::routing::reconciler::{Reconciler, ReconcilerPipeline};
 use nexus::routing::reconciler::request_analyzer::RequestAnalyzer;
 use nexus::routing::reconciler::scheduler::SchedulerReconciler;
+use nexus::routing::reconciler::{Reconciler, ReconcilerPipeline};
 use nexus::routing::{RequestRequirements, RoutingStrategy, ScoringWeights};
-use chrono::Utc;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -177,8 +177,12 @@ fn test_restricted_backend_offline_open_available_returns_503() {
         BackendStatus::Healthy,
     );
 
-    registry.add_backend_with_agent(backend_restricted, agent_restricted).unwrap();
-    registry.add_backend_with_agent(backend_open, agent_open).unwrap();
+    registry
+        .add_backend_with_agent(backend_restricted, agent_restricted)
+        .unwrap();
+    registry
+        .add_backend_with_agent(backend_open, agent_open)
+        .unwrap();
 
     // Create traffic policy that requires restricted zone
     let policy = TrafficPolicy {
@@ -231,9 +235,9 @@ fn test_restricted_backend_offline_open_available_returns_503() {
     if let Ok(RoutingDecision::Reject { rejection_reasons }) = result {
         // Verify rejection includes privacy constraint info
         assert!(!rejection_reasons.is_empty());
-        let has_privacy_rejection = rejection_reasons.iter().any(|r| {
-            r.reconciler == "PrivacyReconciler" || r.reason.contains("privacy")
-        });
+        let has_privacy_rejection = rejection_reasons
+            .iter()
+            .any(|r| r.reconciler == "PrivacyReconciler" || r.reason.contains("privacy"));
         assert!(
             has_privacy_rejection,
             "Expected privacy rejection, got: {:?}",
@@ -241,12 +245,12 @@ fn test_restricted_backend_offline_open_available_returns_503() {
         );
 
         // Verify intent has privacy constraint set
-        assert_eq!(
-            intent.privacy_constraint,
-            Some(PrivacyZone::Restricted)
-        );
+        assert_eq!(intent.privacy_constraint, Some(PrivacyZone::Restricted));
     } else {
-        panic!("Expected Reject decision (cross-zone routing should be blocked), got: {:?}", result);
+        panic!(
+            "Expected Reject decision (cross-zone routing should be blocked), got: {:?}",
+            result
+        );
     }
 }
 
@@ -265,7 +269,9 @@ fn test_cross_zone_failover_never_happens() {
         BackendStatus::Healthy,
     );
 
-    registry.add_backend_with_agent(backend_open, agent_open).unwrap();
+    registry
+        .add_backend_with_agent(backend_open, agent_open)
+        .unwrap();
 
     // Create traffic policy that requires restricted zone
     let policy = TrafficPolicy {
