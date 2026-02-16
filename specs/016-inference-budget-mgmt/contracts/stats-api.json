@@ -1,0 +1,214 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Nexus Stats API - Budget Extension",
+  "description": "JSON schema for GET /v1/stats endpoint with budget management fields (F14)",
+  "type": "object",
+  "properties": {
+    "uptime_seconds": {
+      "type": "integer",
+      "description": "Gateway uptime in seconds",
+      "example": 86400
+    },
+    "backends": {
+      "type": "object",
+      "properties": {
+        "total": { "type": "integer", "example": 5 },
+        "healthy": { "type": "integer", "example": 4 },
+        "unhealthy": { "type": "integer", "example": 1 }
+      },
+      "required": ["total", "healthy", "unhealthy"]
+    },
+    "models": {
+      "type": "object",
+      "properties": {
+        "available": { "type": "integer", "example": 12 }
+      },
+      "required": ["available"]
+    },
+    "requests": {
+      "type": "object",
+      "properties": {
+        "total": { "type": "integer", "example": 10542 },
+        "successful": { "type": "integer", "example": 10234 },
+        "failed": { "type": "integer", "example": 308 }
+      },
+      "required": ["total", "successful", "failed"]
+    },
+    "budget": {
+      "type": "object",
+      "description": "Budget management statistics (F14 - new in this feature)",
+      "properties": {
+        "current_spending_usd": {
+          "type": "number",
+          "format": "float",
+          "minimum": 0,
+          "description": "Current month spending in USD",
+          "example": 45.23
+        },
+        "monthly_limit_usd": {
+          "type": ["number", "null"],
+          "format": "float",
+          "minimum": 0,
+          "description": "Configured monthly budget limit in USD. null means no limit.",
+          "example": 100.0
+        },
+        "utilization_percent": {
+          "type": "number",
+          "format": "float",
+          "minimum": 0,
+          "description": "Budget utilization percentage (can exceed 100%)",
+          "example": 45.23
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Normal", "SoftLimit", "HardLimit"],
+          "description": "Current budget enforcement status",
+          "example": "Normal"
+        },
+        "billing_month": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}$",
+          "description": "Current billing month in YYYY-MM format",
+          "example": "2024-01"
+        },
+        "last_reconciliation": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp of last budget reconciliation",
+          "example": "2024-01-15T14:32:10Z"
+        },
+        "soft_limit_threshold": {
+          "type": "number",
+          "format": "float",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Soft limit threshold percentage (from config)",
+          "example": 80.0
+        },
+        "hard_limit_action": {
+          "type": "string",
+          "enum": ["Warn", "BlockCloud", "BlockAll"],
+          "description": "Action taken when hard limit is reached (from config)",
+          "example": "BlockCloud"
+        },
+        "next_reset_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Next billing cycle reset date (first day of next month)",
+          "example": "2024-02-01"
+        }
+      },
+      "required": [
+        "current_spending_usd",
+        "monthly_limit_usd",
+        "utilization_percent",
+        "status",
+        "billing_month",
+        "last_reconciliation",
+        "soft_limit_threshold",
+        "hard_limit_action"
+      ]
+    }
+  },
+  "required": ["uptime_seconds", "backends", "models", "requests"],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "uptime_seconds": 86400,
+      "backends": {
+        "total": 5,
+        "healthy": 4,
+        "unhealthy": 1
+      },
+      "models": {
+        "available": 12
+      },
+      "requests": {
+        "total": 10542,
+        "successful": 10234,
+        "failed": 308
+      },
+      "budget": {
+        "current_spending_usd": 45.23,
+        "monthly_limit_usd": 100.0,
+        "utilization_percent": 45.23,
+        "status": "Normal",
+        "billing_month": "2024-01",
+        "last_reconciliation": "2024-01-15T14:32:10Z",
+        "soft_limit_threshold": 80.0,
+        "hard_limit_action": "BlockCloud",
+        "next_reset_date": "2024-02-01"
+      }
+    },
+    {
+      "uptime_seconds": 172800,
+      "backends": {
+        "total": 3,
+        "healthy": 3,
+        "unhealthy": 0
+      },
+      "models": {
+        "available": 8
+      },
+      "requests": {
+        "total": 25000,
+        "successful": 24850,
+        "failed": 150
+      },
+      "budget": {
+        "current_spending_usd": 87.50,
+        "monthly_limit_usd": 100.0,
+        "utilization_percent": 87.50,
+        "status": "SoftLimit",
+        "billing_month": "2024-01",
+        "last_reconciliation": "2024-01-20T09:15:30Z",
+        "soft_limit_threshold": 80.0,
+        "hard_limit_action": "BlockCloud",
+        "next_reset_date": "2024-02-01"
+      }
+    },
+    {
+      "uptime_seconds": 43200,
+      "backends": {
+        "total": 2,
+        "healthy": 2,
+        "unhealthy": 0
+      },
+      "models": {
+        "available": 5
+      },
+      "requests": {
+        "total": 15000,
+        "successful": 14800,
+        "failed": 200
+      },
+      "budget": {
+        "current_spending_usd": 105.75,
+        "monthly_limit_usd": 100.0,
+        "utilization_percent": 105.75,
+        "status": "HardLimit",
+        "billing_month": "2024-01",
+        "last_reconciliation": "2024-01-25T18:45:00Z",
+        "soft_limit_threshold": 75.0,
+        "hard_limit_action": "BlockCloud",
+        "next_reset_date": "2024-02-01"
+      }
+    },
+    {
+      "uptime_seconds": 7200,
+      "backends": {
+        "total": 4,
+        "healthy": 4,
+        "unhealthy": 0
+      },
+      "models": {
+        "available": 10
+      },
+      "requests": {
+        "total": 5000,
+        "successful": 4950,
+        "failed": 50
+      }
+    }
+  ]
+}

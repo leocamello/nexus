@@ -1,0 +1,188 @@
+# Prometheus Metrics Specification
+
+**Feature**: F14 Inference Budget Management  
+**Date**: 2025-01-24  
+**Endpoint**: `GET /metrics`
+
+## Overview
+
+This document specifies all Prometheus metrics added for budget management. These metrics enable monitoring, alerting, and dashboard visualization of inference spending and budget enforcement.
+
+---
+
+## Metric Categories
+
+### 1. Budget State Gauges
+
+#### `nexus_budget_spending_usd`
+- **Type**: Gauge
+- **Description**: Current month spending in USD
+- **Labels**:
+  - `billing_month` - YYYY-MM format (e.g., "2024-01")
+- **Update Frequency**: Every reconciliation interval (default 60s) + on request completion
+- **Example**:
+  ```prometheus
+  nexus_budget_spending_usd{billing_month="2024-01"} 45.23
+  ```
+
+#### `nexus_budget_utilization_percent`
+- **Type**: Gauge
+- **Description**: Budget utilization as percentage (0-100+)
+- **Labels**:
+  - `billing_month` - YYYY-MM format
+- **Calculation**: `(current_spending / monthly_limit) * 100`
+- **Update Frequency**: Every reconciliation interval
+- **Example**:
+  ```prometheus
+  nexus_budget_utilization_percent{billing_month="2024-01"} 45.23
+  ```
+- **Note**: Can exceed 100% if spending continues after hard limit (acceptable per spec)
+
+#### `nexus_budget_limit_usd`
+- **Type**: Gauge
+- **Description**: Configured monthly budget limit in USD
+- **Labels**: None (global setting)
+- **Update Frequency**: On config reload
+- **Example**:
+  ```prometheus
+  nexus_budget_limit_usd 100.0
+  ```
+
+#### `nexus_budget_status`
+- **Type**: Gauge
+- **Description**: Current budget enforcement status as numeric enum
+- **Labels**:
+  - `billing_month` - YYYY-MM format
+- **Values**:
+  - `0` = Normal (below soft limit)
+  - `1` = SoftLimit (between soft and hard limit)
+  - `2` = HardLimit (at or above 100%)
+- **Update Frequency**: Every reconciliation interval + on threshold crossing
+- **Example**:
+  ```prometheus
+  nexus_budget_status{billing_month="2024-01"} 0
+  ```
+- **Alert Rule Example**:
+  ```yaml
+  - alert: BudgetSoftLimitReached
+    expr: nexus_budget_status >= 1
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Budget soft limit reached"
+  ```
+
+---
+
+### 2. Cost Distribution Histograms
+
+#### `nexus_cost_per_request_usd`
+- **Type**: Histogram
+- **Description**: Distribution of per-request inference costs
+- **Labels**:
+  - `model` - Requested model name (sanitized for Prometheus)
+  - `backend_type` - "local" or "cloud"
+- **Buckets**: `[0.0001, 0.001, 0.01, 0.1, 1.0, 10.0, +Inf]` USD
+- **Update Frequency**: On every request completion
+- **Example**:
+  ```prometheus
+  nexus_cost_per_request_usd_bucket{model="gpt_4_turbo",backend_type="cloud",le="0.01"} 120
+  nexus_cost_per_request_usd_bucket{model="gpt_4_turbo",backend_type="cloud",le="0.1"} 450
+  nexus_cost_per_request_usd_bucket{model="gpt_4_turbo",backend_type="cloud",le="+Inf"} 500
+  nexus_cost_per_request_usd_sum{model="gpt_4_turbo",backend_type="cloud"} 15.75
+  nexus_cost_per_request_usd_count{model="gpt_4_turbo",backend_type="cloud"} 500
+  ```
+- **PromQL Queries**:
+  - P95 cost: `histogram_quantile(0.95, rate(nexus_cost_per_request_usd_bucket[5m]))`
+  - Average cost: `rate(nexus_cost_per_request_usd_sum[5m]) / rate(nexus_cost_per_request_usd_count[5m])`
+
+#### `nexus_token_count_duration_seconds`
+- **Type**: Histogram
+- **Description**: Token counting latency by tier
+- **Labels**:
+  - `tier` - "exact", "approximation", or "heuristic"
+  - `model` - Model name
+- **Buckets**: `[0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.5, +Inf]` seconds
+- **Update Frequency**: On every token count operation
+- **Example**:
+  ```prometheus
+  nexus_token_count_duration_seconds_bucket{tier="exact",model="gpt_4_turbo",le="0.01"} 450
+  nexus_token_count_duration_seconds_bucket{tier="exact",model="gpt_4_turbo",le="0.05"} 890
+  nexus_token_count_duration_seconds_bucket{tier="exact",model="gpt_4_turbo",le="+Inf"} 1000
+  ```
+- **PromQL Query**:
+  - P95 latency: `histogram_quantile(0.95, rate(nexus_token_count_duration_seconds_bucket{tier="exact"}[5m]))`
+
+---
+
+### 3. Audit Counters
+
+#### `nexus_token_count_tier_total`
+- **Type**: Counter
+- **Description**: Cumulative count of token counting operations by tier (audit trail per FR-012)
+- **Labels**:
+  - `tier` - "exact", "approximation", or "heuristic"
+  - `model` - Model name
+- **Update Frequency**: On every token count operation
+- **Example**:
+  ```prometheus
+  nexus_token_count_tier_total{tier="exact",model="gpt_4_turbo"} 12500
+  nexus_token_count_tier_total{tier="approximation",model="claude_3_opus"} 3400
+  nexus_token_count_tier_total{tier="heuristic",model="unknown_model"} 120
+  ```
+- **Purpose**: Provides audit trail showing proportion of exact vs estimated costs
+
+#### `nexus_budget_events_total`
+- **Type**: Counter
+- **Description**: Cumulative count of budget state transition events
+- **Labels**:
+  - `event_type` - Event type (see below)
+- **Event Types**:
+  - `soft_limit_reached` - First transition to SoftLimit
+  - `hard_limit_reached` - First transition to HardLimit
+  - `month_rollover` - Billing cycle reset
+  - `limit_increased` - Config change increased limit
+  - `limit_decreased` - Config change decreased limit
+- **Update Frequency**: On state transitions
+- **Example**:
+  ```prometheus
+  nexus_budget_events_total{event_type="soft_limit_reached"} 3
+  nexus_budget_events_total{event_type="hard_limit_reached"} 1
+  nexus_budget_events_total{event_type="month_rollover"} 12
+  ```
+
+---
+
+## Alert Rules
+
+### Warning Alert: Soft Limit Reached
+```yaml
+- alert: BudgetSoftLimitReached
+  expr: nexus_budget_status{billing_month=~".*"} >= 1
+  for: 2m
+  labels:
+    severity: warning
+    feature: budget_management
+  annotations:
+    summary: "Inference budget soft limit reached"
+    description: "Budget utilization is high. Local agents will be preferred."
+```
+
+### Critical Alert: Hard Limit Reached
+```yaml
+- alert: BudgetHardLimitReached
+  expr: nexus_budget_status{billing_month=~".*"} >= 2
+  for: 1m
+  labels:
+    severity: critical
+    feature: budget_management
+  annotations:
+    summary: "Inference budget HARD limit reached"
+    description: "Budget is exhausted. Cloud agents are blocked."
+```
+
+---
+
+**Status**: Ready for implementation  
+**Next**: Generate /v1/stats API schema (contracts/stats-api.json)
