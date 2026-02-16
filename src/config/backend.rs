@@ -17,12 +17,12 @@ pub struct BackendConfig {
     pub priority: i32,
     #[serde(default)]
     pub api_key_env: Option<String>,
-    
+
     /// Privacy zone classification (F12: Cloud Backend Support)
     /// Defaults to backend type's default zone if not specified
     #[serde(default)]
     pub zone: Option<PrivacyZone>,
-    
+
     /// Capability tier for routing (F12: Cloud Backend Support)
     /// Range: 1-5, where 5 is highest capability
     /// Defaults to 3 if not specified

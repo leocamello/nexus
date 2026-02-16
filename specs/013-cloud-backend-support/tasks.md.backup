@@ -96,13 +96,13 @@
 - [x] T035 [US1] Inject X-Nexus-* headers in src/api/completions.rs for non-streaming responses using NexusTransparentHeaders
 - [x] T036 [US1] Inject X-Nexus-* headers in src/api/completions.rs for streaming responses before first SSE chunk
 - [x] T037 [US1] Add logging for cloud API requests in src/agent/openai.rs (excluding request/response bodies) (already complete)
-- [x] T031 [US1] Extend agent factory in src/agent/factory.rs to handle BackendType::OpenAI case with API key loading from env var
-- [x] T032 [US1] Add helper function read_api_key() in src/agent/factory.rs to read and validate API key from environment variable
-- [x] T033 [US1] Update health_check in src/agent/openai.rs to verify API key validity by calling /v1/models endpoint
-- [x] T034 [US1] Extend response handler in src/api/completions.rs to populate cost_estimated in RoutingResult using token counting
-- [x] T035 [US1] Inject X-Nexus-* headers in src/api/completions.rs for non-streaming responses using NexusTransparentHeaders
-- [x] T036 [US1] Inject X-Nexus-* headers in src/api/completions.rs for streaming responses before first SSE chunk
-- [x] T037 [US1] Add logging for cloud API requests in src/agent/openai.rs (excluding request/response bodies)
+- [ ] T031 [US1] Extend agent factory in src/agent/factory.rs to handle BackendType::OpenAI case with API key loading from env var
+- [ ] T032 [US1] Add helper function read_api_key() in src/agent/factory.rs to read and validate API key from environment variable
+- [ ] T033 [US1] Update health_check in src/agent/openai.rs to verify API key validity by calling /v1/models endpoint
+- [ ] T034 [US1] Extend response handler in src/api/completions.rs to populate cost_estimated in RoutingResult using token counting
+- [ ] T035 [US1] Inject X-Nexus-* headers in src/api/completions.rs for non-streaming responses using NexusTransparentHeaders
+- [ ] T036 [US1] Inject X-Nexus-* headers in src/api/completions.rs for streaming responses before first SSE chunk
+- [ ] T037 [US1] Add logging for cloud API requests in src/agent/openai.rs (excluding request/response bodies)
 
 **Checkpoint**: At this point, User Story 1 should be fully functional - OpenAI backend works with transparent headers
 
@@ -116,23 +116,23 @@
 
 ### Tests for User Story 2 (TDD Required) ⚠️
 
-- [x] T038 [P] [US2] Unit test for NexusTransparentHeaders::inject_into_response() in tests/unit/api/headers_injection_test.rs
+- [ ] T038 [P] [US2] Unit test for NexusTransparentHeaders::inject_into_response() in tests/unit/api/headers_injection_test.rs
 - [x] T039 [P] [US2] Unit test for RouteReason serialization to header values in tests/unit/api/headers_injection_test.rs
-- [x] T040 [US2] Integration test verifying all 5 headers present in cloud response in tests/integration/transparent_protocol_test.rs
-- [x] T041 [US2] Integration test verifying X-Nexus-Route-Reason: capability-match for model requests in tests/integration/transparent_protocol_test.rs
-- [x] T042 [US2] Integration test verifying X-Nexus-Route-Reason: capacity-overflow when local saturated in tests/integration/transparent_protocol_test.rs
-- [x] T043 [US2] Integration test verifying X-Nexus-Route-Reason: privacy-requirement for restricted zone in tests/integration/transparent_protocol_test.rs
-- [x] T044 [US2] Integration test verifying X-Nexus-Route-Reason: failover when backend fails in tests/integration/transparent_protocol_test.rs
-- [x] T045 [US2] Contract test comparing Nexus response body to direct OpenAI call (byte-identical) in tests/contract/openai_compatibility_test.rs
+- [ ] T040 [US2] Integration test verifying all 5 headers present in cloud response in tests/integration/transparent_protocol_test.rs
+- [ ] T041 [US2] Integration test verifying X-Nexus-Route-Reason: capability-match for model requests in tests/integration/transparent_protocol_test.rs
+- [ ] T042 [US2] Integration test verifying X-Nexus-Route-Reason: capacity-overflow when local saturated in tests/integration/transparent_protocol_test.rs
+- [ ] T043 [US2] Integration test verifying X-Nexus-Route-Reason: privacy-requirement for restricted zone in tests/integration/transparent_protocol_test.rs
+- [ ] T044 [US2] Integration test verifying X-Nexus-Route-Reason: failover when backend fails in tests/integration/transparent_protocol_test.rs
+- [ ] T045 [US2] Contract test comparing Nexus response body to direct OpenAI call (byte-identical) in tests/contract/openai_compatibility_test.rs
 
 ### Implementation for User Story 2
 
 - [x] T046 [P] [US2] Implement header name constants in src/api/headers.rs (HEADER_BACKEND, HEADER_BACKEND_TYPE, etc.)
-- [x] T047 [US2] Extend Router::select_backend() in src/routing/mod.rs to set route_reason based on decision logic (capability-match, capacity-overflow, privacy-requirement, failover)
-- [x] T048 [US2] Update RoutingResult creation in src/routing/mod.rs to populate cost_estimated from backend token counting
-- [x] T049 [US2] Ensure header injection happens for all code paths in src/api/completions.rs (success, error, timeout)
-- [x] T050 [US2] Add validation in src/api/completions.rs that response body is never modified (preserve byte-for-byte compatibility)
-- [x] T051 [US2] Document header format in code comments in src/api/headers.rs with examples
+- [ ] T047 [US2] Extend Router::select_backend() in src/routing/mod.rs to set route_reason based on decision logic (capability-match, capacity-overflow, privacy-requirement, failover)
+- [ ] T048 [US2] Update RoutingResult creation in src/routing/mod.rs to populate cost_estimated from backend token counting
+- [ ] T049 [US2] Ensure header injection happens for all code paths in src/api/completions.rs (success, error, timeout)
+- [ ] T050 [US2] Add validation in src/api/completions.rs that response body is never modified (preserve byte-for-byte compatibility)
+- [ ] T051 [US2] Document header format in code comments in src/api/headers.rs with examples
 
 **Checkpoint**: All responses now have complete transparent headers showing routing decisions
 
@@ -182,69 +182,69 @@
 
 #### Anthropic Tests
 
-- [x] T066 [P] [US3] Unit test for AnthropicTranslator::openai_to_anthropic() in tests/unit/agent/anthropic_translation_test.rs
-- [x] T067 [P] [US3] Unit test for AnthropicTranslator::anthropic_to_openai() in tests/unit/agent/anthropic_translation_test.rs
-- [x] T068 [P] [US3] Unit test for Anthropic streaming chunk translation in tests/unit/agent/anthropic_translation_test.rs
-- [x] T069 [P] [US3] Unit test for system message extraction to Anthropic system parameter in tests/unit/agent/anthropic_translation_test.rs
-- [x] T070 [US3] Integration test for Anthropic non-streaming request with format verification in tests/integration/format_translation_test.rs
-- [x] T071 [US3] Integration test for Anthropic streaming request with SSE translation in tests/integration/streaming_translation_test.rs
-- [x] T072 [US3] Contract test verifying Anthropic response translates to OpenAI format in tests/contract/anthropic_openai_compatibility_test.rs
+- [ ] T066 [P] [US3] Unit test for AnthropicTranslator::openai_to_anthropic() in tests/unit/agent/anthropic_translation_test.rs
+- [ ] T067 [P] [US3] Unit test for AnthropicTranslator::anthropic_to_openai() in tests/unit/agent/anthropic_translation_test.rs
+- [ ] T068 [P] [US3] Unit test for Anthropic streaming chunk translation in tests/unit/agent/anthropic_translation_test.rs
+- [ ] T069 [P] [US3] Unit test for system message extraction to Anthropic system parameter in tests/unit/agent/anthropic_translation_test.rs
+- [ ] T070 [US3] Integration test for Anthropic non-streaming request with format verification in tests/integration/format_translation_test.rs
+- [ ] T071 [US3] Integration test for Anthropic streaming request with SSE translation in tests/integration/streaming_translation_test.rs
+- [ ] T072 [US3] Contract test verifying Anthropic response translates to OpenAI format in tests/contract/anthropic_openai_compatibility_test.rs
 
 #### Google Tests
 
-- [x] T073 [P] [US3] Unit test for GoogleTranslator::openai_to_google() in tests/unit/agent/google_translation_test.rs
-- [x] T074 [P] [US3] Unit test for GoogleTranslator::google_to_openai() in tests/unit/agent/google_translation_test.rs
-- [x] T075 [P] [US3] Unit test for Google streaming chunk translation in tests/unit/agent/google_translation_test.rs
-- [x] T076 [P] [US3] Unit test for system message prepending to first user message in tests/unit/agent/google_translation_test.rs
-- [x] T077 [US3] Integration test for Google non-streaming request with format verification in tests/integration/format_translation_test.rs
-- [x] T078 [US3] Integration test for Google streaming request with newline-delimited JSON parsing in tests/integration/streaming_translation_test.rs
-- [x] T079 [US3] Contract test verifying Google response translates to OpenAI format in tests/contract/google_openai_compatibility_test.rs
+- [ ] T073 [P] [US3] Unit test for GoogleTranslator::openai_to_google() in tests/unit/agent/google_translation_test.rs
+- [ ] T074 [P] [US3] Unit test for GoogleTranslator::google_to_openai() in tests/unit/agent/google_translation_test.rs
+- [ ] T075 [P] [US3] Unit test for Google streaming chunk translation in tests/unit/agent/google_translation_test.rs
+- [ ] T076 [P] [US3] Unit test for system message prepending to first user message in tests/unit/agent/google_translation_test.rs
+- [ ] T077 [US3] Integration test for Google non-streaming request with format verification in tests/integration/format_translation_test.rs
+- [ ] T078 [US3] Integration test for Google streaming request with newline-delimited JSON parsing in tests/integration/streaming_translation_test.rs
+- [ ] T079 [US3] Contract test verifying Google response translates to OpenAI format in tests/contract/google_openai_compatibility_test.rs
 
 ### Implementation for User Story 3: Anthropic
 
-- [x] T080 [P] [US3] Implement AnthropicRequest struct in src/agent/translation.rs with model, system, messages, max_tokens, temperature, stream fields
-- [x] T081 [P] [US3] Implement AnthropicResponse struct in src/agent/translation.rs with id, content array, role, stop_reason, usage fields
-- [x] T082 [P] [US3] Implement AnthropicMessage struct in src/agent/translation.rs with role and content fields
-- [x] T083 [US3] Implement AnthropicTranslator struct in src/agent/translation.rs
-- [x] T084 [US3] Implement AnthropicTranslator::openai_to_anthropic() in src/agent/translation.rs extracting system message and mapping roles
-- [x] T085 [US3] Implement AnthropicTranslator::anthropic_to_openai() in src/agent/translation.rs extracting text from content blocks and mapping finish_reason
-- [x] T086 [US3] Implement AnthropicTranslator::translate_stream_chunk() in src/agent/translation.rs parsing SSE events (content_block_delta) to OpenAI chunks
-- [x] T087 [US3] Create AnthropicAgent struct in src/agent/anthropic.rs with id, name, base_url, api_key, http_client, translator, pricing fields
-- [x] T088 [US3] Implement InferenceAgent trait for AnthropicAgent in src/agent/anthropic.rs
-- [x] T089 [US3] Implement AnthropicAgent::profile() in src/agent/anthropic.rs with privacy_zone=Open, embeddings=false, token_counting=false
-- [x] T090 [US3] Implement AnthropicAgent::health_check() in src/agent/anthropic.rs calling /v1/messages with minimal request
-- [x] T091 [US3] Implement AnthropicAgent::chat_completion() in src/agent/anthropic.rs with request translation, API call with x-api-key and anthropic-version headers, response translation
-- [x] T092 [US3] Implement AnthropicAgent::chat_completion_stream() in src/agent/anthropic.rs with streaming SSE parsing and chunk translation
-- [x] T093 [US3] Add BackendType::Anthropic case to agent factory in src/agent/factory.rs
+- [ ] T080 [P] [US3] Implement AnthropicRequest struct in src/agent/translation.rs with model, system, messages, max_tokens, temperature, stream fields
+- [ ] T081 [P] [US3] Implement AnthropicResponse struct in src/agent/translation.rs with id, content array, role, stop_reason, usage fields
+- [ ] T082 [P] [US3] Implement AnthropicMessage struct in src/agent/translation.rs with role and content fields
+- [ ] T083 [US3] Implement AnthropicTranslator struct in src/agent/translation.rs
+- [ ] T084 [US3] Implement AnthropicTranslator::openai_to_anthropic() in src/agent/translation.rs extracting system message and mapping roles
+- [ ] T085 [US3] Implement AnthropicTranslator::anthropic_to_openai() in src/agent/translation.rs extracting text from content blocks and mapping finish_reason
+- [ ] T086 [US3] Implement AnthropicTranslator::translate_stream_chunk() in src/agent/translation.rs parsing SSE events (content_block_delta) to OpenAI chunks
+- [ ] T087 [US3] Create AnthropicAgent struct in src/agent/anthropic.rs with id, name, base_url, api_key, http_client, translator, pricing fields
+- [ ] T088 [US3] Implement InferenceAgent trait for AnthropicAgent in src/agent/anthropic.rs
+- [ ] T089 [US3] Implement AnthropicAgent::profile() in src/agent/anthropic.rs with privacy_zone=Open, embeddings=false, token_counting=false
+- [ ] T090 [US3] Implement AnthropicAgent::health_check() in src/agent/anthropic.rs calling /v1/messages with minimal request
+- [ ] T091 [US3] Implement AnthropicAgent::chat_completion() in src/agent/anthropic.rs with request translation, API call with x-api-key and anthropic-version headers, response translation
+- [ ] T092 [US3] Implement AnthropicAgent::chat_completion_stream() in src/agent/anthropic.rs with streaming SSE parsing and chunk translation
+- [ ] T093 [US3] Add BackendType::Anthropic case to agent factory in src/agent/factory.rs
 
 ### Implementation for User Story 3: Google
 
-- [x] T094 [P] [US3] Implement GoogleRequest struct in src/agent/translation.rs with contents array and generation_config fields
-- [x] T095 [P] [US3] Implement GoogleResponse struct in src/agent/translation.rs with candidates array and usage_metadata fields
-- [x] T096 [P] [US3] Implement GoogleContent struct in src/agent/translation.rs with role and parts array
-- [x] T097 [P] [US3] Implement GooglePart struct in src/agent/translation.rs with text field
-- [x] T098 [US3] Implement GoogleTranslator struct in src/agent/translation.rs
-- [x] T099 [US3] Implement GoogleTranslator::openai_to_google() in src/agent/translation.rs combining system+user messages with role prefixes
-- [x] T100 [US3] Implement GoogleTranslator::google_to_openai() in src/agent/translation.rs extracting text from parts and mapping finish_reason
-- [x] T101 [US3] Implement GoogleTranslator::translate_stream_chunk() in src/agent/translation.rs parsing newline-delimited JSON to OpenAI chunks
-- [x] T102 [US3] Create GoogleAIAgent struct in src/agent/google.rs with id, name, base_url, api_key, http_client, translator, pricing fields
-- [x] T103 [US3] Implement InferenceAgent trait for GoogleAIAgent in src/agent/google.rs
-- [x] T104 [US3] Implement GoogleAIAgent::profile() in src/agent/google.rs with privacy_zone=Open, embeddings=true, token_counting=false
-- [x] T105 [US3] Implement GoogleAIAgent::health_check() in src/agent/google.rs calling /v1beta/models endpoint
-- [x] T106 [US3] Implement GoogleAIAgent::chat_completion() in src/agent/google.rs with request translation, API call with key query parameter, response translation
-- [x] T107 [US3] Implement GoogleAIAgent::chat_completion_stream() in src/agent/google.rs with streaming newline-delimited JSON parsing and chunk translation
-- [x] T108 [US3] Add BackendType::Google case to agent factory in src/agent/factory.rs
+- [ ] T094 [P] [US3] Implement GoogleRequest struct in src/agent/translation.rs with contents array and generation_config fields
+- [ ] T095 [P] [US3] Implement GoogleResponse struct in src/agent/translation.rs with candidates array and usage_metadata fields
+- [ ] T096 [P] [US3] Implement GoogleContent struct in src/agent/translation.rs with role and parts array
+- [ ] T097 [P] [US3] Implement GooglePart struct in src/agent/translation.rs with text field
+- [ ] T098 [US3] Implement GoogleTranslator struct in src/agent/translation.rs
+- [ ] T099 [US3] Implement GoogleTranslator::openai_to_google() in src/agent/translation.rs combining system+user messages with role prefixes
+- [ ] T100 [US3] Implement GoogleTranslator::google_to_openai() in src/agent/translation.rs extracting text from parts and mapping finish_reason
+- [ ] T101 [US3] Implement GoogleTranslator::translate_stream_chunk() in src/agent/translation.rs parsing newline-delimited JSON to OpenAI chunks
+- [ ] T102 [US3] Create GoogleAIAgent struct in src/agent/google.rs with id, name, base_url, api_key, http_client, translator, pricing fields
+- [ ] T103 [US3] Implement InferenceAgent trait for GoogleAIAgent in src/agent/google.rs
+- [ ] T104 [US3] Implement GoogleAIAgent::profile() in src/agent/google.rs with privacy_zone=Open, embeddings=true, token_counting=false
+- [ ] T105 [US3] Implement GoogleAIAgent::health_check() in src/agent/google.rs calling /v1beta/models endpoint
+- [ ] T106 [US3] Implement GoogleAIAgent::chat_completion() in src/agent/google.rs with request translation, API call with key query parameter, response translation
+- [ ] T107 [US3] Implement GoogleAIAgent::chat_completion_stream() in src/agent/google.rs with streaming newline-delimited JSON parsing and chunk translation
+- [ ] T108 [US3] Add BackendType::Google case to agent factory in src/agent/factory.rs
 
 ### Edge Cases and Error Handling
 
-- [x] T109 [P] [US3] Add error handling in src/agent/anthropic.rs for translation failures (log and return raw response with error headers)
-- [x] T110 [P] [US3] Add error handling in src/agent/google.rs for translation failures (log and return raw response with error headers)
-- [x] T111 [US3] Implement timeout handling in src/agent/anthropic.rs returning 504 with X-Nexus-* headers
-- [x] T112 [US3] Implement timeout handling in src/agent/google.rs returning 504 with X-Nexus-* headers
-- [x] T113 [US3] Add mid-stream connection loss handling in src/agent/anthropic.rs emitting error SSE event
-- [x] T114 [US3] Add mid-stream connection loss handling in src/agent/google.rs emitting error SSE event
-- [x] T115 [US3] Preserve cloud provider error responses in src/agent/anthropic.rs adding X-Nexus-* headers
-- [x] T116 [US3] Preserve cloud provider error responses in src/agent/google.rs adding X-Nexus-* headers
+- [ ] T109 [P] [US3] Add error handling in src/agent/anthropic.rs for translation failures (log and return raw response with error headers)
+- [ ] T110 [P] [US3] Add error handling in src/agent/google.rs for translation failures (log and return raw response with error headers)
+- [ ] T111 [US3] Implement timeout handling in src/agent/anthropic.rs returning 504 with X-Nexus-* headers
+- [ ] T112 [US3] Implement timeout handling in src/agent/google.rs returning 504 with X-Nexus-* headers
+- [ ] T113 [US3] Add mid-stream connection loss handling in src/agent/anthropic.rs emitting error SSE event
+- [ ] T114 [US3] Add mid-stream connection loss handling in src/agent/google.rs emitting error SSE event
+- [ ] T115 [US3] Preserve cloud provider error responses in src/agent/anthropic.rs adding X-Nexus-* headers
+- [ ] T116 [US3] Preserve cloud provider error responses in src/agent/google.rs adding X-Nexus-* headers
 
 **Checkpoint**: All three cloud providers now work with transparent format translation
 
@@ -254,15 +254,15 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [x] T117 [P] Add comprehensive logging across all cloud agents in src/agent/ modules (debug level for decisions, info for API calls)
-- [x] T118 [P] Add performance measurements in src/api/completions.rs tracking header injection overhead (< 0.1ms target)
-- [x] T119 [P] Add performance measurements in src/agent/translation.rs tracking translation time (< 2ms target)
-- [x] T120 [P] Update documentation in docs/ explaining cloud backend configuration and X-Nexus-* headers
-- [x] T121 Add code comments documenting pricing update strategy in src/agent/pricing.rs with links to provider pricing pages
-- [x] T122 Run quickstart.md validation following all examples with curl commands
-- [x] T123 [P] Security audit: verify API keys never logged or exposed in error messages
-- [x] T124 [P] Performance validation: confirm routing decision < 1ms, total proxy overhead < 5ms
-- [x] T125 Run all 468+ existing tests to ensure no regressions
+- [ ] T117 [P] Add comprehensive logging across all cloud agents in src/agent/ modules (debug level for decisions, info for API calls)
+- [ ] T118 [P] Add performance measurements in src/api/completions.rs tracking header injection overhead (< 0.1ms target)
+- [ ] T119 [P] Add performance measurements in src/agent/translation.rs tracking translation time (< 2ms target)
+- [ ] T120 [P] Update documentation in docs/ explaining cloud backend configuration and X-Nexus-* headers
+- [ ] T121 Add code comments documenting pricing update strategy in src/agent/pricing.rs with links to provider pricing pages
+- [ ] T122 Run quickstart.md validation following all examples with curl commands
+- [ ] T123 [P] Security audit: verify API keys never logged or exposed in error messages
+- [ ] T124 [P] Performance validation: confirm routing decision < 1ms, total proxy overhead < 5ms
+- [ ] T125 Run all 468+ existing tests to ensure no regressions
 
 ---
 

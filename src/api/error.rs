@@ -110,6 +110,16 @@ impl ServiceUnavailableError {
     }
 }
 
+/// Implement IntoResponse for ServiceUnavailableError (T063)
+impl axum::response::IntoResponse for ServiceUnavailableError {
+    fn into_response(self) -> axum::response::Response {
+        use axum::http::StatusCode;
+        use axum::Json;
+
+        (StatusCode::SERVICE_UNAVAILABLE, Json(self)).into_response()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,11 +139,16 @@ mod tests {
 
     #[test]
     fn test_privacy_unavailable_error() {
-        let error =
-            ServiceUnavailableError::privacy_unavailable("restricted", vec!["openai-gpt4".to_string()]);
+        let error = ServiceUnavailableError::privacy_unavailable(
+            "restricted",
+            vec!["openai-gpt4".to_string()],
+        );
 
         assert!(error.error.message.contains("privacy zone"));
-        assert_eq!(error.context.privacy_zone_required.as_deref(), Some("restricted"));
+        assert_eq!(
+            error.context.privacy_zone_required.as_deref(),
+            Some("restricted")
+        );
     }
 
     #[test]

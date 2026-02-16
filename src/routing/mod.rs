@@ -230,6 +230,15 @@ impl Router {
                     (backend, reason)
                 }
             };
+
+            tracing::debug!(
+                backend = %selected.name,
+                backend_type = ?selected.backend_type,
+                model = %model,
+                route_reason = %route_reason,
+                "routing decision made"
+            );
+
             return Ok(RoutingResult {
                 backend: Arc::new(selected),
                 actual_model: model.clone(),

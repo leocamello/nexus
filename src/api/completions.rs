@@ -1,6 +1,7 @@
 //! Chat completions endpoint handler.
 
 use crate::api::{
+    headers::{NexusTransparentHeaders, RouteReason},
     ApiError, AppState, ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse,
     ChunkChoice, ChunkDelta,
 };
@@ -66,87 +67,124 @@ pub async fn handle(
 
     // Use router to select backend
     let requirements = RequestRequirements::from_request(&request);
-    let routing_result = state.router.select_backend(&requirements).map_err(|e| {
-        let available = available_models(&state);
+    let routing_result_res = state.router.select_backend(&requirements);
 
-        // Record error metrics
-        let error_type = match &e {
-            crate::routing::RoutingError::ModelNotFound { .. } => "model_not_found",
-            crate::routing::RoutingError::FallbackChainExhausted { .. } => "fallback_exhausted",
-            crate::routing::RoutingError::NoHealthyBackend { .. } => "no_healthy_backend",
-            crate::routing::RoutingError::CapabilityMismatch { .. } => "capability_mismatch",
-        };
+    // Handle routing errors with actionable context for 503 (T059-T062)
+    let routing_result = match routing_result_res {
+        Ok(result) => result,
+        Err(e) => {
+            let available = available_models(&state);
 
-        let sanitized_model = state.metrics_collector.sanitize_label(&requested_model);
-        metrics::counter!("nexus_errors_total",
-            "error_type" => error_type,
-            "model" => sanitized_model.clone()
-        )
-        .increment(1);
+            // Record error metrics
+            let error_type = match &e {
+                crate::routing::RoutingError::ModelNotFound { .. } => "model_not_found",
+                crate::routing::RoutingError::FallbackChainExhausted { .. } => "fallback_exhausted",
+                crate::routing::RoutingError::NoHealthyBackend { .. } => "no_healthy_backend",
+                crate::routing::RoutingError::CapabilityMismatch { .. } => "capability_mismatch",
+            };
 
-        // Record routing error in request history
-        let error_message = match &e {
-            crate::routing::RoutingError::ModelNotFound { model } => {
-                format!("Model '{}' not found", model)
-            }
-            crate::routing::RoutingError::FallbackChainExhausted { chain } => {
-                format!("Fallback chain exhausted: {}", chain[0])
-            }
-            crate::routing::RoutingError::NoHealthyBackend { model } => {
-                format!("No healthy backend available for model '{}'", model)
-            }
-            crate::routing::RoutingError::CapabilityMismatch { model, missing } => {
-                format!(
-                    "Model '{}' lacks required capabilities: {:?}",
-                    model, missing
-                )
-            }
-        };
+            let sanitized_model = state.metrics_collector.sanitize_label(&requested_model);
+            metrics::counter!("nexus_errors_total",
+                "error_type" => error_type,
+                "model" => sanitized_model.clone()
+            )
+            .increment(1);
 
-        record_request_completion(
-            &state,
-            &requested_model,
-            "none",
-            start_time.elapsed().as_millis() as u64,
-            crate::dashboard::types::RequestStatus::Error,
-            Some(error_message.clone()),
-        );
+            // Record routing error in request history
+            let error_message = match &e {
+                crate::routing::RoutingError::ModelNotFound { model } => {
+                    format!("Model '{}' not found", model)
+                }
+                crate::routing::RoutingError::FallbackChainExhausted { chain } => {
+                    format!("Fallback chain exhausted: {}", chain[0])
+                }
+                crate::routing::RoutingError::NoHealthyBackend { model } => {
+                    format!("No healthy backend available for model '{}'", model)
+                }
+                crate::routing::RoutingError::CapabilityMismatch { model, missing } => {
+                    format!(
+                        "Model '{}' lacks required capabilities: {:?}",
+                        model, missing
+                    )
+                }
+            };
 
-        // Record error in tracing span
-        let latency = start_time.elapsed().as_millis() as u64;
-        Span::current().record("backend", "none");
-        Span::current().record("latency_ms", latency);
-        Span::current().record("status", "error");
-        Span::current().record("error_message", error_message.as_str());
-        let status_code = match &e {
-            crate::routing::RoutingError::ModelNotFound { .. } => 404u16,
-            crate::routing::RoutingError::FallbackChainExhausted { .. } => 404u16,
-            crate::routing::RoutingError::NoHealthyBackend { .. } => 503u16,
-            crate::routing::RoutingError::CapabilityMismatch { .. } => 400u16,
-        };
-        Span::current().record("status_code", status_code);
+            record_request_completion(
+                &state,
+                &requested_model,
+                "none",
+                start_time.elapsed().as_millis() as u64,
+                crate::dashboard::types::RequestStatus::Error,
+                Some(error_message.clone()),
+            );
 
-        match e {
-            crate::routing::RoutingError::ModelNotFound { model } => {
-                ApiError::model_not_found(&model, &available)
-            }
-            crate::routing::RoutingError::FallbackChainExhausted { chain } => {
-                ApiError::model_not_found(&chain[0], &available)
-            }
-            crate::routing::RoutingError::NoHealthyBackend { model } => {
-                ApiError::service_unavailable(&format!(
-                    "No healthy backend available for model '{}'",
-                    model
-                ))
-            }
-            crate::routing::RoutingError::CapabilityMismatch { model, missing } => {
-                ApiError::bad_request(&format!(
-                    "Model '{}' lacks required capabilities: {:?}",
-                    model, missing
-                ))
+            // Record error in tracing span
+            let latency = start_time.elapsed().as_millis() as u64;
+            Span::current().record("backend", "none");
+            Span::current().record("latency_ms", latency);
+            Span::current().record("status", "error");
+            Span::current().record("error_message", error_message.as_str());
+            let status_code = match &e {
+                crate::routing::RoutingError::ModelNotFound { .. } => 404u16,
+                crate::routing::RoutingError::FallbackChainExhausted { .. } => 404u16,
+                crate::routing::RoutingError::NoHealthyBackend { .. } => 503u16,
+                crate::routing::RoutingError::CapabilityMismatch { .. } => 400u16,
+            };
+            Span::current().record("status_code", status_code);
+
+            // T059-T062: For NoHealthyBackend, return ServiceUnavailableError with context
+            match e {
+                crate::routing::RoutingError::ModelNotFound { model } => {
+                    return Err(ApiError::model_not_found(&model, &available));
+                }
+                crate::routing::RoutingError::FallbackChainExhausted { chain } => {
+                    return Err(ApiError::model_not_found(&chain[0], &available));
+                }
+                crate::routing::RoutingError::NoHealthyBackend { model } => {
+                    use crate::api::error::{ActionableErrorContext, ServiceUnavailableError};
+
+                    // T061: Get list of healthy backends
+                    let available_backends = available_backend_names(&state);
+
+                    // T060: Populate required_tier (TODO: need model tier lookup)
+                    // For now, we don't have tier info, so set to None
+                    let required_tier = None;
+
+                    // T062: eta_seconds initially null
+                    let eta_seconds = None;
+
+                    // Build actionable context
+                    let context = ActionableErrorContext {
+                        required_tier,
+                        available_backends,
+                        eta_seconds,
+                        privacy_zone_required: None,
+                    };
+
+                    // T065: Structured logging for routing failure
+                    warn!(
+                        model = %model,
+                        available_backends = ?context.available_backends,
+                        "Routing failure: no healthy backend"
+                    );
+
+                    let error = ServiceUnavailableError::new(
+                        format!("No healthy backend available for model '{}'", model),
+                        context,
+                    );
+
+                    // T063: Return 503 with actionable context
+                    return Ok(error.into_response());
+                }
+                crate::routing::RoutingError::CapabilityMismatch { model, missing } => {
+                    return Err(ApiError::bad_request(&format!(
+                        "Model '{}' lacks required capabilities: {:?}",
+                        model, missing
+                    )));
+                }
             }
         }
-    })?;
+    };
 
     let backend = &routing_result.backend;
     let fallback_used = routing_result.fallback_used;
@@ -262,6 +300,36 @@ pub async fn handle(
 
                 // Create response with fallback header if applicable
                 let mut resp = Json(response).into_response();
+
+                // T035/T047: Inject X-Nexus-* transparent headers (F12)
+                // Derive RouteReason from routing_result.route_reason string
+                let route_reason = determine_route_reason(
+                    &routing_result.route_reason,
+                    routing_result.fallback_used,
+                    attempt as u32,
+                );
+
+                // Get privacy zone from agent profile, or use backend type default
+                let privacy_zone = state
+                    .registry
+                    .get_agent(&backend.id)
+                    .map(|agent| agent.profile().privacy_zone)
+                    .unwrap_or_else(|| backend.backend_type.default_privacy_zone());
+
+                let header_inject_start = std::time::Instant::now();
+                let nexus_headers = NexusTransparentHeaders::new(
+                    backend.id.clone(),
+                    backend.backend_type,
+                    route_reason,
+                    privacy_zone,
+                    routing_result.cost_estimated,
+                );
+                nexus_headers.inject_into_response(&mut resp);
+
+                let header_inject_time_us = header_inject_start.elapsed().as_micros();
+                tracing::debug!(header_inject_time_us, "header injection completed");
+
+                // Also inject fallback header if applicable
                 if fallback_used {
                     if let Ok(header_value) = HeaderValue::from_str(&actual_model) {
                         resp.headers_mut()
@@ -389,12 +457,16 @@ async fn proxy_request(
             return Err(ApiError::gateway_timeout());
         }
 
+        // T050: For non-success responses, preserve the backend error response unchanged
+        // This maintains OpenAI compatibility and follows Constitution Principle III
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
-            return Err(ApiError::bad_gateway(&format!(
-                "Backend returned {}: {}",
-                status, body
-            )));
+
+            // Try to preserve the backend's error response as-is
+            match ApiError::from_backend_json(status.as_u16(), body.clone()) {
+                Ok(preserved_error) => return Err(preserved_error),
+                Err(wrapped_error) => return Err(wrapped_error),
+            }
         }
 
         response
@@ -418,6 +490,17 @@ fn available_models(state: &Arc<AppState>) -> Vec<String> {
     models.into_iter().collect()
 }
 
+/// Get list of available backend names for error context (T061).
+fn available_backend_names(state: &Arc<AppState>) -> Vec<String> {
+    state
+        .registry
+        .get_all_backends()
+        .into_iter()
+        .filter(|b| matches!(b.status, crate::registry::BackendStatus::Healthy))
+        .map(|b| b.id.clone())
+        .collect()
+}
+
 /// Handle streaming chat completion requests.
 async fn handle_streaming(
     state: Arc<AppState>,
@@ -426,29 +509,53 @@ async fn handle_streaming(
 ) -> Result<Response, ApiError> {
     // Use router to select backend
     let requirements = RequestRequirements::from_request(&request);
-    let routing_result = state.router.select_backend(&requirements).map_err(|e| {
-        let available = available_models(&state);
-        match e {
-            crate::routing::RoutingError::ModelNotFound { model } => {
-                ApiError::model_not_found(&model, &available)
-            }
-            crate::routing::RoutingError::FallbackChainExhausted { chain } => {
-                ApiError::model_not_found(&chain[0], &available)
-            }
-            crate::routing::RoutingError::NoHealthyBackend { model } => {
-                ApiError::service_unavailable(&format!(
-                    "No healthy backend available for model '{}'",
-                    model
-                ))
-            }
-            crate::routing::RoutingError::CapabilityMismatch { model, missing } => {
-                ApiError::bad_request(&format!(
-                    "Model '{}' lacks required capabilities: {:?}",
-                    model, missing
-                ))
+    let routing_result = state.router.select_backend(&requirements);
+
+    // Handle routing errors (same as non-streaming for consistency)
+    let routing_result = match routing_result {
+        Ok(result) => result,
+        Err(e) => {
+            let available = available_models(&state);
+            match e {
+                crate::routing::RoutingError::ModelNotFound { model } => {
+                    return Err(ApiError::model_not_found(&model, &available));
+                }
+                crate::routing::RoutingError::FallbackChainExhausted { chain } => {
+                    return Err(ApiError::model_not_found(&chain[0], &available));
+                }
+                crate::routing::RoutingError::NoHealthyBackend { model } => {
+                    use crate::api::error::{ActionableErrorContext, ServiceUnavailableError};
+
+                    let available_backends = available_backend_names(&state);
+                    let context = ActionableErrorContext {
+                        required_tier: None,
+                        available_backends,
+                        eta_seconds: None,
+                        privacy_zone_required: None,
+                    };
+
+                    warn!(
+                        model = %model,
+                        available_backends = ?context.available_backends,
+                        "Streaming routing failure: no healthy backend"
+                    );
+
+                    let error = ServiceUnavailableError::new(
+                        format!("No healthy backend available for model '{}'", model),
+                        context,
+                    );
+
+                    return Ok(error.into_response());
+                }
+                crate::routing::RoutingError::CapabilityMismatch { model, missing } => {
+                    return Err(ApiError::bad_request(&format!(
+                        "Model '{}' lacks required capabilities: {:?}",
+                        model, missing
+                    )));
+                }
             }
         }
-    })?;
+    };
 
     let backend = routing_result.backend;
     let fallback_used = routing_result.fallback_used;
@@ -465,10 +572,40 @@ async fn handle_streaming(
     info!(backend_id = %backend_id, "Starting streaming request");
 
     // Create SSE stream - pass cloned backend data
-    let stream = create_sse_stream(state, Arc::clone(&backend), headers, request);
+    let stream = create_sse_stream(state.clone(), Arc::clone(&backend), headers, request);
 
-    // Create SSE response and add fallback header if needed
+    // Create SSE response and add headers
     let mut resp = Sse::new(stream).into_response();
+
+    // T036/T047: Inject X-Nexus-* transparent headers for streaming (F12)
+    // Headers must be injected BEFORE first SSE chunk
+    let route_reason = determine_route_reason(
+        &routing_result.route_reason,
+        fallback_used,
+        0, // No retries for streaming
+    );
+
+    // Get privacy zone from agent profile, or use backend type default
+    let privacy_zone = state
+        .registry
+        .get_agent(&backend.id)
+        .map(|agent| agent.profile().privacy_zone)
+        .unwrap_or_else(|| backend.backend_type.default_privacy_zone());
+
+    let header_inject_start = std::time::Instant::now();
+    let nexus_headers = NexusTransparentHeaders::new(
+        backend.id.clone(),
+        backend.backend_type,
+        route_reason,
+        privacy_zone,
+        routing_result.cost_estimated,
+    );
+    nexus_headers.inject_into_response(&mut resp);
+
+    let header_inject_time_us = header_inject_start.elapsed().as_micros();
+    tracing::debug!(header_inject_time_us, "header injection completed");
+
+    // Also add fallback header if needed
     if fallback_used {
         if let Ok(header_value) = HeaderValue::from_str(&actual_model) {
             resp.headers_mut()
@@ -658,4 +795,53 @@ fn record_request_completion(
     // Broadcast update to WebSocket clients
     let update = create_request_complete_update(entry);
     let _ = state.ws_broadcast.send(update);
+}
+
+/// T047: Determine RouteReason enum from internal routing decision string.
+///
+/// Maps internal routing logic strings to Nexus Transparent Protocol RouteReason enum.
+/// This function implements the routing decision transparency required by F12.
+fn determine_route_reason(
+    internal_reason: &str,
+    fallback_used: bool,
+    retry_count: u32,
+) -> RouteReason {
+    // If fallback was used or retries occurred, it's a failover situation
+    if fallback_used || retry_count > 0 {
+        return RouteReason::Failover;
+    }
+
+    // Parse internal routing decision string
+    // Examples: "highest_score:backend-1:0.95", "only_healthy_backend", "priority:backend-1:50"
+
+    // Check for privacy-related routing
+    if internal_reason.contains("privacy") || internal_reason.contains("restricted") {
+        return RouteReason::PrivacyRequirement;
+    }
+
+    // Check for capacity-related routing
+    if internal_reason.contains("capacity")
+        || internal_reason.contains("overflow")
+        || internal_reason.contains("saturated")
+        || internal_reason.contains("overloaded")
+    {
+        return RouteReason::CapacityOverflow;
+    }
+
+    // Check for failover indicators
+    if internal_reason.contains("failover")
+        || internal_reason.contains("backup")
+        || internal_reason.contains("fallback")
+    {
+        return RouteReason::Failover;
+    }
+
+    // Default: capability match (standard routing)
+    // This covers cases like:
+    // - "highest_score:..." (model matched, backend selected by score)
+    // - "only_healthy_backend" (model matched, single option)
+    // - "priority:..." (model matched, backend selected by priority)
+    // - "round_robin:..." (model matched, round-robin selection)
+    // - "random:..." (model matched, random selection)
+    RouteReason::CapabilityMatch
 }

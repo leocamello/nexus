@@ -1,5 +1,5 @@
-use chrono::{DateTime, Utc};
 use crate::agent::types::PrivacyZone;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, AtomicU64};
@@ -44,9 +44,7 @@ impl BackendType {
             | BackendType::LMStudio
             | BackendType::Generic => PrivacyZone::Restricted,
 
-            BackendType::OpenAI | BackendType::Anthropic | BackendType::Google => {
-                PrivacyZone::Open
-            }
+            BackendType::OpenAI | BackendType::Anthropic | BackendType::Google => PrivacyZone::Open,
         }
     }
 }

@@ -123,8 +123,7 @@ impl NexusTransparentHeaders {
         // X-Nexus-Backend: backend name
         headers.insert(
             HeaderName::from_static(HEADER_BACKEND),
-            HeaderValue::from_str(&self.backend)
-                .expect("backend name should be valid ASCII"),
+            HeaderValue::from_str(&self.backend).expect("backend name should be valid ASCII"),
         );
 
         // X-Nexus-Backend-Type: "local" or "cloud"

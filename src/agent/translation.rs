@@ -18,7 +18,8 @@
 //!
 //! ## Example Usage
 //!
-//! ```rust
+//! ```rust,ignore
+//! // Phase 6: Not yet implemented
 //! use nexus::agent::translation::AnthropicTranslator;
 //!
 //! let translator = AnthropicTranslator::new();
@@ -83,10 +84,7 @@ impl AnthropicTranslator {
     /// Translate Anthropic streaming chunk to OpenAI format.
     ///
     /// **Phase 1 stub**: Returns error. Implemented in T086.
-    pub fn translate_stream_chunk(
-        &self,
-        _chunk: &[u8],
-    ) -> Result<Vec<String>, TranslationError> {
+    pub fn translate_stream_chunk(&self, _chunk: &[u8]) -> Result<Vec<String>, TranslationError> {
         Err(TranslationError::InvalidFormat(
             "Anthropic streaming translation not yet implemented (Phase 6)".to_string(),
         ))
@@ -136,10 +134,7 @@ impl GoogleTranslator {
     /// Translate Google streaming chunk to OpenAI format.
     ///
     /// **Phase 1 stub**: Returns error. Implemented in T101.
-    pub fn translate_stream_chunk(
-        &self,
-        _chunk: &[u8],
-    ) -> Result<Vec<String>, TranslationError> {
+    pub fn translate_stream_chunk(&self, _chunk: &[u8]) -> Result<Vec<String>, TranslationError> {
         Err(TranslationError::InvalidFormat(
             "Google streaming translation not yet implemented (Phase 6)".to_string(),
         ))

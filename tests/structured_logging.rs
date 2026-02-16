@@ -24,6 +24,7 @@ mod us1_basic_logging {
                 completion_tokens: 50,
                 total_tokens: 150,
             }),
+            extra: std::collections::HashMap::new(),
         };
 
         // Verify token extraction produces all required fields
@@ -444,6 +445,7 @@ mod us4_privacy_safe_logging {
                     content: "This is sensitive user data that should not be logged".to_string(),
                 },
                 name: None,
+                function_call: None,
             }],
             stream: false,
             temperature: None,
@@ -491,6 +493,7 @@ mod us4_privacy_safe_logging {
                     content: long_message,
                 },
                 name: None,
+                function_call: None,
             }],
             stream: false,
             temperature: None,
@@ -591,6 +594,7 @@ mod us6_aggregator_compatibility {
                 completion_tokens: 50,
                 total_tokens: 150,
             }),
+            extra: std::collections::HashMap::new(),
         };
 
         let (prompt, completion, total) = extract_tokens(&response);

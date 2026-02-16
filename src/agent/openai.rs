@@ -2,8 +2,9 @@
 
 use super::{
     AgentCapabilities, AgentError, AgentProfile, HealthStatus, InferenceAgent, ModelCapability,
-    PrivacyZone, StreamChunk,
+    PrivacyZone, StreamChunk, TokenCount,
 };
+use crate::agent::pricing::PricingTable;
 use crate::api::types::{ChatCompletionRequest, ChatCompletionResponse};
 use async_trait::async_trait;
 use axum::http::HeaderMap;
@@ -19,6 +20,7 @@ use std::time::Duration;
 /// - Health check via GET /v1/models
 /// - Model listing via GET /v1/models
 /// - Chat completion via POST /v1/chat/completions with Bearer token
+/// - Token counting using tiktoken-rs (F12: Cloud Backend Support)
 pub struct OpenAIAgent {
     /// Unique agent ID
     id: String,
@@ -30,6 +32,10 @@ pub struct OpenAIAgent {
     api_key: String,
     /// Shared HTTP client for connection pooling
     client: Arc<Client>,
+    /// Pricing table for cost estimation (F12)
+    /// TODO(T048): Use this for cost_estimated calculation
+    #[allow(dead_code)]
+    pricing: Arc<PricingTable>,
 }
 
 impl OpenAIAgent {
@@ -46,6 +52,35 @@ impl OpenAIAgent {
             base_url,
             api_key,
             client,
+            pricing: Arc::new(PricingTable::new()),
+        }
+    }
+
+    /// Count tokens in text using tiktoken-rs with o200k_base encoding (T028).
+    ///
+    /// This provides exact token counting for OpenAI models, replacing the
+    /// heuristic approach with tiktoken-rs BPE encoding.
+    ///
+    /// # Arguments
+    ///
+    /// * `text` - Text to tokenize
+    ///
+    /// # Returns
+    ///
+    /// Number of tokens according to tiktoken o200k_base encoding
+    pub fn count_tokens(&self, text: &str) -> u32 {
+        use tiktoken_rs::o200k_base;
+
+        match o200k_base() {
+            Ok(bpe) => {
+                let tokens = bpe.encode_ordinary(text);
+                tokens.len() as u32
+            }
+            Err(e) => {
+                // Fall back to heuristic if tiktoken fails
+                tracing::warn!("tiktoken encoding failed: {}, using heuristic", e);
+                (text.len() / 4) as u32
+            }
         }
     }
 }
@@ -75,11 +110,11 @@ impl InferenceAgent for OpenAIAgent {
         AgentProfile {
             backend_type: "openai".to_string(),
             version: None,
-            privacy_zone: PrivacyZone::Open, // Cloud service
+            privacy_zone: PrivacyZone::Open, // Cloud service (T030)
             capabilities: AgentCapabilities {
                 embeddings: false, // Phase 1: Not implemented
                 model_lifecycle: false,
-                token_counting: false, // Phase 1: Heuristic only (tiktoken in F14)
+                token_counting: true, // F12: tiktoken-rs exact counting (T030)
                 resource_monitoring: false,
             },
         }
@@ -288,6 +323,26 @@ impl InferenceAgent for OpenAIAgent {
         });
 
         Ok(Box::pin(stream))
+    }
+
+    /// Count tokens using tiktoken-rs exact BPE encoding (T028, F12).
+    ///
+    /// Overrides the default heuristic with exact token counting using
+    /// tiktoken-rs o200k_base encoding, which matches OpenAI's tokenization.
+    async fn count_tokens(&self, _model_id: &str, text: &str) -> TokenCount {
+        use tiktoken_rs::o200k_base;
+
+        match o200k_base() {
+            Ok(bpe) => {
+                let tokens = bpe.encode_ordinary(text);
+                TokenCount::Exact(tokens.len() as u32)
+            }
+            Err(e) => {
+                // Fall back to heuristic if tiktoken fails
+                tracing::warn!("tiktoken encoding failed: {}, using heuristic", e);
+                TokenCount::Heuristic((text.len() / 4) as u32)
+            }
+        }
     }
 }
 
