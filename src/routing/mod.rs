@@ -98,10 +98,8 @@ impl Router {
         strategy: RoutingStrategy,
         weights: ScoringWeights,
     ) -> Self {
-        let tokenizer_registry = Arc::new(
-            TokenizerRegistry::new()
-                .expect("Failed to initialize tokenizer registry"),
-        );
+        let tokenizer_registry =
+            Arc::new(TokenizerRegistry::new().expect("Failed to initialize tokenizer registry"));
         Self {
             registry,
             strategy,
@@ -124,10 +122,8 @@ impl Router {
         aliases: HashMap<String, String>,
         fallbacks: HashMap<String, Vec<String>>,
     ) -> Self {
-        let tokenizer_registry = Arc::new(
-            TokenizerRegistry::new()
-                .expect("Failed to initialize tokenizer registry"),
-        );
+        let tokenizer_registry =
+            Arc::new(TokenizerRegistry::new().expect("Failed to initialize tokenizer registry"));
         Self {
             registry,
             strategy,
@@ -151,10 +147,8 @@ impl Router {
         fallbacks: HashMap<String, Vec<String>>,
         policy_matcher: PolicyMatcher,
     ) -> Self {
-        let tokenizer_registry = Arc::new(
-            TokenizerRegistry::new()
-                .expect("Failed to initialize tokenizer registry"),
-        );
+        let tokenizer_registry =
+            Arc::new(TokenizerRegistry::new().expect("Failed to initialize tokenizer registry"));
         Self {
             registry,
             strategy,
@@ -181,10 +175,8 @@ impl Router {
         budget_config: BudgetConfig,
         budget_state: Arc<DashMap<String, BudgetMetrics>>,
     ) -> Self {
-        let tokenizer_registry = Arc::new(
-            TokenizerRegistry::new()
-                .expect("Failed to initialize tokenizer registry"),
-        );
+        let tokenizer_registry =
+            Arc::new(TokenizerRegistry::new().expect("Failed to initialize tokenizer registry"));
         Self {
             registry,
             strategy,
@@ -350,7 +342,8 @@ impl Router {
             );
 
             // Calculate budget utilization from current state
-            let (budget_status, budget_utilization, budget_remaining) = self.get_budget_status_and_utilization();
+            let (budget_status, budget_utilization, budget_remaining) =
+                self.get_budget_status_and_utilization();
 
             return Ok(RoutingResult {
                 backend: Arc::new(backend),
@@ -393,7 +386,8 @@ impl Router {
                 );
 
                 // Calculate budget utilization from current state
-                let (budget_status, budget_utilization, budget_remaining) = self.get_budget_status_and_utilization();
+                let (budget_status, budget_utilization, budget_remaining) =
+                    self.get_budget_status_and_utilization();
 
                 return Ok(RoutingResult {
                     backend: Arc::new(backend),
@@ -599,30 +593,33 @@ impl Router {
     }
 
     /// Get current budget status and utilization percentage (F14).
-    /// 
+    ///
     /// Returns (BudgetStatus, Option<f64>, Option<f64>) where:
     /// - First f64 is utilization percentage
     /// - Second f64 is remaining budget in USD
+    ///
     /// Returns None for both if no monthly limit is configured.
-    fn get_budget_status_and_utilization(&self) -> (reconciler::intent::BudgetStatus, Option<f64>, Option<f64>) {
+    fn get_budget_status_and_utilization(
+        &self,
+    ) -> (reconciler::intent::BudgetStatus, Option<f64>, Option<f64>) {
         use reconciler::budget::GLOBAL_BUDGET_KEY;
         use reconciler::intent::BudgetStatus;
-        
+
         let monthly_limit = match self.budget_config.monthly_limit_usd {
             Some(limit) if limit > 0.0 => limit,
             _ => return (BudgetStatus::Normal, None, None),
         };
-        
+
         let current_spending = self
             .budget_state
             .get(GLOBAL_BUDGET_KEY)
             .map(|m| m.current_month_spending)
             .unwrap_or(0.0);
-        
+
         let utilization_percent = (current_spending / monthly_limit) * 100.0;
         let remaining = (monthly_limit - current_spending).max(0.0);
         let soft_threshold = self.budget_config.soft_limit_percent;
-        
+
         let status = if utilization_percent >= 100.0 {
             BudgetStatus::HardLimit
         } else if utilization_percent >= soft_threshold {
@@ -630,7 +627,7 @@ impl Router {
         } else {
             BudgetStatus::Normal
         };
-        
+
         (status, Some(utilization_percent), Some(remaining))
     }
 }

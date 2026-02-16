@@ -117,30 +117,30 @@ pub fn compute_model_stats(registry: &crate::registry::Registry) -> Vec<ModelSta
 }
 
 /// Compute budget statistics from router state (F14).
-/// 
+///
 /// Returns budget statistics if a monthly limit is configured, None otherwise.
 /// This provides real-time visibility into spending, utilization, and enforcement status.
 pub fn compute_budget_stats(state: &AppState) -> Option<BudgetStats> {
     let router = &state.router;
     let budget_config = router.budget_config();
     let budget_state = router.budget_state();
-    
+
     // Only return budget stats if a monthly limit is configured
     let monthly_limit_usd = budget_config.monthly_limit_usd?;
-    
+
     // Get current spending from global budget key
     let metrics = budget_state.get(GLOBAL_BUDGET_KEY)?;
     let current_spending_usd = metrics.current_month_spending;
     let billing_month = metrics.month_key.clone();
     let last_reconciliation = metrics.last_reconciliation_time.to_rfc3339();
-    
+
     // Calculate utilization percentage
     let utilization_percent = if monthly_limit_usd > 0.0 {
         (current_spending_usd / monthly_limit_usd) * 100.0
     } else {
         0.0
     };
-    
+
     // Determine status
     let status = if utilization_percent >= 100.0 {
         "HardLimit"
@@ -149,25 +149,24 @@ pub fn compute_budget_stats(state: &AppState) -> Option<BudgetStats> {
     } else {
         "Normal"
     };
-    
+
     // Convert hard limit action to string
     let hard_limit_action = match budget_config.hard_limit_action {
         HardLimitAction::Warn => "Warn",
         HardLimitAction::BlockCloud => "BlockCloud",
         HardLimitAction::BlockAll => "BlockAll",
     };
-    
+
     // Calculate next reset date (first day of next month)
-    let next_reset_date = chrono::NaiveDate::parse_from_str(
-        &format!("{}-01", billing_month),
-        "%Y-%m-%d"
-    ).ok()
-        .and_then(|date| {
-            // Add one month
-            date.checked_add_months(chrono::Months::new(1))
-        })
-        .map(|date| date.format("%Y-%m-%d").to_string());
-    
+    let next_reset_date =
+        chrono::NaiveDate::parse_from_str(&format!("{}-01", billing_month), "%Y-%m-%d")
+            .ok()
+            .and_then(|date| {
+                // Add one month
+                date.checked_add_months(chrono::Months::new(1))
+            })
+            .map(|date| date.format("%Y-%m-%d").to_string());
+
     Some(BudgetStats {
         current_spending_usd,
         monthly_limit_usd: Some(monthly_limit_usd),

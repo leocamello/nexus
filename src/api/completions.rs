@@ -68,23 +68,32 @@ fn extract_tier_enforcement_mode(headers: &HeaderMap) -> TierEnforcementMode {
 /// Inject budget-related response headers (F14: T037-T040).
 ///
 /// Adds the following headers based on budget status:
-/// - X-Nexus-Cost-Estimated: Always included (cost in USD, 4 decimals)
+/// - X-Nexus-Cost-Estimated: Only from budget if not already set by F12 headers and cost > 0
 /// - X-Nexus-Budget-Status: When status != Normal (Normal/SoftLimit/HardLimit)
 /// - X-Nexus-Budget-Utilization: When status != Normal (percentage, 2 decimals)
 /// - X-Nexus-Budget-Remaining: When status != Normal (USD remaining, 2 decimals)
-fn inject_budget_headers<B>(response: &mut Response<B>, routing_result: &crate::routing::RoutingResult) {
+fn inject_budget_headers<B>(
+    response: &mut Response<B>,
+    routing_result: &crate::routing::RoutingResult,
+) {
     use crate::routing::reconciler::intent::BudgetStatus;
-    
+
     let headers = response.headers_mut();
-    
-    // T040: Always include estimated cost
-    if let Some(cost) = routing_result.cost_estimated {
-        let _ = headers.insert(
-            HeaderName::from_static("x-nexus-cost-estimated"),
-            HeaderValue::from_str(&format!("{:.4}", cost)).unwrap_or_else(|_| HeaderValue::from_static("0.0000")),
-        );
+
+    // T040: Set cost header from routing estimate only if not already set by
+    // NexusTransparentHeaders (F12) and cost is meaningful (> 0)
+    if !headers.contains_key("x-nexus-cost-estimated") {
+        if let Some(cost) = routing_result.cost_estimated {
+            if cost > 0.0 {
+                let _ = headers.insert(
+                    HeaderName::from_static("x-nexus-cost-estimated"),
+                    HeaderValue::from_str(&format!("{:.4}", cost))
+                        .unwrap_or_else(|_| HeaderValue::from_static("0.0000")),
+                );
+            }
+        }
     }
-    
+
     // T037-T039: Only add budget headers when not in Normal status
     if routing_result.budget_status != BudgetStatus::Normal {
         // T037: Budget status
@@ -97,20 +106,22 @@ fn inject_budget_headers<B>(response: &mut Response<B>, routing_result: &crate::
             HeaderName::from_static("x-nexus-budget-status"),
             HeaderValue::from_static(status_str),
         );
-        
+
         // T038: Budget utilization percentage
         if let Some(utilization) = routing_result.budget_utilization {
             let _ = headers.insert(
                 HeaderName::from_static("x-nexus-budget-utilization"),
-                HeaderValue::from_str(&format!("{:.2}", utilization)).unwrap_or_else(|_| HeaderValue::from_static("0.00")),
+                HeaderValue::from_str(&format!("{:.2}", utilization))
+                    .unwrap_or_else(|_| HeaderValue::from_static("0.00")),
             );
         }
-        
+
         // T039: Budget remaining in USD
         if let Some(remaining) = routing_result.budget_remaining {
             let _ = headers.insert(
                 HeaderName::from_static("x-nexus-budget-remaining"),
-                HeaderValue::from_str(&format!("{:.2}", remaining)).unwrap_or_else(|_| HeaderValue::from_static("0.00")),
+                HeaderValue::from_str(&format!("{:.2}", remaining))
+                    .unwrap_or_else(|_| HeaderValue::from_static("0.00")),
             );
         }
     }

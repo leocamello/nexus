@@ -178,11 +178,11 @@ impl BudgetReconciler {
                         previous_spending = metrics.current_month_spending,
                         "Budget reset: new billing cycle started"
                     );
-                    
+
                     // T028: Record month rollover event
                     metrics::counter!("nexus_budget_events_total", "event_type" => "month_rollover")
                         .increment(1);
-                    
+
                     metrics.current_month_spending = 0.0;
                     metrics.month_key = current_month.clone();
                 }
@@ -392,7 +392,8 @@ impl BudgetReconciliationLoop {
             metrics::gauge!(
                 "nexus_budget_spending_usd",
                 "billing_month" => metrics.month_key.clone()
-            ).set(metrics.current_month_spending);
+            )
+            .set(metrics.current_month_spending);
 
             // T031, T032: Record utilization and status gauges
             if let Some(monthly_limit) = self.budget_config.monthly_limit_usd {
@@ -401,7 +402,8 @@ impl BudgetReconciliationLoop {
                     metrics::gauge!(
                         "nexus_budget_utilization_percent",
                         "billing_month" => metrics.month_key.clone()
-                    ).set(utilization);
+                    )
+                    .set(utilization);
 
                     // Calculate status: 0=Normal, 1=SoftLimit, 2=HardLimit
                     let status = if utilization >= 100.0 {
@@ -414,7 +416,8 @@ impl BudgetReconciliationLoop {
                     metrics::gauge!(
                         "nexus_budget_status",
                         "billing_month" => metrics.month_key.clone()
-                    ).set(status);
+                    )
+                    .set(status);
                 }
             }
 
@@ -842,12 +845,20 @@ mod tests {
         // gpt-4 has exact tokenizer (tier 0)
         assert_eq!(reconciler.estimate_cost("gpt-4", 500).token_count_tier, 0);
         assert_eq!(reconciler.estimate_cost("gpt-4", 5000).token_count_tier, 0);
-        
+
         // claude has approximation tokenizer (tier 1)
-        assert_eq!(reconciler.estimate_cost("claude-3-sonnet", 1000).token_count_tier, 1);
-        
+        assert_eq!(
+            reconciler
+                .estimate_cost("claude-3-sonnet", 1000)
+                .token_count_tier,
+            1
+        );
+
         // unknown models use heuristic (tier 2)
-        assert_eq!(reconciler.estimate_cost("llama3:8b", 1000).token_count_tier, 2);
+        assert_eq!(
+            reconciler.estimate_cost("llama3:8b", 1000).token_count_tier,
+            2
+        );
     }
 
     // === Background reconciliation loop ===

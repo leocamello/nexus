@@ -144,6 +144,12 @@ pub struct HeuristicTokenizer {
     multiplier: f64, // Conservative multiplier for character-based estimation
 }
 
+impl Default for HeuristicTokenizer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HeuristicTokenizer {
     /// Create heuristic tokenizer with 1.15x conservative multiplier
     pub fn new() -> Self {
@@ -227,13 +233,13 @@ impl TokenizerRegistry {
     }
 
     /// Count tokens for a model + text (convenience method)
-    /// 
+    ///
     /// Records timing metrics and tier counters for observability (US2: Precise Tracking)
     pub fn count_tokens(&self, model: &str, text: &str) -> Result<u32, TokenizerError> {
         let tokenizer = self.get_tokenizer(model);
         let tier_name = Self::tier_name(tokenizer.tier());
         let model_name = model.to_string();
-        
+
         // Measure tokenization duration (T022)
         let start = std::time::Instant::now();
         let result = tokenizer.count_tokens(text);
@@ -244,13 +250,15 @@ impl TokenizerRegistry {
             "nexus_token_count_duration_seconds",
             "tier" => tier_name,
             "model" => model_name.clone()
-        ).record(duration.as_secs_f64());
+        )
+        .record(duration.as_secs_f64());
 
         metrics::counter!(
             "nexus_token_count_tier_total",
             "tier" => tier_name,
             "model" => model_name
-        ).increment(1);
+        )
+        .increment(1);
 
         result
     }

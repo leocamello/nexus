@@ -274,7 +274,7 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::BackendConfig;
+    use crate::config::{BackendConfig, BudgetConfig, HardLimitAction};
     use crate::registry::BackendType;
     use std::path::PathBuf;
     use std::time::Duration;
@@ -527,7 +527,8 @@ mod tests {
             hard_limit_action: HardLimitAction::Warn,
             reconciliation_interval_secs: 60,
         };
-        let budget_loop = BudgetReconciliationLoop::new(Arc::clone(&budget_state), budget_config, 1);
+        let budget_loop =
+            BudgetReconciliationLoop::new(Arc::clone(&budget_state), budget_config, 1);
 
         let cancel = CancellationToken::new();
         let handle = budget_loop.start(cancel.clone());

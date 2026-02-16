@@ -220,6 +220,7 @@ fn bench_routing_with_alias(c: &mut Criterion) {
 
 // === Reconciler Pipeline Benchmarks ===
 
+use nexus::agent::tokenizer::TokenizerRegistry;
 use nexus::config::{BudgetConfig, PolicyMatcher};
 use nexus::routing::reconciler::budget::{BudgetMetrics, BudgetReconciler};
 use nexus::routing::reconciler::intent::RoutingIntent;
@@ -260,6 +261,7 @@ fn bench_full_pipeline(c: &mut Criterion) {
                     Box::new(BudgetReconciler::new(
                         Arc::clone(&registry),
                         BudgetConfig::default(),
+                        Arc::new(TokenizerRegistry::new().expect("tokenizer registry")),
                         Arc::clone(&budget_state),
                     )),
                     Box::new(TierReconciler::new(

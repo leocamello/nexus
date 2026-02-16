@@ -58,7 +58,7 @@ pub struct ModelStats {
 }
 
 /// Budget management statistics (F14).
-/// 
+///
 /// Provides real-time visibility into inference budget status including:
 /// - Current spending and monthly limit
 /// - Utilization percentage and enforcement status
@@ -113,6 +113,7 @@ mod tests {
                 requests: 300,
                 average_duration_ms: 5000.0,
             }],
+            budget: None,
         };
 
         let json = serde_json::to_string(&response).expect("Failed to serialize");
@@ -120,5 +121,7 @@ mod tests {
         assert!(json.contains("3600"));
         assert!(json.contains("ollama-local"));
         assert!(json.contains("llama3:70b"));
+        // budget should not appear in JSON when None
+        assert!(!json.contains("budget"));
     }
 }
