@@ -3,6 +3,7 @@
 //! Tests dual storage, agent-based health checking, and agent-based request forwarding.
 
 use nexus::agent::factory::create_agent;
+use nexus::agent::types::PrivacyZone;
 use nexus::registry::{Backend, BackendType, DiscoverySource, Registry, RegistryError};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -37,6 +38,8 @@ async fn test_dual_storage_stores_both() {
         BackendType::Ollama,
         client,
         HashMap::new(),
+        PrivacyZone::Restricted,
+        None,
     )
     .unwrap();
 
@@ -62,6 +65,8 @@ async fn test_dual_storage_backend_view_unaffected() {
         BackendType::Ollama,
         Arc::clone(&client),
         HashMap::new(),
+        PrivacyZone::Restricted,
+        None,
     )
     .unwrap();
 
@@ -88,6 +93,8 @@ async fn test_dual_storage_agent_identity() {
         BackendType::Ollama,
         client,
         HashMap::new(),
+        PrivacyZone::Restricted,
+        None,
     )
     .unwrap();
 
@@ -124,6 +131,8 @@ async fn test_dual_storage_mixed_backends() {
             *bt,
             Arc::clone(&client),
             metadata,
+            PrivacyZone::Restricted,
+            None,
         )
         .unwrap();
         registry.add_backend_with_agent(backend, agent).unwrap();
@@ -150,6 +159,8 @@ async fn test_dual_storage_remove_cleans_agent() {
         BackendType::Ollama,
         client,
         HashMap::new(),
+        PrivacyZone::Restricted,
+        None,
     )
     .unwrap();
 
@@ -177,6 +188,8 @@ async fn test_get_all_agents() {
             BackendType::Ollama,
             Arc::clone(&client),
             HashMap::new(),
+            PrivacyZone::Restricted,
+            None,
         )
         .unwrap();
         registry.add_backend_with_agent(backend, agent).unwrap();
@@ -200,6 +213,8 @@ async fn test_dual_storage_duplicate_rejected() {
         BackendType::Ollama,
         Arc::clone(&client),
         HashMap::new(),
+        PrivacyZone::Restricted,
+        None,
     )
     .unwrap();
     registry.add_backend_with_agent(backend, agent).unwrap();
@@ -213,6 +228,8 @@ async fn test_dual_storage_duplicate_rejected() {
         BackendType::LMStudio,
         Arc::clone(&client),
         HashMap::new(),
+        PrivacyZone::Restricted,
+        None,
     )
     .unwrap();
     assert!(matches!(
@@ -233,6 +250,8 @@ async fn test_agent_profile_reflects_backend_type() {
         BackendType::Ollama,
         Arc::clone(&client),
         HashMap::new(),
+        PrivacyZone::Restricted,
+        None,
     )
     .unwrap();
     assert_eq!(ollama.profile().backend_type, "ollama");
@@ -244,6 +263,8 @@ async fn test_agent_profile_reflects_backend_type() {
         BackendType::LMStudio,
         Arc::clone(&client),
         HashMap::new(),
+        PrivacyZone::Restricted,
+        None,
     )
     .unwrap();
     assert_eq!(lmstudio.profile().backend_type, "lmstudio");
@@ -255,6 +276,8 @@ async fn test_agent_profile_reflects_backend_type() {
         BackendType::VLLM,
         Arc::clone(&client),
         HashMap::new(),
+        PrivacyZone::Restricted,
+        None,
     )
     .unwrap();
     assert_eq!(vllm.profile().backend_type, "vllm");
@@ -295,6 +318,8 @@ async fn test_cancellation_safety_chat_completion() {
         BackendType::Generic,
         client,
         HashMap::new(),
+        PrivacyZone::Restricted,
+        None,
     )
     .unwrap();
 

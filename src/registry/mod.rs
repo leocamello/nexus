@@ -118,6 +118,7 @@ impl Registry {
     /// ```no_run
     /// use nexus::registry::{Registry, Backend, BackendType, DiscoverySource};
     /// use nexus::agent::factory::create_agent;
+    /// use nexus::agent::types::PrivacyZone;
     /// use std::collections::HashMap;
     /// use std::sync::Arc;
     ///
@@ -141,6 +142,8 @@ impl Registry {
     ///     backend.backend_type,
     ///     client,
     ///     backend.metadata.clone(),
+    ///     PrivacyZone::Restricted,
+    ///     Some(1),
     /// ).unwrap();
     ///
     /// assert!(registry.add_backend_with_agent(backend, agent).is_ok());
