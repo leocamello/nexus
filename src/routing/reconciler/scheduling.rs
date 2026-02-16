@@ -73,3 +73,110 @@ impl AgentSchedulingProfile {
         self.avg_latency_ms as f64 // Approximate with latency for now
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::registry::{BackendType, DiscoverySource, Model};
+    use chrono::Utc;
+    use std::collections::HashMap;
+    use std::sync::atomic::{AtomicU32, AtomicU64};
+
+    fn create_backend(
+        id: &str,
+        status: BackendStatus,
+        backend_type: BackendType,
+        pending: u32,
+        latency: u32,
+    ) -> Backend {
+        Backend {
+            id: id.to_string(),
+            name: id.to_string(),
+            url: format!("http://{}", id),
+            backend_type,
+            status,
+            last_health_check: Utc::now(),
+            last_error: None,
+            models: vec![Model {
+                id: "test-model".to_string(),
+                name: "test-model".to_string(),
+                context_length: 4096,
+                supports_vision: false,
+                supports_tools: false,
+                supports_json_mode: false,
+                max_output_tokens: None,
+            }],
+            priority: 1,
+            pending_requests: AtomicU32::new(pending),
+            total_requests: AtomicU64::new(100),
+            avg_latency_ms: AtomicU32::new(latency),
+            discovery_source: DiscoverySource::Static,
+            metadata: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn from_backend_healthy() {
+        let backend = create_backend("b1", BackendStatus::Healthy, BackendType::Ollama, 5, 50);
+        let profile =
+            AgentSchedulingProfile::from_backend(&backend, PrivacyZone::Restricted, Some(3));
+
+        assert_eq!(profile.agent_id, "b1");
+        assert_eq!(profile.privacy_zone, PrivacyZone::Restricted);
+        assert!(profile.is_healthy);
+        assert_eq!(profile.avg_latency_ms, 50);
+        assert_eq!(profile.pending_requests, 5);
+        assert_eq!(profile.capability_tier, Some(3));
+    }
+
+    #[test]
+    fn from_backend_unhealthy() {
+        let backend = create_backend("b2", BackendStatus::Unhealthy, BackendType::OpenAI, 0, 100);
+        let profile = AgentSchedulingProfile::from_backend(&backend, PrivacyZone::Open, None);
+
+        assert!(!profile.is_healthy);
+        assert_eq!(profile.privacy_zone, PrivacyZone::Open);
+        assert_eq!(profile.capability_tier, None);
+    }
+
+    #[test]
+    fn capability_tier_returns_value_or_default() {
+        let backend = create_backend("b1", BackendStatus::Healthy, BackendType::Ollama, 0, 0);
+
+        let with_tier =
+            AgentSchedulingProfile::from_backend(&backend, PrivacyZone::Restricted, Some(5));
+        assert_eq!(with_tier.capability_tier(), 5);
+
+        let without_tier =
+            AgentSchedulingProfile::from_backend(&backend, PrivacyZone::Restricted, None);
+        assert_eq!(without_tier.capability_tier(), 1); // Default
+    }
+
+    #[test]
+    fn error_rate_returns_stub_zero() {
+        let backend = create_backend("b1", BackendStatus::Healthy, BackendType::Ollama, 0, 0);
+        let profile = AgentSchedulingProfile::from_backend(&backend, PrivacyZone::Restricted, None);
+        assert_eq!(profile.error_rate(), 0.0);
+    }
+
+    #[test]
+    fn success_rate_returns_stub_one() {
+        let backend = create_backend("b1", BackendStatus::Healthy, BackendType::Ollama, 0, 0);
+        let profile = AgentSchedulingProfile::from_backend(&backend, PrivacyZone::Restricted, None);
+        assert_eq!(profile.success_rate(), 1.0);
+    }
+
+    #[test]
+    fn avg_ttft_approximates_latency() {
+        let backend = create_backend("b1", BackendStatus::Healthy, BackendType::Ollama, 0, 42);
+        let profile = AgentSchedulingProfile::from_backend(&backend, PrivacyZone::Restricted, None);
+        assert_eq!(profile.avg_ttft_ms(), 42.0);
+    }
+
+    #[test]
+    fn backend_type_formatted_correctly() {
+        let backend = create_backend("b1", BackendStatus::Healthy, BackendType::VLLM, 0, 0);
+        let profile = AgentSchedulingProfile::from_backend(&backend, PrivacyZone::Restricted, None);
+        assert_eq!(profile.backend_type, "VLLM");
+    }
+}

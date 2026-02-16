@@ -494,4 +494,158 @@ mod tests {
 
         assert_ne!(first, second);
     }
+
+    #[test]
+    fn meets_requirements_no_model_found() {
+        let backend = create_test_backend("b1", BackendStatus::Healthy, "llama3:8b", 1, 0, 50);
+        let intent = create_intent("nonexistent-model", vec!["b1".into()]);
+        assert!(!SchedulerReconciler::meets_requirements(
+            &backend,
+            "nonexistent-model",
+            &intent
+        ));
+    }
+
+    #[test]
+    fn meets_requirements_all_satisfied() {
+        let backend = create_test_backend("b1", BackendStatus::Healthy, "llama3:8b", 1, 0, 50);
+        let intent = create_intent("llama3:8b", vec!["b1".into()]);
+        assert!(SchedulerReconciler::meets_requirements(
+            &backend,
+            "llama3:8b",
+            &intent
+        ));
+    }
+
+    #[test]
+    fn meets_requirements_vision_required_not_supported() {
+        let backend = create_test_backend("b1", BackendStatus::Healthy, "llama3:8b", 1, 0, 50);
+        let intent = RoutingIntent::new(
+            "req-1".to_string(),
+            "llama3:8b".to_string(),
+            "llama3:8b".to_string(),
+            RequestRequirements {
+                model: "llama3:8b".to_string(),
+                estimated_tokens: 100,
+                needs_vision: true,
+                needs_tools: false,
+                needs_json_mode: false,
+            },
+            vec!["b1".into()],
+        );
+        assert!(!SchedulerReconciler::meets_requirements(
+            &backend,
+            "llama3:8b",
+            &intent
+        ));
+    }
+
+    #[test]
+    fn meets_requirements_context_length_exceeded() {
+        let backend = create_test_backend("b1", BackendStatus::Healthy, "llama3:8b", 1, 0, 50);
+        let intent = RoutingIntent::new(
+            "req-1".to_string(),
+            "llama3:8b".to_string(),
+            "llama3:8b".to_string(),
+            RequestRequirements {
+                model: "llama3:8b".to_string(),
+                estimated_tokens: 999999, // Exceeds 4096
+                needs_vision: false,
+                needs_tools: false,
+                needs_json_mode: false,
+            },
+            vec!["b1".into()],
+        );
+        assert!(!SchedulerReconciler::meets_requirements(
+            &backend,
+            "llama3:8b",
+            &intent
+        ));
+    }
+
+    #[test]
+    fn priority_only_strategy() {
+        let registry = Arc::new(Registry::new());
+        // b1: priority 10 (lower is better)
+        registry
+            .add_backend(create_test_backend(
+                "b1",
+                BackendStatus::Healthy,
+                "llama3:8b",
+                10,
+                0,
+                50,
+            ))
+            .unwrap();
+        // b2: priority 1 (best)
+        registry
+            .add_backend(create_test_backend(
+                "b2",
+                BackendStatus::Healthy,
+                "llama3:8b",
+                1,
+                0,
+                50,
+            ))
+            .unwrap();
+
+        let scheduler = SchedulerReconciler::new(
+            registry,
+            RoutingStrategy::PriorityOnly,
+            ScoringWeights::default(),
+            Arc::new(AtomicU64::new(0)),
+        );
+
+        let mut intent = create_intent("llama3:8b", vec!["b1".into(), "b2".into()]);
+        scheduler.reconcile(&mut intent).unwrap();
+
+        assert_eq!(intent.candidate_agents, vec!["b2"]);
+    }
+
+    #[test]
+    fn excludes_backend_not_in_registry() {
+        let registry = Arc::new(Registry::new());
+
+        let scheduler = SchedulerReconciler::new(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            Arc::new(AtomicU64::new(0)),
+        );
+
+        let mut intent = create_intent("llama3:8b", vec!["ghost".into()]);
+        scheduler.reconcile(&mut intent).unwrap();
+
+        assert!(intent.candidate_agents.is_empty());
+        assert!(intent.rejection_reasons[0]
+            .reason
+            .contains("not found in registry"));
+    }
+
+    #[test]
+    fn single_candidate_reason_is_only_healthy() {
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_test_backend(
+                "b1",
+                BackendStatus::Healthy,
+                "llama3:8b",
+                1,
+                0,
+                50,
+            ))
+            .unwrap();
+
+        let scheduler = SchedulerReconciler::new(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            Arc::new(AtomicU64::new(0)),
+        );
+
+        let mut intent = create_intent("llama3:8b", vec!["b1".into()]);
+        scheduler.reconcile(&mut intent).unwrap();
+
+        assert_eq!(intent.route_reason.as_deref(), Some("only_healthy_backend"));
+    }
 }

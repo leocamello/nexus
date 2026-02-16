@@ -185,3 +185,140 @@ pub struct ResourceUsage {
 pub struct StreamChunk {
     pub data: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::registry::Model;
+
+    #[test]
+    fn model_capability_from_model() {
+        let model = Model {
+            id: "llama3:8b".to_string(),
+            name: "Llama 3 8B".to_string(),
+            context_length: 8192,
+            supports_vision: true,
+            supports_tools: false,
+            supports_json_mode: true,
+            max_output_tokens: Some(4096),
+        };
+
+        let cap: ModelCapability = model.into();
+        assert_eq!(cap.id, "llama3:8b");
+        assert_eq!(cap.context_length, 8192);
+        assert!(cap.supports_vision);
+        assert!(!cap.supports_tools);
+        assert!(cap.supports_json_mode);
+        assert_eq!(cap.max_output_tokens, Some(4096));
+        assert!(cap.capability_tier.is_none()); // Phase 1: always None
+    }
+
+    #[test]
+    fn model_from_model_capability() {
+        let cap = ModelCapability {
+            id: "gpt-4".to_string(),
+            name: "GPT-4".to_string(),
+            context_length: 128000,
+            supports_vision: true,
+            supports_tools: true,
+            supports_json_mode: true,
+            max_output_tokens: Some(4096),
+            capability_tier: Some(3),
+        };
+
+        let model: Model = cap.into();
+        assert_eq!(model.id, "gpt-4");
+        assert_eq!(model.context_length, 128000);
+        assert!(model.supports_vision);
+        assert!(model.supports_tools);
+    }
+
+    #[test]
+    fn token_count_exact_value() {
+        let tc = TokenCount::Exact(42);
+        assert_eq!(tc.value(), 42);
+        assert!(tc.is_exact());
+    }
+
+    #[test]
+    fn token_count_heuristic_value() {
+        let tc = TokenCount::Heuristic(100);
+        assert_eq!(tc.value(), 100);
+        assert!(!tc.is_exact());
+    }
+
+    #[test]
+    fn health_status_variants() {
+        let healthy = HealthStatus::Healthy { model_count: 5 };
+        assert!(matches!(healthy, HealthStatus::Healthy { model_count: 5 }));
+
+        let unhealthy = HealthStatus::Unhealthy;
+        assert!(matches!(unhealthy, HealthStatus::Unhealthy));
+
+        let loading = HealthStatus::Loading {
+            model_id: "llama3".to_string(),
+            percent: 50,
+            eta_ms: Some(5000),
+        };
+        assert!(matches!(loading, HealthStatus::Loading { percent: 50, .. }));
+
+        let draining = HealthStatus::Draining;
+        assert!(matches!(draining, HealthStatus::Draining));
+    }
+
+    #[test]
+    fn privacy_zone_equality() {
+        assert_eq!(PrivacyZone::Restricted, PrivacyZone::Restricted);
+        assert_eq!(PrivacyZone::Open, PrivacyZone::Open);
+        assert_ne!(PrivacyZone::Restricted, PrivacyZone::Open);
+    }
+
+    #[test]
+    fn agent_profile_serialization() {
+        let profile = AgentProfile {
+            backend_type: "ollama".to_string(),
+            version: Some("0.5.0".to_string()),
+            privacy_zone: PrivacyZone::Restricted,
+            capabilities: AgentCapabilities {
+                embeddings: false,
+                model_lifecycle: true,
+                token_counting: false,
+                resource_monitoring: true,
+            },
+            capability_tier: Some(2),
+        };
+
+        let json = serde_json::to_string(&profile).unwrap();
+        let deserialized: AgentProfile = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, profile);
+    }
+
+    #[test]
+    fn resource_usage_default() {
+        let usage = ResourceUsage::default();
+        assert!(usage.vram_used_bytes.is_none());
+        assert!(usage.vram_total_bytes.is_none());
+        assert!(usage.pending_requests.is_none());
+        assert!(usage.avg_latency_ms.is_none());
+        assert!(usage.loaded_models.is_empty());
+    }
+
+    #[test]
+    fn agent_capabilities_default() {
+        let caps = AgentCapabilities::default();
+        assert!(!caps.embeddings);
+        assert!(!caps.model_lifecycle);
+        assert!(!caps.token_counting);
+        assert!(!caps.resource_monitoring);
+    }
+
+    #[test]
+    fn stream_chunk_serialization() {
+        let chunk = StreamChunk {
+            data: "hello world".to_string(),
+        };
+        let json = serde_json::to_string(&chunk).unwrap();
+        let deserialized: StreamChunk = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.data, "hello world");
+    }
+}

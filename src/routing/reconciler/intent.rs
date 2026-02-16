@@ -157,3 +157,187 @@ impl RoutingIntent {
         });
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::routing::RequestRequirements;
+
+    fn default_requirements() -> RequestRequirements {
+        RequestRequirements {
+            model: "llama3:8b".to_string(),
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: false,
+        }
+    }
+
+    #[test]
+    fn new_intent_has_all_candidates() {
+        let agents = vec!["a1".to_string(), "a2".to_string(), "a3".to_string()];
+        let intent = RoutingIntent::new(
+            "req-1".to_string(),
+            "llama3:8b".to_string(),
+            "llama3:8b".to_string(),
+            default_requirements(),
+            agents.clone(),
+        );
+
+        assert_eq!(intent.candidate_agents, agents);
+        assert!(intent.excluded_agents.is_empty());
+        assert!(intent.rejection_reasons.is_empty());
+    }
+
+    #[test]
+    fn new_intent_defaults() {
+        let intent = RoutingIntent::new(
+            "req-1".to_string(),
+            "model-a".to_string(),
+            "model-b".to_string(),
+            default_requirements(),
+            vec![],
+        );
+
+        assert_eq!(intent.request_id, "req-1");
+        assert_eq!(intent.requested_model, "model-a");
+        assert_eq!(intent.resolved_model, "model-b");
+        assert!(intent.privacy_constraint.is_none());
+        assert!(intent.min_capability_tier.is_none());
+        assert_eq!(intent.tier_enforcement_mode, TierEnforcementMode::Strict);
+        assert_eq!(intent.budget_status, BudgetStatus::Normal);
+        assert!(intent.route_reason.is_none());
+    }
+
+    #[test]
+    fn exclude_agent_removes_from_candidates() {
+        let mut intent = RoutingIntent::new(
+            "req-1".to_string(),
+            "llama3:8b".to_string(),
+            "llama3:8b".to_string(),
+            default_requirements(),
+            vec!["a1".to_string(), "a2".to_string(), "a3".to_string()],
+        );
+
+        intent.exclude_agent(
+            "a2".to_string(),
+            "TestReconciler",
+            "test reason".to_string(),
+            "test action".to_string(),
+        );
+
+        assert_eq!(intent.candidate_agents, vec!["a1", "a3"]);
+        assert_eq!(intent.excluded_agents, vec!["a2"]);
+        assert_eq!(intent.rejection_reasons.len(), 1);
+        assert_eq!(intent.rejection_reasons[0].agent_id, "a2");
+        assert_eq!(intent.rejection_reasons[0].reconciler, "TestReconciler");
+    }
+
+    #[test]
+    fn exclude_multiple_agents() {
+        let mut intent = RoutingIntent::new(
+            "req-1".to_string(),
+            "llama3:8b".to_string(),
+            "llama3:8b".to_string(),
+            default_requirements(),
+            vec!["a1".to_string(), "a2".to_string(), "a3".to_string()],
+        );
+
+        intent.exclude_agent(
+            "a1".to_string(),
+            "R1",
+            "reason1".to_string(),
+            "action1".to_string(),
+        );
+        intent.exclude_agent(
+            "a3".to_string(),
+            "R2",
+            "reason2".to_string(),
+            "action2".to_string(),
+        );
+
+        assert_eq!(intent.candidate_agents, vec!["a2"]);
+        assert_eq!(intent.excluded_agents.len(), 2);
+        assert_eq!(intent.rejection_reasons.len(), 2);
+    }
+
+    #[test]
+    fn exclude_all_agents_leaves_empty_candidates() {
+        let mut intent = RoutingIntent::new(
+            "req-1".to_string(),
+            "llama3:8b".to_string(),
+            "llama3:8b".to_string(),
+            default_requirements(),
+            vec!["a1".to_string()],
+        );
+
+        intent.exclude_agent(
+            "a1".to_string(),
+            "R1",
+            "reason".to_string(),
+            "action".to_string(),
+        );
+
+        assert!(intent.candidate_agents.is_empty());
+    }
+
+    #[test]
+    fn exclude_nonexistent_agent_adds_to_excluded() {
+        let mut intent = RoutingIntent::new(
+            "req-1".to_string(),
+            "llama3:8b".to_string(),
+            "llama3:8b".to_string(),
+            default_requirements(),
+            vec!["a1".to_string()],
+        );
+
+        intent.exclude_agent(
+            "nonexistent".to_string(),
+            "R1",
+            "reason".to_string(),
+            "action".to_string(),
+        );
+
+        // a1 still in candidates, nonexistent added to excluded
+        assert_eq!(intent.candidate_agents, vec!["a1"]);
+        assert_eq!(intent.excluded_agents, vec!["nonexistent"]);
+    }
+
+    #[test]
+    fn budget_status_default_is_normal() {
+        assert_eq!(BudgetStatus::default(), BudgetStatus::Normal);
+    }
+
+    #[test]
+    fn tier_enforcement_mode_default_is_strict() {
+        assert_eq!(TierEnforcementMode::default(), TierEnforcementMode::Strict);
+    }
+
+    #[test]
+    fn cost_estimate_default_is_zero() {
+        let est = CostEstimate::default();
+        assert_eq!(est.input_tokens, 0);
+        assert_eq!(est.estimated_output_tokens, 0);
+        assert_eq!(est.cost_usd, 0.0);
+        assert_eq!(est.token_count_tier, 0);
+    }
+
+    #[test]
+    fn rejection_reason_serialization() {
+        let reason = RejectionReason {
+            agent_id: "b1".to_string(),
+            reconciler: "Privacy".to_string(),
+            reason: "Cloud not allowed".to_string(),
+            suggested_action: "Use local backend".to_string(),
+        };
+
+        let json = serde_json::to_string(&reason).unwrap();
+        assert!(json.contains("b1"));
+        assert!(json.contains("Privacy"));
+        assert!(json.contains("Cloud not allowed"));
+
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value["agent_id"], "b1");
+        assert_eq!(value["reconciler"], "Privacy");
+    }
+}

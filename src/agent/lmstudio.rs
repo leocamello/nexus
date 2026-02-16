@@ -399,4 +399,62 @@ mod tests {
             Err(AgentError::Network(_)) | Err(AgentError::Timeout(_))
         ));
     }
+
+    #[test]
+    fn test_name_heuristics_vision() {
+        let mut model = ModelCapability {
+            id: "bakllava-7b".to_string(),
+            name: "bakllava-7b".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        LMStudioAgent::apply_name_heuristics(&mut model);
+        assert!(model.supports_vision);
+    }
+
+    #[test]
+    fn test_name_heuristics_tools() {
+        let mut model = ModelCapability {
+            id: "functionary-7b".to_string(),
+            name: "functionary-7b".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        LMStudioAgent::apply_name_heuristics(&mut model);
+        assert!(model.supports_tools);
+        assert!(model.supports_json_mode);
+    }
+
+    #[test]
+    fn test_name_heuristics_context_32k() {
+        let mut model = ModelCapability {
+            id: "codellama-32k".to_string(),
+            name: "codellama-32k".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        LMStudioAgent::apply_name_heuristics(&mut model);
+        assert_eq!(model.context_length, 32768);
+    }
+
+    #[test]
+    fn test_health_check_failure() {
+        // Sync test for profile
+        let agent = test_agent("http://localhost:1234".to_string());
+        let profile = agent.profile();
+        assert!(!profile.capabilities.embeddings);
+        assert!(!profile.capabilities.model_lifecycle);
+    }
 }

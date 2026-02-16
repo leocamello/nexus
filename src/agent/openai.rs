@@ -498,4 +498,87 @@ mod tests {
 
         assert!(matches!(result, Err(AgentError::Network(_))));
     }
+
+    #[test]
+    fn test_name_heuristics_gpt4_turbo() {
+        let mut model = ModelCapability {
+            id: "gpt-4-turbo".to_string(),
+            name: "gpt-4-turbo".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        OpenAIAgent::apply_name_heuristics(&mut model);
+        assert!(model.supports_tools);
+        assert!(model.supports_json_mode);
+        assert_eq!(model.context_length, 128000);
+    }
+
+    #[test]
+    fn test_name_heuristics_gpt35() {
+        let mut model = ModelCapability {
+            id: "gpt-3.5-turbo".to_string(),
+            name: "gpt-3.5-turbo".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        OpenAIAgent::apply_name_heuristics(&mut model);
+        assert!(model.supports_tools);
+        assert_eq!(model.context_length, 4096);
+    }
+
+    #[test]
+    fn test_name_heuristics_gpt35_16k() {
+        let mut model = ModelCapability {
+            id: "gpt-3.5-turbo-16k".to_string(),
+            name: "gpt-3.5-turbo-16k".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        OpenAIAgent::apply_name_heuristics(&mut model);
+        assert_eq!(model.context_length, 16384);
+    }
+
+    #[test]
+    fn test_name_heuristics_gpt4_32k() {
+        let mut model = ModelCapability {
+            id: "gpt-4-32k".to_string(),
+            name: "gpt-4-32k".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        OpenAIAgent::apply_name_heuristics(&mut model);
+        assert_eq!(model.context_length, 32768);
+    }
+
+    #[test]
+    fn test_count_tokens_exact() {
+        let agent = test_agent("https://api.openai.com".to_string(), "sk-test".to_string());
+        let count = agent.count_tokens("Hello, world!");
+        assert!(count > 0);
+        // "Hello, world!" is typically 4 tokens with tiktoken
+        assert!(count < 10);
+    }
+
+    #[test]
+    fn test_count_tokens_empty_string() {
+        let agent = test_agent("https://api.openai.com".to_string(), "sk-test".to_string());
+        let count = agent.count_tokens("");
+        assert_eq!(count, 0);
+    }
 }

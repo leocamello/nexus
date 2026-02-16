@@ -514,4 +514,44 @@ mod tests {
         load_backends_from_config(&config, &registry).unwrap();
         assert_eq!(registry.backend_count(), 0);
     }
+
+    #[tokio::test]
+    async fn test_budget_loop_starts_and_stops() {
+        let budget_state: Arc<DashMap<String, BudgetMetrics>> = Arc::new(DashMap::new());
+        let budget_loop = BudgetReconciliationLoop::new(Arc::clone(&budget_state), 1);
+
+        let cancel = CancellationToken::new();
+        let handle = budget_loop.start(cancel.clone());
+
+        // Let it run briefly
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Trigger shutdown
+        cancel.cancel();
+
+        // Should complete quickly
+        let result = tokio::time::timeout(Duration::from_secs(2), handle).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_build_api_router_creates_valid_state() {
+        let registry = Arc::new(Registry::new());
+        let mut config = NexusConfig::default();
+        config.backends.push(BackendConfig {
+            name: "test".to_string(),
+            url: "http://localhost:11434".to_string(),
+            backend_type: BackendType::Ollama,
+            priority: 1,
+            api_key_env: None,
+            zone: None,
+            tier: None,
+        });
+
+        load_backends_from_config(&config, &registry).unwrap();
+        let config_arc = Arc::new(config);
+        let (_router, app_state) = build_api_router(registry.clone(), config_arc);
+
+        assert_eq!(app_state.registry.backend_count(), 1);
+    }
 }

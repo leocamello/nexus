@@ -52,6 +52,16 @@ impl ReconcilerPipeline {
         Self { reconcilers }
     }
 
+    /// Returns the number of reconcilers in the pipeline.
+    pub fn len(&self) -> usize {
+        self.reconcilers.len()
+    }
+
+    /// Returns true if the pipeline has no reconcilers.
+    pub fn is_empty(&self) -> bool {
+        self.reconcilers.is_empty()
+    }
+
     /// Execute the pipeline on the given routing intent.
     /// Returns a RoutingDecision based on the final state of the intent.
     ///
@@ -136,5 +146,254 @@ impl ReconcilerPipeline {
         );
 
         Ok(decision)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::routing::RequestRequirements;
+
+    /// A mock reconciler that passes through without modifying intent.
+    struct PassthroughReconciler;
+    impl Reconciler for PassthroughReconciler {
+        fn name(&self) -> &'static str {
+            "PassthroughReconciler"
+        }
+        fn reconcile(&self, _intent: &mut RoutingIntent) -> Result<(), RoutingError> {
+            Ok(())
+        }
+    }
+
+    /// A mock reconciler that excludes a specific agent.
+    struct ExcludeReconciler {
+        agent_id: String,
+    }
+    impl Reconciler for ExcludeReconciler {
+        fn name(&self) -> &'static str {
+            "ExcludeReconciler"
+        }
+        fn reconcile(&self, intent: &mut RoutingIntent) -> Result<(), RoutingError> {
+            intent.exclude_agent(
+                self.agent_id.clone(),
+                "ExcludeReconciler",
+                "test exclusion".to_string(),
+                "test action".to_string(),
+            );
+            Ok(())
+        }
+    }
+
+    /// A mock reconciler that always fails.
+    struct FailingReconciler;
+    impl Reconciler for FailingReconciler {
+        fn name(&self) -> &'static str {
+            "FailingReconciler"
+        }
+        fn reconcile(&self, _intent: &mut RoutingIntent) -> Result<(), RoutingError> {
+            Err(RoutingError::NoHealthyBackend {
+                model: "test".to_string(),
+            })
+        }
+    }
+
+    fn create_intent(candidates: Vec<&str>) -> RoutingIntent {
+        RoutingIntent::new(
+            "req-1".to_string(),
+            "llama3:8b".to_string(),
+            "llama3:8b".to_string(),
+            RequestRequirements {
+                model: "llama3:8b".to_string(),
+                estimated_tokens: 100,
+                needs_vision: false,
+                needs_tools: false,
+                needs_json_mode: false,
+            },
+            candidates.into_iter().map(|s| s.to_string()).collect(),
+        )
+    }
+
+    #[test]
+    fn pipeline_new_creates_empty() {
+        let pipeline = ReconcilerPipeline::new(vec![]);
+        assert!(pipeline.is_empty());
+        assert_eq!(pipeline.len(), 0);
+    }
+
+    #[test]
+    fn pipeline_with_reconcilers_reports_length() {
+        let pipeline = ReconcilerPipeline::new(vec![
+            Box::new(PassthroughReconciler),
+            Box::new(PassthroughReconciler),
+        ]);
+        assert_eq!(pipeline.len(), 2);
+        assert!(!pipeline.is_empty());
+    }
+
+    #[test]
+    fn empty_pipeline_routes_first_candidate() {
+        let mut pipeline = ReconcilerPipeline::new(vec![]);
+        let mut intent = create_intent(vec!["b1", "b2"]);
+        let decision = pipeline.execute(&mut intent).unwrap();
+        match decision {
+            RoutingDecision::Route { agent_id, .. } => assert_eq!(agent_id, "b1"),
+            _ => panic!("Expected Route decision"),
+        }
+    }
+
+    #[test]
+    fn empty_pipeline_no_candidates_rejects() {
+        let mut pipeline = ReconcilerPipeline::new(vec![]);
+        let mut intent = create_intent(vec![]);
+        let decision = pipeline.execute(&mut intent).unwrap();
+        assert!(matches!(decision, RoutingDecision::Reject { .. }));
+    }
+
+    #[test]
+    fn passthrough_reconciler_preserves_candidates() {
+        let mut pipeline = ReconcilerPipeline::new(vec![Box::new(PassthroughReconciler)]);
+        let mut intent = create_intent(vec!["b1", "b2"]);
+        let decision = pipeline.execute(&mut intent).unwrap();
+        match decision {
+            RoutingDecision::Route { agent_id, .. } => assert_eq!(agent_id, "b1"),
+            _ => panic!("Expected Route decision"),
+        }
+    }
+
+    #[test]
+    fn exclude_reconciler_removes_agent() {
+        let mut pipeline = ReconcilerPipeline::new(vec![Box::new(ExcludeReconciler {
+            agent_id: "b1".to_string(),
+        })]);
+        let mut intent = create_intent(vec!["b1", "b2"]);
+        let decision = pipeline.execute(&mut intent).unwrap();
+        match decision {
+            RoutingDecision::Route { agent_id, .. } => assert_eq!(agent_id, "b2"),
+            _ => panic!("Expected Route decision"),
+        }
+    }
+
+    #[test]
+    fn exclude_all_candidates_produces_reject() {
+        let mut pipeline = ReconcilerPipeline::new(vec![
+            Box::new(ExcludeReconciler {
+                agent_id: "b1".to_string(),
+            }),
+            Box::new(ExcludeReconciler {
+                agent_id: "b2".to_string(),
+            }),
+        ]);
+        let mut intent = create_intent(vec!["b1", "b2"]);
+        let decision = pipeline.execute(&mut intent).unwrap();
+        match decision {
+            RoutingDecision::Reject {
+                rejection_reasons, ..
+            } => {
+                assert_eq!(rejection_reasons.len(), 2);
+                assert_eq!(rejection_reasons[0].agent_id, "b1");
+                assert_eq!(rejection_reasons[1].agent_id, "b2");
+            }
+            _ => panic!("Expected Reject decision"),
+        }
+    }
+
+    #[test]
+    fn failing_reconciler_returns_error() {
+        let mut pipeline = ReconcilerPipeline::new(vec![Box::new(FailingReconciler)]);
+        let mut intent = create_intent(vec!["b1"]);
+        let result = pipeline.execute(&mut intent);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn failing_reconciler_stops_pipeline() {
+        let mut pipeline = ReconcilerPipeline::new(vec![
+            Box::new(FailingReconciler),
+            Box::new(ExcludeReconciler {
+                agent_id: "b1".to_string(),
+            }),
+        ]);
+        let mut intent = create_intent(vec!["b1"]);
+        let result = pipeline.execute(&mut intent);
+        assert!(result.is_err());
+        // Second reconciler should not have run
+        assert!(intent.excluded_agents.is_empty());
+    }
+
+    #[test]
+    fn route_reason_is_preserved() {
+        struct ReasonReconciler;
+        impl Reconciler for ReasonReconciler {
+            fn name(&self) -> &'static str {
+                "ReasonReconciler"
+            }
+            fn reconcile(&self, intent: &mut RoutingIntent) -> Result<(), RoutingError> {
+                intent.route_reason = Some("custom_reason".to_string());
+                Ok(())
+            }
+        }
+
+        let mut pipeline = ReconcilerPipeline::new(vec![Box::new(ReasonReconciler)]);
+        let mut intent = create_intent(vec!["b1"]);
+        let decision = pipeline.execute(&mut intent).unwrap();
+        match decision {
+            RoutingDecision::Route { reason, .. } => assert_eq!(reason, "custom_reason"),
+            _ => panic!("Expected Route decision"),
+        }
+    }
+
+    #[test]
+    fn default_route_reason_when_none_set() {
+        let mut pipeline = ReconcilerPipeline::new(vec![Box::new(PassthroughReconciler)]);
+        let mut intent = create_intent(vec!["b1"]);
+        let decision = pipeline.execute(&mut intent).unwrap();
+        match decision {
+            RoutingDecision::Route { reason, .. } => {
+                assert_eq!(reason, "Pipeline execution completed")
+            }
+            _ => panic!("Expected Route decision"),
+        }
+    }
+
+    #[test]
+    fn reconcilers_execute_in_order() {
+        use std::sync::{Arc, Mutex};
+
+        let order = Arc::new(Mutex::new(Vec::new()));
+
+        struct OrderReconciler {
+            id: String,
+            order: Arc<Mutex<Vec<String>>>,
+        }
+        impl Reconciler for OrderReconciler {
+            fn name(&self) -> &'static str {
+                "OrderReconciler"
+            }
+            fn reconcile(&self, _intent: &mut RoutingIntent) -> Result<(), RoutingError> {
+                self.order.lock().unwrap().push(self.id.clone());
+                Ok(())
+            }
+        }
+
+        let mut pipeline = ReconcilerPipeline::new(vec![
+            Box::new(OrderReconciler {
+                id: "first".to_string(),
+                order: order.clone(),
+            }),
+            Box::new(OrderReconciler {
+                id: "second".to_string(),
+                order: order.clone(),
+            }),
+            Box::new(OrderReconciler {
+                id: "third".to_string(),
+                order: order.clone(),
+            }),
+        ]);
+
+        let mut intent = create_intent(vec!["b1"]);
+        pipeline.execute(&mut intent).unwrap();
+
+        let executed = order.lock().unwrap();
+        assert_eq!(*executed, vec!["first", "second", "third"]);
     }
 }
