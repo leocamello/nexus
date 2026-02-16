@@ -13,7 +13,7 @@ As a platform administrator, I need to set a monthly inference budget that gradu
 
 **Why this priority**: Core value proposition - enables cost control without service disruption. This is the foundation of the entire feature and delivers immediate business value.
 
-**Independent Test**: Can be fully tested by configuring a monthly budget, sending inference requests until 80% threshold is reached, and observing routing shift from cloud-preferred to local-preferred behavior. Delivers immediate cost control value.
+**Independent Test**: Can be fully tested by configuring a monthly budget, sending inference requests until the soft limit threshold is reached (default 75%), and observing routing shift from cloud-preferred to local-preferred behavior. Delivers immediate cost control value.
 
 **Acceptance Scenarios**:
 
@@ -69,7 +69,7 @@ As a platform operator, I need real-time budget status visibility through metric
 **Acceptance Scenarios**:
 
 1. **Given** active inference requests, **When** Prometheus is scraped, **Then** metrics include nexus_budget_spending_usd, nexus_budget_utilization_percent, and nexus_budget_status gauges
-2. **Given** budget utilization above 80%, **When** inference response is returned, **Then** X-Nexus-Budget-Status header indicates "SoftLimit" or "HardLimit"
+2. **Given** budget utilization above soft limit (default 75%), **When** inference response is returned, **Then** X-Nexus-Budget-Status header indicates "SoftLimit" or "HardLimit"
 3. **Given** multiple requests at various costs, **When** viewing Prometheus, **Then** nexus_cost_per_request_usd histogram shows distribution of request costs
 4. **Given** budget status changes from Normal to SoftLimit, **When** background reconciliation runs, **Then** metrics update within 60 seconds and dashboard reflects new status
 

@@ -52,7 +52,7 @@
 
 **Goal**: Set monthly inference budget with gradual traffic shift to cost-efficient options as spending approaches limits
 
-**Independent Test**: Configure monthly budget, send requests until 80% threshold, observe routing shift from cloud-preferred to local-preferred behavior
+**Independent Test**: Configure monthly budget, send requests until 75% threshold (default soft limit), observe routing shift from cloud-preferred to local-preferred behavior
 
 ### Implementation for User Story 1
 
@@ -64,7 +64,7 @@
 - [X] T017 [US1] Wire BudgetReconciliationLoop with cancellation token in cli/serve.rs startup sequence
 - [X] T018 [US1] Verify SchedulerReconciler adjusts agent scores based on BudgetStatus (existing behavior from Control Plane PR)
 
-**Checkpoint**: Soft limit routing shift should be fully functional - can test by sending requests until 80% budget utilized
+**Checkpoint**: Soft limit routing shift should be fully functional - can test by sending requests until 75% budget utilized
 
 ---
 

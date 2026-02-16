@@ -923,4 +923,157 @@ mod tests {
         assert!((config.soft_limit_percent - 75.0).abs() < f64::EPSILON); // default
         assert_eq!(config.hard_limit_action, HardLimitAction::Warn); // default
     }
+
+    // === SC-002: Soft limit routing shift reduces cloud spending ===
+
+    #[test]
+    fn sc002_soft_limit_marks_budget_status() {
+        // At SoftLimit, BudgetReconciler marks status so SchedulerReconciler
+        // can reduce cloud agent scores by 50%, shifting traffic to local backends
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_backend("local1", "llama3:8b", BackendType::Ollama))
+            .unwrap();
+        registry
+            .add_backend(create_backend("cloud1", "llama3:8b", BackendType::OpenAI))
+            .unwrap();
+
+        let state = Arc::new(DashMap::new());
+        let reconciler = BudgetReconciler::new(
+            Arc::clone(&registry),
+            budget_config(Some(100.0), HardLimitAction::BlockCloud),
+            tokenizer_registry(),
+            Arc::clone(&state),
+        );
+
+        // Simulate spending at 76% (above 75% soft limit)
+        state
+            .entry(GLOBAL_BUDGET_KEY.to_string())
+            .and_modify(|m| m.current_month_spending = 76.0);
+
+        let mut intent = create_intent("llama3:8b", vec!["local1".into(), "cloud1".into()]);
+        reconciler.reconcile(&mut intent).unwrap();
+
+        assert_eq!(
+            intent.budget_status,
+            BudgetStatus::SoftLimit,
+            "Budget should be at SoftLimit above 75%"
+        );
+        // At SoftLimit, candidates remain but SchedulerReconciler will prefer local
+        assert_eq!(
+            intent.candidate_agents.len(),
+            2,
+            "SoftLimit keeps all candidates; SchedulerReconciler adjusts scores"
+        );
+    }
+
+    #[test]
+    fn sc002_hard_limit_excludes_cloud_backends() {
+        // At HardLimit with BlockCloud action, cloud backends are excluded
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_backend("local1", "llama3:8b", BackendType::Ollama))
+            .unwrap();
+        registry
+            .add_backend(create_backend("cloud1", "llama3:8b", BackendType::OpenAI))
+            .unwrap();
+
+        let state = Arc::new(DashMap::new());
+        let reconciler = BudgetReconciler::new(
+            Arc::clone(&registry),
+            budget_config(Some(100.0), HardLimitAction::BlockCloud),
+            tokenizer_registry(),
+            Arc::clone(&state),
+        );
+
+        // Simulate spending at 100% (hard limit)
+        state
+            .entry(GLOBAL_BUDGET_KEY.to_string())
+            .and_modify(|m| m.current_month_spending = 100.0);
+
+        let mut intent = create_intent("llama3:8b", vec!["local1".into(), "cloud1".into()]);
+        reconciler.reconcile(&mut intent).unwrap();
+
+        assert_eq!(intent.budget_status, BudgetStatus::HardLimit);
+        assert!(
+            !intent.candidate_agents.contains(&"cloud1".to_string()),
+            "Cloud backend should be excluded at HardLimit with BlockCloud"
+        );
+        assert!(
+            intent.candidate_agents.contains(&"local1".to_string()),
+            "Local backend should remain available"
+        );
+    }
+
+    #[test]
+    fn sc002_normal_budget_includes_cloud_backends() {
+        // When budget is Normal (below soft limit), cloud backends should be available
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_backend("local1", "llama3:8b", BackendType::Ollama))
+            .unwrap();
+        registry
+            .add_backend(create_backend("cloud1", "llama3:8b", BackendType::OpenAI))
+            .unwrap();
+
+        let state = Arc::new(DashMap::new());
+        let reconciler = BudgetReconciler::new(
+            Arc::clone(&registry),
+            budget_config(Some(100.0), HardLimitAction::BlockCloud),
+            tokenizer_registry(),
+            Arc::clone(&state),
+        );
+
+        // Spending at 50% (well below 75% soft limit)
+        state
+            .entry(GLOBAL_BUDGET_KEY.to_string())
+            .and_modify(|m| m.current_month_spending = 50.0);
+
+        let mut intent = create_intent("llama3:8b", vec!["local1".into(), "cloud1".into()]);
+        reconciler.reconcile(&mut intent).unwrap();
+
+        assert_eq!(intent.budget_status, BudgetStatus::Normal);
+        assert_eq!(
+            intent.candidate_agents.len(),
+            2,
+            "Both local and cloud should be available at Normal budget"
+        );
+    }
+
+    // === SC-006: Budget counter resets on billing cycle ===
+
+    #[test]
+    fn sc006_auto_reset_on_month_rollover() {
+        let registry = Arc::new(Registry::new());
+        let state = Arc::new(DashMap::new());
+
+        // Simulate spending from a previous month
+        let mut old_metrics = BudgetMetrics::new();
+        old_metrics.current_month_spending = 95.0;
+        old_metrics.month_key = "2024-01".to_string(); // Old month
+        state.insert(GLOBAL_BUDGET_KEY.to_string(), old_metrics);
+
+        let reconciler = BudgetReconciler::new(
+            Arc::clone(&registry),
+            budget_config(Some(100.0), HardLimitAction::BlockCloud),
+            tokenizer_registry(),
+            Arc::clone(&state),
+        );
+
+        // Recording new spending should trigger month rollover detection
+        reconciler.record_spending(5.0);
+
+        let metrics = state.get(GLOBAL_BUDGET_KEY).unwrap();
+        // Spending should be reset to just the new amount (5.0), not 95.0 + 5.0
+        assert!(
+            (metrics.current_month_spending - 5.0).abs() < f64::EPSILON,
+            "Spending should be reset on month rollover, got {}",
+            metrics.current_month_spending
+        );
+        // Month key should be updated to current month
+        assert_ne!(
+            metrics.month_key, "2024-01",
+            "Month key should update on rollover"
+        );
+    }
 }

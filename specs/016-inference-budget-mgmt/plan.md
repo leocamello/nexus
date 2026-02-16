@@ -7,7 +7,7 @@
 
 ## Summary
 
-This feature implements cost-aware routing with graceful degradation using the existing BudgetReconciler infrastructure. It enhances the tokenizer registry for audit-grade token counting across providers (OpenAI, Anthropic, local), adds comprehensive Prometheus metrics for budget monitoring, and wires the BudgetReconciliationLoop into the serve command. The system tracks monthly spending against configurable limits and shifts routing behavior at soft limits (default 80%) to prefer local agents, with configurable hard limit actions (local-only, queue, reject) when budget is exhausted. Budget status is exposed via /v1/stats endpoint and X-Nexus-Budget-Status response headers.
+This feature implements cost-aware routing with graceful degradation using the existing BudgetReconciler infrastructure. It enhances the tokenizer registry for audit-grade token counting across providers (OpenAI, Anthropic, local), adds comprehensive Prometheus metrics for budget monitoring, and wires the BudgetReconciliationLoop into the serve command. The system tracks monthly spending against configurable limits and shifts routing behavior at soft limits (default 75%) to prefer local agents, with configurable hard limit actions (warn, block_cloud, block_all) when budget is exhausted. Budget status is exposed via /v1/stats endpoint and X-Nexus-Budget-Status response headers.
 
 ## Technical Context
 
@@ -227,7 +227,7 @@ Run `/speckit.implement` to execute tasks in dependency order.
 **How to verify each SC** after implementation:
 
 - **SC-001**: Unit tests with known text samples, compare to OpenAI API
-- **SC-002**: Integration test: measure cloud spending at 80-100% vs 0-80%
+- **SC-002**: Integration test: measure cloud spending at soft_limit-100% vs 0-soft_limit (default 75%)
 - **SC-003**: Integration test: trigger transitions, verify metrics within 60s
 - **SC-004**: Query Prometheus, compare to internal BudgetMetrics state
 - **SC-005**: Integration test: exhaust budget mid-request, verify completion
