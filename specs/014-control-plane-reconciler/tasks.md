@@ -97,21 +97,21 @@ This is a single Rust project with structure:
 
 ### Implementation for User Story 2
 
-- [ ] T033 [P] [US2] Create TrafficPolicy struct in src/config/routing.rs with model_pattern, privacy, max_cost_per_request, min_tier, fallback_allowed fields per FR-035
-- [ ] T034 [P] [US2] Create PrivacyConstraint enum in src/config/routing.rs with Unrestricted, Restricted variants per data-model.md
-- [ ] T035 [P] [US2] Create PolicyMatcher struct in src/routing/reconciler/policy_matcher.rs using globset crate per research.md
-- [ ] T036 [US2] Implement PrivacyConstraint::allows() method in src/config/routing.rs per data-model.md
-- [ ] T037 [US2] Implement PolicyMatcher::compile() in src/routing/reconciler/policy_matcher.rs with globset pre-compilation per research.md
-- [ ] T038 [US2] Implement PolicyMatcher::find_policy() in src/routing/reconciler/policy_matcher.rs with TOML order precedence per research.md
-- [ ] T039 [US2] Add TrafficPolicy loading to config in src/config/routing.rs from [routing.policies.*] TOML sections per FR-011
-- [ ] T040 [US2] Create PrivacyReconciler struct in src/routing/reconciler/privacy.rs
-- [ ] T041 [US2] Implement Reconciler trait for PrivacyReconciler in src/routing/reconciler/privacy.rs
-- [ ] T042 [US2] Implement policy matching in PrivacyReconciler in src/routing/reconciler/privacy.rs per FR-011
-- [ ] T043 [US2] Implement privacy_zone filtering in PrivacyReconciler in src/routing/reconciler/privacy.rs per FR-012, FR-013
-- [ ] T044 [US2] Implement agent exclusion with RejectionReason in PrivacyReconciler in src/routing/reconciler/privacy.rs per FR-014
-- [ ] T045 [US2] Implement unknown privacy_zone handling as "cloud" in PrivacyReconciler in src/routing/reconciler/privacy.rs per FR-015
-- [ ] T046 [US2] Add PrivacyReconciler to pipeline construction in Router::select_backend() in src/routing/mod.rs between RequestAnalyzer and SchedulerReconciler per FR-005
-- [ ] T047 [US2] Add privacy_zone field to AgentProfile in src/agent/types.rs if not already present per FR-012
+- [X] T033 [P] [US2] Create TrafficPolicy struct in src/config/routing.rs with model_pattern, privacy, max_cost_per_request, min_tier, fallback_allowed fields per FR-035
+- [X] T034 [P] [US2] Create PrivacyConstraint enum in src/config/routing.rs with Unrestricted, Restricted variants per data-model.md
+- [X] T035 [P] [US2] Create PolicyMatcher struct in src/routing/reconciler/policy_matcher.rs using globset crate per research.md
+- [X] T036 [US2] Implement PrivacyConstraint::allows() method in src/config/routing.rs per data-model.md
+- [X] T037 [US2] Implement PolicyMatcher::compile() in src/routing/reconciler/policy_matcher.rs with globset pre-compilation per research.md
+- [X] T038 [US2] Implement PolicyMatcher::find_policy() in src/routing/reconciler/policy_matcher.rs with TOML order precedence per research.md
+- [X] T039 [US2] Add TrafficPolicy loading to config in src/config/routing.rs from [routing.policies.*] TOML sections per FR-011
+- [X] T040 [US2] Create PrivacyReconciler struct in src/routing/reconciler/privacy.rs
+- [X] T041 [US2] Implement Reconciler trait for PrivacyReconciler in src/routing/reconciler/privacy.rs
+- [X] T042 [US2] Implement policy matching in PrivacyReconciler in src/routing/reconciler/privacy.rs per FR-011
+- [X] T043 [US2] Implement privacy_zone filtering in PrivacyReconciler in src/routing/reconciler/privacy.rs per FR-012, FR-013
+- [X] T044 [US2] Implement agent exclusion with RejectionReason in PrivacyReconciler in src/routing/reconciler/privacy.rs per FR-014
+- [X] T045 [US2] Implement unknown privacy_zone handling as "cloud" in PrivacyReconciler in src/routing/reconciler/privacy.rs per FR-015
+- [X] T046 [US2] Add PrivacyReconciler to pipeline construction in Router::select_backend() in src/routing/mod.rs between RequestAnalyzer and SchedulerReconciler per FR-005
+- [X] T047 [US2] Add privacy_zone field to AgentProfile in src/agent/types.rs if not already present per FR-012
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently - privacy constraints correctly exclude cloud agents, all rejection reasons tracked
 
@@ -125,22 +125,22 @@ This is a single Rust project with structure:
 
 ### Implementation for User Story 3
 
-- [ ] T048 [P] [US3] Create BudgetConfig struct in src/config/routing.rs with monthly_limit_usd, soft_limit_percent, hard_limit_action fields per FR-016
-- [ ] T049 [P] [US3] Create HardLimitAction enum in src/config/routing.rs with Warn, BlockCloud, BlockAll variants per FR-016
-- [ ] T050 [P] [US3] Create BudgetMetrics struct in src/routing/reconciler/budget.rs for DashMap storage
-- [ ] T051 [P] [US3] Add pricing module or extend existing in src/agent/pricing.rs with get_input_cost() and get_output_cost() per research.md
-- [ ] T052 [US3] Create BudgetReconciler struct in src/routing/reconciler/budget.rs with Arc<DashMap<String, BudgetMetrics>>
-- [ ] T053 [US3] Implement estimate_cost() in BudgetReconciler in src/routing/reconciler/budget.rs per FR-017, FR-018, research.md
-- [ ] T054 [US3] Implement calculate_budget_status() in BudgetReconciler in src/routing/reconciler/budget.rs per FR-019
-- [ ] T055 [US3] Implement Reconciler trait for BudgetReconciler in src/routing/reconciler/budget.rs
-- [ ] T056 [US3] Implement cost estimate population in BudgetReconciler in src/routing/reconciler/budget.rs per FR-018
-- [ ] T057 [US3] Implement BudgetStatus setting in BudgetReconciler in src/routing/reconciler/budget.rs per FR-019
-- [ ] T058 [US3] Implement local agent preference at SoftLimit in BudgetReconciler in src/routing/reconciler/budget.rs per FR-020
-- [ ] T059 [US3] Implement cloud agent exclusion at HardLimit in BudgetReconciler in src/routing/reconciler/budget.rs per FR-021
-- [ ] T060 [US3] Create BudgetReconciliationLoop struct in src/routing/reconciler/budget.rs per research.md
-- [ ] T061 [US3] Implement BudgetReconciliationLoop::new() in src/routing/reconciler/budget.rs
-- [ ] T062 [US3] Implement BudgetReconciliationLoop::start() with tokio::spawn in src/routing/reconciler/budget.rs per FR-022, research.md
-- [ ] T063 [US3] Implement BudgetReconciliationLoop::reconcile_spending() with 60s interval in src/routing/reconciler/budget.rs per FR-022
+- [X] T048 [P] [US3] Create BudgetConfig struct in src/config/routing.rs with monthly_limit_usd, soft_limit_percent, hard_limit_action fields per FR-016
+- [X] T049 [P] [US3] Create HardLimitAction enum in src/config/routing.rs with Warn, BlockCloud, BlockAll variants per FR-016
+- [X] T050 [P] [US3] Create BudgetMetrics struct in src/routing/reconciler/budget.rs for DashMap storage
+- [X] T051 [P] [US3] Add pricing module or extend existing in src/agent/pricing.rs with get_input_cost() and get_output_cost() per research.md
+- [X] T052 [US3] Create BudgetReconciler struct in src/routing/reconciler/budget.rs with Arc<DashMap<String, BudgetMetrics>>
+- [X] T053 [US3] Implement estimate_cost() in BudgetReconciler in src/routing/reconciler/budget.rs per FR-017, FR-018, research.md
+- [X] T054 [US3] Implement calculate_budget_status() in BudgetReconciler in src/routing/reconciler/budget.rs per FR-019
+- [X] T055 [US3] Implement Reconciler trait for BudgetReconciler in src/routing/reconciler/budget.rs
+- [X] T056 [US3] Implement cost estimate population in BudgetReconciler in src/routing/reconciler/budget.rs per FR-018
+- [X] T057 [US3] Implement BudgetStatus setting in BudgetReconciler in src/routing/reconciler/budget.rs per FR-019
+- [X] T058 [US3] Implement local agent preference at SoftLimit in BudgetReconciler in src/routing/reconciler/budget.rs per FR-020
+- [X] T059 [US3] Implement cloud agent exclusion at HardLimit in BudgetReconciler in src/routing/reconciler/budget.rs per FR-021
+- [X] T060 [US3] Create BudgetReconciliationLoop struct in src/routing/reconciler/budget.rs per research.md
+- [X] T061 [US3] Implement BudgetReconciliationLoop::new() in src/routing/reconciler/budget.rs
+- [X] T062 [US3] Implement BudgetReconciliationLoop::start() with tokio::spawn in src/routing/reconciler/budget.rs per FR-022, research.md
+- [X] T063 [US3] Implement BudgetReconciliationLoop::reconcile_spending() with 60s interval in src/routing/reconciler/budget.rs per FR-022
 - [ ] T064 [US3] Integrate BudgetReconciliationLoop startup in cli/serve.rs with CancellationToken per research.md
 - [ ] T065 [US3] Pass spending Arc<DashMap> to Router construction in cli/serve.rs
 - [ ] T066 [US3] Add BudgetReconciler to pipeline construction in Router::select_backend() in src/routing/mod.rs between PrivacyReconciler and SchedulerReconciler per FR-005
