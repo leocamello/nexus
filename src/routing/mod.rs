@@ -19,6 +19,7 @@ pub use requirements::RequestRequirements;
 pub use scoring::{score_backend, ScoringWeights};
 pub use strategies::RoutingStrategy;
 
+use crate::agent::tokenizer::TokenizerRegistry;
 use crate::config::{BudgetConfig, PolicyMatcher};
 use crate::registry::{Backend, BackendStatus, Registry};
 use crate::routing::reconciler::budget::BudgetMetrics;
@@ -79,6 +80,9 @@ pub struct Router {
 
     /// Shared budget state for spending tracking
     budget_state: Arc<DashMap<String, BudgetMetrics>>,
+
+    /// Tokenizer registry for accurate cost estimation (F14)
+    tokenizer_registry: Arc<TokenizerRegistry>,
 }
 
 impl Router {
@@ -88,6 +92,10 @@ impl Router {
         strategy: RoutingStrategy,
         weights: ScoringWeights,
     ) -> Self {
+        let tokenizer_registry = Arc::new(
+            TokenizerRegistry::new()
+                .expect("Failed to initialize tokenizer registry"),
+        );
         Self {
             registry,
             strategy,
@@ -98,6 +106,7 @@ impl Router {
             policy_matcher: PolicyMatcher::default(),
             budget_config: BudgetConfig::default(),
             budget_state: Arc::new(DashMap::new()),
+            tokenizer_registry,
         }
     }
 
@@ -109,6 +118,10 @@ impl Router {
         aliases: HashMap<String, String>,
         fallbacks: HashMap<String, Vec<String>>,
     ) -> Self {
+        let tokenizer_registry = Arc::new(
+            TokenizerRegistry::new()
+                .expect("Failed to initialize tokenizer registry"),
+        );
         Self {
             registry,
             strategy,
@@ -119,6 +132,7 @@ impl Router {
             policy_matcher: PolicyMatcher::default(),
             budget_config: BudgetConfig::default(),
             budget_state: Arc::new(DashMap::new()),
+            tokenizer_registry,
         }
     }
 
@@ -131,6 +145,10 @@ impl Router {
         fallbacks: HashMap<String, Vec<String>>,
         policy_matcher: PolicyMatcher,
     ) -> Self {
+        let tokenizer_registry = Arc::new(
+            TokenizerRegistry::new()
+                .expect("Failed to initialize tokenizer registry"),
+        );
         Self {
             registry,
             strategy,
@@ -141,6 +159,7 @@ impl Router {
             policy_matcher,
             budget_config: BudgetConfig::default(),
             budget_state: Arc::new(DashMap::new()),
+            tokenizer_registry,
         }
     }
 
@@ -156,6 +175,10 @@ impl Router {
         budget_config: BudgetConfig,
         budget_state: Arc<DashMap<String, BudgetMetrics>>,
     ) -> Self {
+        let tokenizer_registry = Arc::new(
+            TokenizerRegistry::new()
+                .expect("Failed to initialize tokenizer registry"),
+        );
         Self {
             registry,
             strategy,
@@ -166,6 +189,7 @@ impl Router {
             policy_matcher,
             budget_config,
             budget_state,
+            tokenizer_registry,
         }
     }
 
@@ -218,6 +242,7 @@ impl Router {
         let budget = BudgetReconciler::new(
             Arc::clone(&self.registry),
             self.budget_config.clone(),
+            Arc::clone(&self.tokenizer_registry),
             Arc::clone(&self.budget_state),
         );
         let tier = TierReconciler::new(Arc::clone(&self.registry), self.policy_matcher.clone());

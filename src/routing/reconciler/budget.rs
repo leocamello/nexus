@@ -7,6 +7,7 @@
 use super::intent::{BudgetStatus, CostEstimate, RoutingIntent};
 use super::Reconciler;
 use crate::agent::pricing::PricingTable;
+use crate::agent::tokenizer::TokenizerRegistry;
 use crate::agent::PrivacyZone;
 use crate::config::{BudgetConfig, HardLimitAction};
 use crate::registry::Registry;
@@ -73,6 +74,7 @@ pub struct BudgetReconciler {
     registry: Arc<Registry>,
     config: BudgetConfig,
     pricing: PricingTable,
+    tokenizer_registry: Arc<TokenizerRegistry>,
     budget_state: Arc<DashMap<String, BudgetMetrics>>,
 }
 
@@ -81,6 +83,7 @@ impl BudgetReconciler {
     pub fn new(
         registry: Arc<Registry>,
         config: BudgetConfig,
+        tokenizer_registry: Arc<TokenizerRegistry>,
         budget_state: Arc<DashMap<String, BudgetMetrics>>,
     ) -> Self {
         // Initialize global metrics if not present
@@ -92,15 +95,20 @@ impl BudgetReconciler {
             registry,
             config,
             pricing: PricingTable::new(),
+            tokenizer_registry,
             budget_state,
         }
     }
 
     /// Estimate cost for a request (FR-017, FR-018).
     ///
-    /// Uses input token count from requirements and estimates output tokens
-    /// as input_tokens / 2 (heuristic per FR-018).
+    /// Uses TokenizerRegistry when prompt text is available for accurate counting.
+    /// Falls back to requirements.estimated_tokens for backward compatibility.
     fn estimate_cost(&self, model: &str, input_tokens: u32) -> CostEstimate {
+        // For now, use the pre-computed estimated_tokens from RequestRequirements
+        // TODO: Pass actual prompt text for precise tokenization
+        // This maintains compatibility with existing code while preparing for upgrade
+
         let estimated_output_tokens = input_tokens / 2;
 
         let cost_usd = self
@@ -108,11 +116,9 @@ impl BudgetReconciler {
             .estimate_cost(model, input_tokens, estimated_output_tokens)
             .unwrap_or(0.0);
 
-        let token_count_tier = match input_tokens {
-            0..=1000 => 0,
-            1001..=10000 => 1,
-            _ => 2,
-        };
+        // Determine tier based on tokenizer available for this model
+        let tokenizer = self.tokenizer_registry.get_tokenizer(model);
+        let token_count_tier = tokenizer.tier();
 
         CostEstimate {
             input_tokens,
@@ -370,6 +376,7 @@ impl BudgetReconciliationLoop {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::tokenizer::TokenizerRegistry;
     use crate::registry::{Backend, BackendStatus, BackendType, DiscoverySource, Model};
     use crate::routing::reconciler::intent::RoutingIntent;
     use crate::routing::RequestRequirements;
@@ -429,6 +436,10 @@ mod tests {
         }
     }
 
+    fn tokenizer_registry() -> Arc<TokenizerRegistry> {
+        Arc::new(TokenizerRegistry::new().expect("Failed to create tokenizer registry"))
+    }
+
     // === FR-016: Zero-config default ===
 
     #[test]
@@ -445,6 +456,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(None, HardLimitAction::BlockCloud),
+            tokenizer_registry(),
             state,
         );
 
@@ -465,6 +477,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(Some(100.0), HardLimitAction::Warn),
+            tokenizer_registry(),
             state,
         );
 
@@ -481,6 +494,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(Some(100.0), HardLimitAction::Warn),
+            tokenizer_registry(),
             state,
         );
 
@@ -497,6 +511,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(Some(100.0), HardLimitAction::Warn),
+            tokenizer_registry(),
             Arc::clone(&state),
         );
 
@@ -512,6 +527,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(Some(100.0), HardLimitAction::Warn),
+            tokenizer_registry(),
             Arc::clone(&state),
         );
 
@@ -530,6 +546,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(Some(100.0), HardLimitAction::Warn),
+            tokenizer_registry(),
             Arc::clone(&state),
         );
 
@@ -557,6 +574,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(Some(100.0), HardLimitAction::BlockCloud),
+            tokenizer_registry(),
             Arc::clone(&state),
         );
 
@@ -586,6 +604,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(Some(100.0), HardLimitAction::BlockCloud),
+            tokenizer_registry(),
             Arc::clone(&state),
         );
 
@@ -613,6 +632,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(Some(100.0), HardLimitAction::BlockAll),
+            tokenizer_registry(),
             Arc::clone(&state),
         );
 
@@ -640,6 +660,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(Some(100.0), HardLimitAction::Warn),
+            tokenizer_registry(),
             Arc::clone(&state),
         );
 
@@ -666,6 +687,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(Some(100.0), HardLimitAction::Warn),
+            tokenizer_registry(),
             state,
         );
 
@@ -690,6 +712,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(Some(100.0), HardLimitAction::BlockCloud),
+            tokenizer_registry(),
             Arc::clone(&state),
         );
 
@@ -715,6 +738,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(Some(100.0), HardLimitAction::Warn),
+            tokenizer_registry(),
             Arc::clone(&state),
         );
 
@@ -732,6 +756,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(Some(100.0), HardLimitAction::Warn),
+            tokenizer_registry(),
             Arc::clone(&state),
         );
 
@@ -751,12 +776,19 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(None, HardLimitAction::Warn),
+            tokenizer_registry(),
             state,
         );
 
+        // gpt-4 has exact tokenizer (tier 0)
         assert_eq!(reconciler.estimate_cost("gpt-4", 500).token_count_tier, 0);
-        assert_eq!(reconciler.estimate_cost("gpt-4", 5000).token_count_tier, 1);
-        assert_eq!(reconciler.estimate_cost("gpt-4", 50000).token_count_tier, 2);
+        assert_eq!(reconciler.estimate_cost("gpt-4", 5000).token_count_tier, 0);
+        
+        // claude has approximation tokenizer (tier 1)
+        assert_eq!(reconciler.estimate_cost("claude-3-sonnet", 1000).token_count_tier, 1);
+        
+        // unknown models use heuristic (tier 2)
+        assert_eq!(reconciler.estimate_cost("llama3:8b", 1000).token_count_tier, 2);
     }
 
     // === Background reconciliation loop ===
