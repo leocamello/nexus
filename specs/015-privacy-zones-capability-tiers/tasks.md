@@ -71,16 +71,16 @@
 
 ### Implementation for User Story 1
 
-- [ ] T018 [US1] Wire PrivacyReconciler into Router reconciler pipeline in src/routing/mod.rs
-- [ ] T019 [US1] Verify pipeline order: Privacy → Budget → Tier → Quality → Scheduler in src/routing/mod.rs
-- [ ] T020 [US1] Verify PrivacyReconciler reads AgentProfile.privacy_zone from Registry
-- [ ] T021 [US1] Verify PrivacyReconciler excludes agents with RejectionReason when zone violates constraint
-- [ ] T022 [US1] Populate privacy_zone_required in ActionableErrorContext from RoutingIntent in src/api/completions.rs
-- [ ] T023 [US1] Verify X-Nexus-Privacy-Zone header injection in NexusTransparentHeaders in src/api/headers.rs
-- [ ] T024 [US1] Integration test: restricted backend available → routes to it, returns X-Nexus-Privacy-Zone: restricted
-- [ ] T025 [US1] Integration test: restricted backend offline, open available → 503 with privacy_zone_required="restricted"
-- [ ] T026 [US1] Integration test: response includes X-Nexus-Privacy-Zone header matching backend's configured zone
-- [ ] T027 [US1] Integration test: verify cross-zone failover never happens (restricted never routes to open)
+- [X] T018 [US1] Wire PrivacyReconciler into Router reconciler pipeline in src/routing/mod.rs
+- [X] T019 [US1] Verify pipeline order: Privacy → Budget → Tier → Quality → Scheduler in src/routing/mod.rs
+- [X] T020 [US1] Verify PrivacyReconciler reads AgentProfile.privacy_zone from Registry
+- [X] T021 [US1] Verify PrivacyReconciler excludes agents with RejectionReason when zone violates constraint
+- [X] T022 [US1] Populate privacy_zone_required in ActionableErrorContext from RoutingIntent in src/api/completions.rs
+- [X] T023 [US1] Verify X-Nexus-Privacy-Zone header injection in NexusTransparentHeaders in src/api/headers.rs
+- [X] T024 [US1] Integration test: restricted backend available → routes to it, returns X-Nexus-Privacy-Zone: restricted
+- [X] T025 [US1] Integration test: restricted backend offline, open available → 503 with privacy_zone_required="restricted"
+- [X] T026 [US1] Integration test: response includes X-Nexus-Privacy-Zone header matching backend's configured zone
+- [X] T027 [US1] Integration test: verify cross-zone failover never happens (restricted never routes to open)
 
 **Checkpoint**: Privacy zone enforcement fully functional - cross-zone routing prevented
 
