@@ -179,4 +179,56 @@ mod tests {
         assert_eq!(update.update_type, UpdateType::BackendStatus);
         assert!(update.data.as_array().unwrap().is_empty());
     }
+
+    #[test]
+    fn test_create_model_change_update_empty_models() {
+        let update = create_model_change_update("b1".to_string(), vec![]);
+        assert_eq!(update.update_type, UpdateType::ModelChange);
+        assert!(update.data["models"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_create_request_complete_update_with_error() {
+        let entry = HistoryEntry {
+            timestamp: 1234567890,
+            model: "gpt-4".to_string(),
+            backend_id: "backend-1".to_string(),
+            duration_ms: 0,
+            status: RequestStatus::Error,
+            error_message: Some("Connection refused".to_string()),
+        };
+
+        let update = create_request_complete_update(entry);
+        assert_eq!(update.update_type, UpdateType::RequestComplete);
+        assert_eq!(update.data["error_message"], "Connection refused");
+    }
+
+    #[test]
+    fn test_backend_status_update_serialization() {
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource};
+        use chrono::Utc;
+        use std::collections::HashMap;
+
+        let backends = vec![BackendView {
+            id: "b1".to_string(),
+            name: "b1".to_string(),
+            url: "http://localhost:11434".to_string(),
+            backend_type: BackendType::Ollama,
+            status: BackendStatus::Healthy,
+            last_health_check: Utc::now(),
+            last_error: None,
+            models: vec![],
+            priority: 10,
+            pending_requests: 0,
+            total_requests: 5,
+            avg_latency_ms: 42,
+            discovery_source: DiscoverySource::Static,
+            metadata: HashMap::new(),
+        }];
+
+        let update = create_backend_status_update(backends);
+        let json = serde_json::to_string(&update).unwrap();
+        assert!(json.contains("BackendStatus") || json.contains("backend_status"));
+        assert!(json.contains("b1"));
+    }
 }

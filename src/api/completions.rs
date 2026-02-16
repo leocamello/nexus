@@ -7,6 +7,7 @@ use crate::api::{
 };
 use crate::logging::generate_request_id;
 use crate::registry::Backend;
+use crate::routing::reconciler::intent::RejectionReason;
 use crate::routing::RequestRequirements;
 use axum::{
     extract::State,
@@ -17,11 +18,51 @@ use axum::{
     },
     Json,
 };
+use std::collections::HashSet;
 use std::sync::Arc;
 use tracing::{info, instrument, warn, Span};
 
 /// Header name for fallback model notification (lowercase for HTTP/2 compatibility)
 pub const FALLBACK_HEADER: &str = "x-nexus-fallback-model";
+
+/// Header name for rejection reasons summary (lowercase for HTTP/2 compatibility)
+const REJECTION_REASONS_HEADER: &str = "x-nexus-rejection-reasons";
+
+/// Build a structured 503 response for routing rejections with actionable details.
+fn rejection_response(rejection_reasons: Vec<RejectionReason>) -> Response {
+    let count = rejection_reasons.len();
+    let reconcilers: HashSet<&str> = rejection_reasons
+        .iter()
+        .map(|r| r.reconciler.as_str())
+        .collect();
+    let reconciler_list: Vec<&str> = reconcilers.into_iter().collect();
+
+    // Build X-Nexus-Rejection-Reasons header value
+    let header_value = format!(
+        "{} agents rejected by {}",
+        count,
+        reconciler_list.join(", ")
+    );
+
+    // Build structured JSON body
+    let body = serde_json::json!({
+        "error": {
+            "type": "routing_rejected",
+            "message": format!("Request rejected: {} agents excluded", count),
+            "rejection_reasons": rejection_reasons,
+        }
+    });
+
+    let mut response = (axum::http::StatusCode::SERVICE_UNAVAILABLE, Json(body)).into_response();
+
+    if let Ok(val) = HeaderValue::from_str(&header_value) {
+        response
+            .headers_mut()
+            .insert(HeaderName::from_static(REJECTION_REASONS_HEADER), val);
+    }
+
+    response
+}
 
 /// POST /v1/chat/completions - Handle chat completion requests.
 #[instrument(
@@ -81,6 +122,7 @@ pub async fn handle(
                 crate::routing::RoutingError::FallbackChainExhausted { .. } => "fallback_exhausted",
                 crate::routing::RoutingError::NoHealthyBackend { .. } => "no_healthy_backend",
                 crate::routing::RoutingError::CapabilityMismatch { .. } => "capability_mismatch",
+                crate::routing::RoutingError::Reject { .. } => "routing_rejected",
             };
 
             let sanitized_model = state.metrics_collector.sanitize_label(&requested_model);
@@ -107,6 +149,9 @@ pub async fn handle(
                         model, missing
                     )
                 }
+                crate::routing::RoutingError::Reject { rejection_reasons } => {
+                    format!("Request rejected: {} reasons", rejection_reasons.len())
+                }
             };
 
             record_request_completion(
@@ -129,6 +174,7 @@ pub async fn handle(
                 crate::routing::RoutingError::FallbackChainExhausted { .. } => 404u16,
                 crate::routing::RoutingError::NoHealthyBackend { .. } => 503u16,
                 crate::routing::RoutingError::CapabilityMismatch { .. } => 400u16,
+                crate::routing::RoutingError::Reject { .. } => 503u16,
             };
             Span::current().record("status_code", status_code);
 
@@ -181,6 +227,9 @@ pub async fn handle(
                         "Model '{}' lacks required capabilities: {:?}",
                         model, missing
                     )));
+                }
+                crate::routing::RoutingError::Reject { rejection_reasons } => {
+                    return Ok(rejection_response(rejection_reasons));
                 }
             }
         }
@@ -559,6 +608,9 @@ async fn handle_streaming(
                         "Model '{}' lacks required capabilities: {:?}",
                         model, missing
                     )));
+                }
+                crate::routing::RoutingError::Reject { rejection_reasons } => {
+                    return Ok(rejection_response(rejection_reasons));
                 }
             }
         }

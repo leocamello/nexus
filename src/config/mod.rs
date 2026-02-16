@@ -38,7 +38,10 @@ pub use backend::{BackendConfig, BackendType};
 pub use discovery::DiscoveryConfig;
 pub use error::ConfigError;
 pub use logging::{LogFormat, LoggingConfig};
-pub use routing::{RoutingConfig, RoutingStrategy, RoutingWeights};
+pub use routing::{
+    BudgetConfig, HardLimitAction, PolicyMatcher, PrivacyConstraint, RoutingConfig,
+    RoutingStrategy, RoutingWeights, TrafficPolicy,
+};
 pub use server::ServerConfig;
 
 // Re-export HealthCheckConfig from health module
