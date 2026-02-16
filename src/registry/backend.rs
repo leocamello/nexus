@@ -252,3 +252,45 @@ impl From<&Backend> for BackendView {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_privacy_zone_local_backends() {
+        let local_types = [
+            BackendType::Ollama,
+            BackendType::VLLM,
+            BackendType::LlamaCpp,
+            BackendType::Exo,
+            BackendType::LMStudio,
+            BackendType::Generic,
+        ];
+
+        for bt in local_types {
+            assert_eq!(
+                bt.default_privacy_zone(),
+                PrivacyZone::Restricted,
+                "{bt:?} should default to Restricted"
+            );
+        }
+    }
+
+    #[test]
+    fn test_default_privacy_zone_cloud_backends() {
+        let cloud_types = [
+            BackendType::OpenAI,
+            BackendType::Anthropic,
+            BackendType::Google,
+        ];
+
+        for bt in cloud_types {
+            assert_eq!(
+                bt.default_privacy_zone(),
+                PrivacyZone::Open,
+                "{bt:?} should default to Open"
+            );
+        }
+    }
+}

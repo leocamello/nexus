@@ -803,4 +803,296 @@ mod tests {
         assert!(!profile.capabilities.embeddings);
         assert!(!profile.capabilities.token_counting);
     }
+
+    // ── Translation Unit Tests ──────────────────────────────────────────
+
+    fn make_request(messages: Vec<ChatMessage>, model: &str) -> ChatCompletionRequest {
+        ChatCompletionRequest {
+            model: model.to_string(),
+            messages,
+            stream: false,
+            temperature: Some(0.7),
+            max_tokens: Some(100),
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        }
+    }
+
+    fn msg(role: &str, content: &str) -> ChatMessage {
+        ChatMessage {
+            role: role.to_string(),
+            content: MessageContent::Text {
+                content: content.to_string(),
+            },
+            name: None,
+            function_call: None,
+        }
+    }
+
+    #[test]
+    fn test_translate_request_extracts_system_message() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let request = make_request(
+            vec![msg("system", "You are helpful"), msg("user", "Hello")],
+            "claude-3-opus",
+        );
+
+        let translated = agent.translate_request(&request);
+
+        assert_eq!(translated.system, Some("You are helpful".to_string()));
+        assert_eq!(translated.messages.len(), 1);
+        assert_eq!(translated.messages[0].role, "user");
+        assert_eq!(translated.messages[0].content, "Hello");
+    }
+
+    #[test]
+    fn test_translate_request_no_system_message() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let request = make_request(vec![msg("user", "Hello")], "claude-3-opus");
+
+        let translated = agent.translate_request(&request);
+
+        assert!(translated.system.is_none());
+        assert_eq!(translated.messages.len(), 1);
+    }
+
+    #[test]
+    fn test_translate_request_multiple_system_messages() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let request = make_request(
+            vec![
+                msg("system", "Be concise"),
+                msg("system", "Use formal tone"),
+                msg("user", "Hello"),
+            ],
+            "claude-3-opus",
+        );
+
+        let translated = agent.translate_request(&request);
+
+        assert_eq!(
+            translated.system,
+            Some("Be concise\nUse formal tone".to_string())
+        );
+        assert_eq!(translated.messages.len(), 1);
+    }
+
+    #[test]
+    fn test_translate_request_sets_max_tokens_default() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let mut request = make_request(vec![msg("user", "Hello")], "claude-3-opus");
+        request.max_tokens = None;
+
+        let translated = agent.translate_request(&request);
+
+        assert_eq!(translated.max_tokens, 4096);
+    }
+
+    #[test]
+    fn test_translate_request_preserves_temperature() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let request = make_request(vec![msg("user", "Hello")], "claude-3-opus");
+
+        let translated = agent.translate_request(&request);
+
+        assert_eq!(translated.temperature, Some(0.7));
+    }
+
+    #[test]
+    fn test_translate_response_maps_end_turn_to_stop() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let response = AnthropicResponse {
+            id: "msg_123".to_string(),
+            r#type: "message".to_string(),
+            role: "assistant".to_string(),
+            content: vec![ContentBlock {
+                r#type: "text".to_string(),
+                text: Some("Hello!".to_string()),
+            }],
+            model: "claude-3-opus-20240229".to_string(),
+            stop_reason: Some("end_turn".to_string()),
+            usage: AnthropicUsage {
+                input_tokens: 10,
+                output_tokens: 5,
+            },
+        };
+
+        let translated = agent.translate_response(response);
+
+        assert_eq!(
+            translated.choices[0].finish_reason,
+            Some("stop".to_string())
+        );
+        if let MessageContent::Text { content } = &translated.choices[0].message.content {
+            assert_eq!(content, "Hello!");
+        } else {
+            panic!("Expected text content");
+        }
+    }
+
+    #[test]
+    fn test_translate_response_maps_max_tokens_to_length() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let response = AnthropicResponse {
+            id: "msg_123".to_string(),
+            r#type: "message".to_string(),
+            role: "assistant".to_string(),
+            content: vec![ContentBlock {
+                r#type: "text".to_string(),
+                text: Some("Truncated...".to_string()),
+            }],
+            model: "claude-3-opus-20240229".to_string(),
+            stop_reason: Some("max_tokens".to_string()),
+            usage: AnthropicUsage {
+                input_tokens: 100,
+                output_tokens: 4096,
+            },
+        };
+
+        let translated = agent.translate_response(response);
+
+        assert_eq!(
+            translated.choices[0].finish_reason,
+            Some("length".to_string())
+        );
+    }
+
+    #[test]
+    fn test_translate_response_maps_usage_fields() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let response = AnthropicResponse {
+            id: "msg_123".to_string(),
+            r#type: "message".to_string(),
+            role: "assistant".to_string(),
+            content: vec![ContentBlock {
+                r#type: "text".to_string(),
+                text: Some("Hi".to_string()),
+            }],
+            model: "claude-3-opus-20240229".to_string(),
+            stop_reason: Some("end_turn".to_string()),
+            usage: AnthropicUsage {
+                input_tokens: 42,
+                output_tokens: 17,
+            },
+        };
+
+        let translated = agent.translate_response(response);
+
+        let usage = translated.usage.unwrap();
+        assert_eq!(usage.prompt_tokens, 42);
+        assert_eq!(usage.completion_tokens, 17);
+        assert_eq!(usage.total_tokens, 59);
+    }
+
+    #[test]
+    fn test_translate_response_multiple_content_blocks() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let response = AnthropicResponse {
+            id: "msg_123".to_string(),
+            r#type: "message".to_string(),
+            role: "assistant".to_string(),
+            content: vec![
+                ContentBlock {
+                    r#type: "text".to_string(),
+                    text: Some("Part 1. ".to_string()),
+                },
+                ContentBlock {
+                    r#type: "text".to_string(),
+                    text: Some("Part 2.".to_string()),
+                },
+            ],
+            model: "claude-3-opus-20240229".to_string(),
+            stop_reason: Some("end_turn".to_string()),
+            usage: AnthropicUsage {
+                input_tokens: 10,
+                output_tokens: 10,
+            },
+        };
+
+        let translated = agent.translate_response(response);
+
+        if let MessageContent::Text { content } = &translated.choices[0].message.content {
+            assert_eq!(content, "Part 1. Part 2.");
+        } else {
+            panic!("Expected text content");
+        }
+    }
+
+    #[test]
+    fn test_translate_stream_chunk_message_start() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let data = r#"{"message":{"id":"msg_123","model":"claude-3-opus"}}"#;
+
+        let result = agent.translate_stream_chunk("message_start", data);
+
+        assert!(result.is_some());
+        let chunk = result.unwrap();
+        assert!(chunk.starts_with("data: "));
+        let json: serde_json::Value =
+            serde_json::from_str(chunk.trim_start_matches("data: ").trim()).unwrap();
+        assert_eq!(json["choices"][0]["delta"]["role"], "assistant");
+    }
+
+    #[test]
+    fn test_translate_stream_chunk_content_block_delta() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let data = r#"{"delta":{"type":"text_delta","text":"Hello"}}"#;
+
+        let result = agent.translate_stream_chunk("content_block_delta", data);
+
+        assert!(result.is_some());
+        let chunk = result.unwrap();
+        let json: serde_json::Value =
+            serde_json::from_str(chunk.trim_start_matches("data: ").trim()).unwrap();
+        assert_eq!(json["choices"][0]["delta"]["content"], "Hello");
+    }
+
+    #[test]
+    fn test_translate_stream_chunk_message_delta_stop() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let data = r#"{"delta":{"stop_reason":"end_turn"}}"#;
+
+        let result = agent.translate_stream_chunk("message_delta", data);
+
+        assert!(result.is_some());
+        let chunk = result.unwrap();
+        let json: serde_json::Value =
+            serde_json::from_str(chunk.trim_start_matches("data: ").trim()).unwrap();
+        assert_eq!(json["choices"][0]["finish_reason"], "stop");
+    }
+
+    #[test]
+    fn test_translate_stream_chunk_message_stop_returns_done() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+
+        let result = agent.translate_stream_chunk("message_stop", "");
+
+        assert_eq!(result, Some("data: [DONE]\n\n".to_string()));
+    }
+
+    #[test]
+    fn test_translate_stream_chunk_unknown_event_returns_none() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+
+        let result = agent.translate_stream_chunk("ping", "{}");
+
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_heuristic_token_counting() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let count = agent
+            .count_tokens("claude-3-opus", "Hello world test")
+            .await;
+
+        match count {
+            TokenCount::Heuristic(n) => assert_eq!(n, 16 / 4), // 16 chars / 4
+            TokenCount::Exact(_) => panic!("Expected heuristic for Anthropic"),
+        }
+    }
 }

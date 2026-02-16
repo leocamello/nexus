@@ -850,4 +850,266 @@ mod tests {
         assert!(profile.capabilities.embeddings);
         assert!(!profile.capabilities.token_counting);
     }
+
+    // ── Translation Unit Tests ──────────────────────────────────────────
+
+    fn make_request(messages: Vec<ChatMessage>, model: &str) -> ChatCompletionRequest {
+        ChatCompletionRequest {
+            model: model.to_string(),
+            messages,
+            stream: false,
+            temperature: Some(0.5),
+            max_tokens: Some(200),
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        }
+    }
+
+    fn msg(role: &str, content: &str) -> ChatMessage {
+        ChatMessage {
+            role: role.to_string(),
+            content: MessageContent::Text {
+                content: content.to_string(),
+            },
+            name: None,
+            function_call: None,
+        }
+    }
+
+    #[test]
+    fn test_translate_request_role_mapping_assistant_to_model() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let request = make_request(
+            vec![msg("user", "Hello"), msg("assistant", "Hi there")],
+            "gemini-1.5-pro",
+        );
+
+        let translated = agent.translate_request(&request);
+
+        assert_eq!(translated.contents.len(), 2);
+        assert_eq!(translated.contents[0].role, "user");
+        assert_eq!(translated.contents[1].role, "model");
+    }
+
+    #[test]
+    fn test_translate_request_system_instruction() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let request = make_request(
+            vec![msg("system", "Be helpful"), msg("user", "Hello")],
+            "gemini-1.5-pro",
+        );
+
+        let translated = agent.translate_request(&request);
+
+        assert!(translated.system_instruction.is_some());
+        let si = translated.system_instruction.unwrap();
+        assert_eq!(si.parts[0].text, "Be helpful");
+        // System message should NOT be in contents
+        assert_eq!(translated.contents.len(), 1);
+        assert_eq!(translated.contents[0].role, "user");
+    }
+
+    #[test]
+    fn test_translate_request_no_system_instruction() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let request = make_request(vec![msg("user", "Hello")], "gemini-1.5-pro");
+
+        let translated = agent.translate_request(&request);
+
+        assert!(translated.system_instruction.is_none());
+    }
+
+    #[test]
+    fn test_translate_request_generation_config() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let request = make_request(vec![msg("user", "Hello")], "gemini-1.5-pro");
+
+        let translated = agent.translate_request(&request);
+
+        let config = translated.generation_config.unwrap();
+        assert_eq!(config.temperature, Some(0.5));
+        assert_eq!(config.max_output_tokens, Some(200));
+    }
+
+    #[test]
+    fn test_translate_response_finish_reason_stop() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let response = GoogleResponse {
+            candidates: vec![GoogleCandidate {
+                content: GoogleContent {
+                    role: "model".to_string(),
+                    parts: vec![GooglePart {
+                        text: "Hello!".to_string(),
+                    }],
+                },
+                finish_reason: Some("STOP".to_string()),
+            }],
+            usage_metadata: Some(GoogleUsageMetadata {
+                prompt_token_count: Some(10),
+                candidates_token_count: Some(5),
+                total_token_count: Some(15),
+            }),
+        };
+
+        let translated = agent.translate_response(response, "gemini-1.5-pro");
+
+        assert_eq!(
+            translated.choices[0].finish_reason,
+            Some("stop".to_string())
+        );
+        if let MessageContent::Text { content } = &translated.choices[0].message.content {
+            assert_eq!(content, "Hello!");
+        } else {
+            panic!("Expected text content");
+        }
+    }
+
+    #[test]
+    fn test_translate_response_finish_reason_max_tokens() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let response = GoogleResponse {
+            candidates: vec![GoogleCandidate {
+                content: GoogleContent {
+                    role: "model".to_string(),
+                    parts: vec![GooglePart {
+                        text: "Truncated...".to_string(),
+                    }],
+                },
+                finish_reason: Some("MAX_TOKENS".to_string()),
+            }],
+            usage_metadata: None,
+        };
+
+        let translated = agent.translate_response(response, "gemini-1.5-pro");
+
+        assert_eq!(
+            translated.choices[0].finish_reason,
+            Some("length".to_string())
+        );
+    }
+
+    #[test]
+    fn test_translate_response_finish_reason_safety() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let response = GoogleResponse {
+            candidates: vec![GoogleCandidate {
+                content: GoogleContent {
+                    role: "model".to_string(),
+                    parts: vec![GooglePart {
+                        text: "".to_string(),
+                    }],
+                },
+                finish_reason: Some("SAFETY".to_string()),
+            }],
+            usage_metadata: None,
+        };
+
+        let translated = agent.translate_response(response, "gemini-1.5-pro");
+
+        assert_eq!(
+            translated.choices[0].finish_reason,
+            Some("content_filter".to_string())
+        );
+    }
+
+    #[test]
+    fn test_translate_response_usage_metadata_mapping() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let response = GoogleResponse {
+            candidates: vec![GoogleCandidate {
+                content: GoogleContent {
+                    role: "model".to_string(),
+                    parts: vec![GooglePart {
+                        text: "Hi".to_string(),
+                    }],
+                },
+                finish_reason: Some("STOP".to_string()),
+            }],
+            usage_metadata: Some(GoogleUsageMetadata {
+                prompt_token_count: Some(42),
+                candidates_token_count: Some(17),
+                total_token_count: Some(59),
+            }),
+        };
+
+        let translated = agent.translate_response(response, "gemini-1.5-pro");
+
+        let usage = translated.usage.unwrap();
+        assert_eq!(usage.prompt_tokens, 42);
+        assert_eq!(usage.completion_tokens, 17);
+        assert_eq!(usage.total_tokens, 59);
+    }
+
+    #[test]
+    fn test_translate_stream_chunk_content() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let data =
+            r#"{"candidates":[{"content":{"role":"model","parts":[{"text":"Hello world"}]}}]}"#;
+
+        let result = agent.translate_stream_chunk(data, "gemini-1.5-pro");
+
+        assert!(result.is_some());
+        let chunk = result.unwrap();
+        assert!(chunk.starts_with("data: "));
+        let json: serde_json::Value =
+            serde_json::from_str(chunk.trim_start_matches("data: ").trim()).unwrap();
+        assert_eq!(json["choices"][0]["delta"]["content"], "Hello world");
+        assert_eq!(json["object"], "chat.completion.chunk");
+    }
+
+    #[test]
+    fn test_translate_stream_chunk_finish_reason() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let data =
+            r#"{"candidates":[{"content":{"role":"model","parts":[]},"finishReason":"STOP"}]}"#;
+
+        let result = agent.translate_stream_chunk(data, "gemini-1.5-pro");
+
+        assert!(result.is_some());
+        let chunk = result.unwrap();
+        let json: serde_json::Value =
+            serde_json::from_str(chunk.trim_start_matches("data: ").trim()).unwrap();
+        assert_eq!(json["choices"][0]["finish_reason"], "stop");
+    }
+
+    #[test]
+    fn test_translate_stream_chunk_invalid_json_returns_none() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+
+        let result = agent.translate_stream_chunk("not json", "gemini-1.5-pro");
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_translate_stream_chunk_safety_filter() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let data =
+            r#"{"candidates":[{"content":{"role":"model","parts":[]},"finishReason":"SAFETY"}]}"#;
+
+        let result = agent.translate_stream_chunk(data, "gemini-1.5-pro");
+
+        assert!(result.is_some());
+        let chunk = result.unwrap();
+        let json: serde_json::Value =
+            serde_json::from_str(chunk.trim_start_matches("data: ").trim()).unwrap();
+        assert_eq!(json["choices"][0]["finish_reason"], "content_filter");
+    }
+
+    #[tokio::test]
+    async fn test_heuristic_token_counting() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let count = agent
+            .count_tokens("gemini-1.5-pro", "Hello world test")
+            .await;
+
+        match count {
+            TokenCount::Heuristic(n) => assert_eq!(n, 16 / 4), // 16 chars / 4
+            TokenCount::Exact(_) => panic!("Expected heuristic for Google"),
+        }
+    }
 }
