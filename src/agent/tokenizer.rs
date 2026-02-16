@@ -273,3 +273,239 @@ impl TokenizerRegistry {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // === Tier Constants ===
+
+    #[test]
+    fn tier_constants_are_ordered() {
+        // Verify tier ordering is correct for comparison operations
+        let tiers = [TIER_EXACT, TIER_APPROXIMATION, TIER_HEURISTIC];
+        for window in tiers.windows(2) {
+            assert!(
+                window[0] < window[1],
+                "Tiers should be ordered: {} < {}",
+                window[0],
+                window[1]
+            );
+        }
+    }
+
+    #[test]
+    fn tier_name_mappings() {
+        assert_eq!(TokenizerRegistry::tier_name(TIER_EXACT), "exact");
+        assert_eq!(
+            TokenizerRegistry::tier_name(TIER_APPROXIMATION),
+            "approximation"
+        );
+        assert_eq!(TokenizerRegistry::tier_name(TIER_HEURISTIC), "heuristic");
+        assert_eq!(TokenizerRegistry::tier_name(255), "unknown");
+    }
+
+    // === HeuristicTokenizer ===
+
+    #[test]
+    fn heuristic_default_uses_1_15x_multiplier() {
+        let t = HeuristicTokenizer::default();
+        assert_eq!(t.multiplier, 1.15);
+    }
+
+    #[test]
+    fn heuristic_tier_is_heuristic() {
+        let t = HeuristicTokenizer::new();
+        assert_eq!(t.tier(), TIER_HEURISTIC);
+        assert_eq!(t.name(), "heuristic");
+    }
+
+    #[test]
+    fn heuristic_counts_tokens_conservatively() {
+        let t = HeuristicTokenizer::new();
+        // "Hello world" = 11 chars → 11/4 = 2 base → 2 * 1.15 = 2.3 → 2
+        let count = t.count_tokens("Hello world").unwrap();
+        assert!(count >= 2, "Heuristic should produce at least 2 tokens");
+    }
+
+    #[test]
+    fn heuristic_minimum_one_token() {
+        let t = HeuristicTokenizer::new();
+        // Very short text should return at least 1
+        let count = t.count_tokens("Hi").unwrap();
+        assert!(count >= 1, "Minimum should be 1 token");
+    }
+
+    #[test]
+    fn heuristic_empty_string() {
+        let t = HeuristicTokenizer::new();
+        // Empty string: 0/4 = 0, max(0,1) = 1, 1 * 1.15 = 1
+        let count = t.count_tokens("").unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn heuristic_longer_text() {
+        let t = HeuristicTokenizer::new();
+        let text = "The quick brown fox jumps over the lazy dog"; // 43 chars
+        let count = t.count_tokens(text).unwrap();
+        // 43/4 = 10 base → 10 * 1.15 = 11.5 → 11
+        assert!(
+            (10..=15).contains(&count),
+            "Expected 10-15 tokens, got {}",
+            count
+        );
+    }
+
+    // === TiktokenExactTokenizer ===
+
+    #[test]
+    fn tiktoken_o200k_creates_successfully() {
+        let t = TiktokenExactTokenizer::o200k_base().unwrap();
+        assert_eq!(t.tier(), TIER_EXACT);
+        assert_eq!(t.name(), "tiktoken_o200k_base");
+    }
+
+    #[test]
+    fn tiktoken_cl100k_creates_successfully() {
+        let t = TiktokenExactTokenizer::cl100k_base().unwrap();
+        assert_eq!(t.tier(), TIER_EXACT);
+        assert_eq!(t.name(), "tiktoken_cl100k_base");
+    }
+
+    #[test]
+    fn tiktoken_exact_counts_hello_world() {
+        let t = TiktokenExactTokenizer::cl100k_base().unwrap();
+        let count = t.count_tokens("Hello world").unwrap();
+        // "Hello world" is typically 2 tokens in cl100k_base
+        assert!(
+            (2..=4).contains(&count),
+            "Expected 2-4 tokens, got {}",
+            count
+        );
+    }
+
+    #[test]
+    fn tiktoken_exact_empty_string() {
+        let t = TiktokenExactTokenizer::cl100k_base().unwrap();
+        let count = t.count_tokens("").unwrap();
+        assert_eq!(count, 0);
+    }
+
+    // === TiktokenApproximationTokenizer ===
+
+    #[test]
+    fn tiktoken_approximation_creates_successfully() {
+        let t = TiktokenApproximationTokenizer::new().unwrap();
+        assert_eq!(t.tier(), TIER_APPROXIMATION);
+        assert_eq!(t.name(), "tiktoken_approximation");
+    }
+
+    #[test]
+    fn tiktoken_approximation_counts_tokens() {
+        let t = TiktokenApproximationTokenizer::new().unwrap();
+        let count = t.count_tokens("Hello world").unwrap();
+        assert!(
+            (2..=4).contains(&count),
+            "Expected 2-4 tokens, got {}",
+            count
+        );
+    }
+
+    // === TokenizerRegistry ===
+
+    #[test]
+    fn registry_creates_successfully() {
+        let r = TokenizerRegistry::new().unwrap();
+        // Should have matchers for OpenAI + Anthropic patterns
+        assert!(
+            r.matchers.len() >= 4,
+            "Should have OpenAI + Anthropic matchers"
+        );
+    }
+
+    #[test]
+    fn registry_gpt4_turbo_uses_exact() {
+        let r = TokenizerRegistry::new().unwrap();
+        let t = r.get_tokenizer("gpt-4-turbo-preview");
+        assert_eq!(t.tier(), TIER_EXACT);
+    }
+
+    #[test]
+    fn registry_gpt4o_uses_exact() {
+        let r = TokenizerRegistry::new().unwrap();
+        let t = r.get_tokenizer("gpt-4o-mini");
+        assert_eq!(t.tier(), TIER_EXACT);
+    }
+
+    #[test]
+    fn registry_gpt4_base_uses_exact() {
+        let r = TokenizerRegistry::new().unwrap();
+        let t = r.get_tokenizer("gpt-4");
+        assert_eq!(t.tier(), TIER_EXACT);
+    }
+
+    #[test]
+    fn registry_gpt35_uses_exact() {
+        let r = TokenizerRegistry::new().unwrap();
+        let t = r.get_tokenizer("gpt-3.5-turbo");
+        assert_eq!(t.tier(), TIER_EXACT);
+    }
+
+    #[test]
+    fn registry_claude_uses_approximation() {
+        let r = TokenizerRegistry::new().unwrap();
+        let t = r.get_tokenizer("claude-3-opus-20240229");
+        assert_eq!(t.tier(), TIER_APPROXIMATION);
+    }
+
+    #[test]
+    fn registry_claude_sonnet_uses_approximation() {
+        let r = TokenizerRegistry::new().unwrap();
+        let t = r.get_tokenizer("claude-3-sonnet-20240229");
+        assert_eq!(t.tier(), TIER_APPROXIMATION);
+    }
+
+    #[test]
+    fn registry_unknown_model_uses_heuristic() {
+        let r = TokenizerRegistry::new().unwrap();
+        let t = r.get_tokenizer("llama-3-70b");
+        assert_eq!(t.tier(), TIER_HEURISTIC);
+    }
+
+    #[test]
+    fn registry_local_model_uses_heuristic() {
+        let r = TokenizerRegistry::new().unwrap();
+        let t = r.get_tokenizer("mistral:latest");
+        assert_eq!(t.tier(), TIER_HEURISTIC);
+    }
+
+    #[test]
+    fn registry_count_tokens_convenience_works() {
+        let r = TokenizerRegistry::new().unwrap();
+        let count = r.count_tokens("gpt-4", "Hello world").unwrap();
+        assert!(count >= 2, "Should count at least 2 tokens");
+    }
+
+    #[test]
+    fn registry_count_tokens_fallback_works() {
+        let r = TokenizerRegistry::new().unwrap();
+        let count = r.count_tokens("unknown-model", "Hello world").unwrap();
+        assert!(count >= 1, "Heuristic fallback should return at least 1");
+    }
+
+    #[test]
+    fn exact_is_more_precise_than_heuristic() {
+        let r = TokenizerRegistry::new().unwrap();
+        let text = "The quick brown fox jumps over the lazy dog";
+        let exact = r.count_tokens("gpt-4", text).unwrap();
+        let heuristic = r.count_tokens("llama3", text).unwrap();
+        // Heuristic applies 1.15x multiplier so should be >= exact for typical text
+        assert!(
+            heuristic >= exact || (exact as i32 - heuristic as i32).unsigned_abs() <= 3,
+            "Heuristic ({}) and exact ({}) should be in reasonable range",
+            heuristic,
+            exact
+        );
+    }
+}

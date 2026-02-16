@@ -361,4 +361,51 @@ mod tests {
         assert_eq!(value["agent_id"], "b1");
         assert_eq!(value["reconciler"], "Privacy");
     }
+
+    #[test]
+    fn cost_estimate_tier_constants_match_tokenizer() {
+        use crate::agent::tokenizer;
+        assert_eq!(CostEstimate::TIER_EXACT, tokenizer::TIER_EXACT);
+        assert_eq!(
+            CostEstimate::TIER_APPROXIMATION,
+            tokenizer::TIER_APPROXIMATION
+        );
+        assert_eq!(CostEstimate::TIER_HEURISTIC, tokenizer::TIER_HEURISTIC);
+    }
+
+    #[test]
+    fn cost_estimate_tier_name_exact() {
+        let est = CostEstimate {
+            token_count_tier: CostEstimate::TIER_EXACT,
+            ..Default::default()
+        };
+        assert_eq!(est.tier_name(), "exact");
+    }
+
+    #[test]
+    fn cost_estimate_tier_name_approximation() {
+        let est = CostEstimate {
+            token_count_tier: CostEstimate::TIER_APPROXIMATION,
+            ..Default::default()
+        };
+        assert_eq!(est.tier_name(), "approximation");
+    }
+
+    #[test]
+    fn cost_estimate_tier_name_heuristic() {
+        let est = CostEstimate {
+            token_count_tier: CostEstimate::TIER_HEURISTIC,
+            ..Default::default()
+        };
+        assert_eq!(est.tier_name(), "heuristic");
+    }
+
+    #[test]
+    fn cost_estimate_tier_name_unknown() {
+        let est = CostEstimate {
+            token_count_tier: 255,
+            ..Default::default()
+        };
+        assert_eq!(est.tier_name(), "unknown");
+    }
 }
