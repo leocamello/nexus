@@ -143,9 +143,14 @@ pub async fn handle(
         return handle_streaming(state, headers, request).await;
     }
 
-    // Use router to select backend
+    // Extract request requirements
     let requirements = RequestRequirements::from_request(&request);
-    let routing_result_res = state.router.select_backend(&requirements);
+
+    // Extract tier enforcement mode from request headers (T032, FR-007, FR-008, FR-009)
+    let tier_mode = extract_tier_enforcement_mode(&headers);
+
+    // Use router to select backend
+    let routing_result_res = state.router.select_backend(&requirements, Some(tier_mode));
 
     // Handle routing errors with actionable context for 503 (T059-T062)
     let routing_result = match routing_result_res {
@@ -602,7 +607,8 @@ async fn handle_streaming(
 ) -> Result<Response, ApiError> {
     // Use router to select backend
     let requirements = RequestRequirements::from_request(&request);
-    let routing_result = state.router.select_backend(&requirements);
+    let tier_mode = extract_tier_enforcement_mode(&headers);
+    let routing_result = state.router.select_backend(&requirements, Some(tier_mode));
 
     // Handle routing errors (same as non-streaming for consistency)
     let routing_result = match routing_result {

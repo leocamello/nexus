@@ -94,11 +94,11 @@
 
 ### Implementation for User Story 2
 
-- [ ] T028 [US2] Wire TierReconciler into Router reconciler pipeline after PrivacyReconciler in src/routing/mod.rs
-- [ ] T029 [US2] Parse X-Nexus-Strict request header in extract_tier_enforcement_mode() in src/api/completions.rs
-- [ ] T030 [US2] Parse X-Nexus-Flexible request header in extract_tier_enforcement_mode() in src/api/completions.rs
-- [ ] T031 [US2] Handle conflicting headers (X-Nexus-Strict takes precedence) in extract_tier_enforcement_mode() in src/api/completions.rs
-- [ ] T032 [US2] Set tier_enforcement_mode on RoutingIntent from parsed headers in src/api/completions.rs
+- [X] T028 [US2] Wire TierReconciler into Router reconciler pipeline after PrivacyReconciler in src/routing/mod.rs
+- [X] T029 [US2] Parse X-Nexus-Strict request header in extract_tier_enforcement_mode() in src/api/completions.rs
+- [X] T030 [US2] Parse X-Nexus-Flexible request header in extract_tier_enforcement_mode() in src/api/completions.rs
+- [X] T031 [US2] Handle conflicting headers (X-Nexus-Strict takes precedence) in extract_tier_enforcement_mode() in src/api/completions.rs
+- [X] T032 [US2] Set tier_enforcement_mode on RoutingIntent from parsed headers in src/api/completions.rs
 - [ ] T033 [US2] Verify TierReconciler reads AgentProfile.capability_tier from Registry
 - [ ] T034 [US2] Verify TierReconciler excludes under-tier agents in Strict mode
 - [ ] T035 [US2] Verify TierReconciler allows higher-tier substitution in Flexible mode
