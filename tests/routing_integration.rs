@@ -69,7 +69,7 @@ fn test_routing_with_multiple_backends() {
     let requirements = nexus::routing::RequestRequirements::from_request(&request);
 
     // Select backend
-    let result = state.router.select_backend(&requirements).unwrap();
+    let result = state.router.select_backend(&requirements, None).unwrap();
 
     // Should select one of the llama3:8b backends (Backend 1 or 2)
     assert!(result.backend.name == "Backend 1" || result.backend.name == "Backend 2");
@@ -121,7 +121,7 @@ fn test_routing_with_aliases() {
     };
 
     let requirements = nexus::routing::RequestRequirements::from_request(&request);
-    let result = state.router.select_backend(&requirements).unwrap();
+    let result = state.router.select_backend(&requirements, None).unwrap();
     let backend = &result.backend;
 
     // Should resolve alias and select backend
@@ -176,7 +176,7 @@ fn test_routing_with_fallbacks() {
     };
 
     let requirements = nexus::routing::RequestRequirements::from_request(&request);
-    let result = state.router.select_backend(&requirements).unwrap();
+    let result = state.router.select_backend(&requirements, None).unwrap();
     let backend = &result.backend;
 
     // Should fallback to mistral
@@ -228,7 +228,7 @@ fn test_routing_performance() {
     // Measure routing time
     let start = std::time::Instant::now();
     for _ in 0..1000 {
-        let _ = state.router.select_backend(&requirements).unwrap();
+        let _ = state.router.select_backend(&requirements, None).unwrap();
     }
     let elapsed = start.elapsed();
 
@@ -289,7 +289,7 @@ fn test_routing_with_chained_aliases() {
     };
 
     let requirements = nexus::routing::RequestRequirements::from_request(&request);
-    let result = state.router.select_backend(&requirements).unwrap();
+    let result = state.router.select_backend(&requirements, None).unwrap();
     let backend = &result.backend;
 
     // Should resolve through 2-level chain and select backend
@@ -375,7 +375,7 @@ fn test_routing_with_max_depth_chain() {
     };
 
     let requirements = nexus::routing::RequestRequirements::from_request(&request);
-    let result = state.router.select_backend(&requirements).unwrap();
+    let result = state.router.select_backend(&requirements, None).unwrap();
     let backend = &result.backend;
 
     // Should stop at max depth (3) and resolve to "d"
@@ -434,7 +434,7 @@ fn test_routing_result_with_alias_and_fallback() {
     };
 
     let requirements = nexus::routing::RequestRequirements::from_request(&request);
-    let result = state.router.select_backend(&requirements).unwrap();
+    let result = state.router.select_backend(&requirements, None).unwrap();
 
     // Then result.fallback_used == true
     assert!(result.fallback_used, "Expected fallback_used to be true");
@@ -477,7 +477,7 @@ fn test_routing_result_no_fallback_info_when_no_fallback_configured() {
     };
 
     let requirements = nexus::routing::RequestRequirements::from_request(&request);
-    let result = state.router.select_backend(&requirements).unwrap();
+    let result = state.router.select_backend(&requirements, None).unwrap();
 
     // Then result.fallback_used == false
     assert!(!result.fallback_used, "Expected fallback_used to be false");
@@ -536,7 +536,7 @@ fn test_round_robin_routing_with_fallback() {
     };
 
     let requirements = nexus::routing::RequestRequirements::from_request(&request);
-    let result = state.router.select_backend(&requirements).unwrap();
+    let result = state.router.select_backend(&requirements, None).unwrap();
 
     assert!(result.fallback_used);
     assert_eq!(result.actual_model, "fallback-model");
@@ -595,7 +595,7 @@ fn test_priority_routing_with_fallback() {
     };
 
     let requirements = nexus::routing::RequestRequirements::from_request(&request);
-    let result = state.router.select_backend(&requirements).unwrap();
+    let result = state.router.select_backend(&requirements, None).unwrap();
 
     assert!(result.fallback_used);
     assert_eq!(result.actual_model, "fallback-model");
@@ -646,7 +646,7 @@ fn test_random_routing_with_fallback() {
     };
 
     let requirements = nexus::routing::RequestRequirements::from_request(&request);
-    let result = state.router.select_backend(&requirements).unwrap();
+    let result = state.router.select_backend(&requirements, None).unwrap();
 
     assert!(result.fallback_used);
     assert_eq!(result.actual_model, "fallback-model");
@@ -690,7 +690,7 @@ fn test_round_robin_route_reason_multiple_backends() {
     };
 
     let requirements = nexus::routing::RequestRequirements::from_request(&request);
-    let result = state.router.select_backend(&requirements).unwrap();
+    let result = state.router.select_backend(&requirements, None).unwrap();
 
     assert!(!result.fallback_used);
     assert!(result.route_reason.starts_with("round_robin:index_"));
@@ -733,7 +733,7 @@ fn test_priority_route_reason_multiple_backends() {
     };
 
     let requirements = nexus::routing::RequestRequirements::from_request(&request);
-    let result = state.router.select_backend(&requirements).unwrap();
+    let result = state.router.select_backend(&requirements, None).unwrap();
 
     assert!(!result.fallback_used);
     assert!(result.route_reason.starts_with("priority:"));
@@ -776,7 +776,7 @@ fn test_random_route_reason_multiple_backends() {
     };
 
     let requirements = nexus::routing::RequestRequirements::from_request(&request);
-    let result = state.router.select_backend(&requirements).unwrap();
+    let result = state.router.select_backend(&requirements, None).unwrap();
 
     assert!(!result.fallback_used);
     assert!(result.route_reason.starts_with("random:"));

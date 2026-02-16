@@ -26,15 +26,28 @@ pub struct LMStudioAgent {
     base_url: String,
     /// Shared HTTP client for connection pooling
     client: Arc<Client>,
+    /// Privacy zone classification from config
+    privacy_zone: PrivacyZone,
+    /// Capability tier from config
+    capability_tier: Option<u8>,
 }
 
 impl LMStudioAgent {
-    pub fn new(id: String, name: String, base_url: String, client: Arc<Client>) -> Self {
+    pub fn new(
+        id: String,
+        name: String,
+        base_url: String,
+        client: Arc<Client>,
+        privacy_zone: PrivacyZone,
+        capability_tier: Option<u8>,
+    ) -> Self {
         Self {
             id,
             name,
             base_url,
             client,
+            privacy_zone,
+            capability_tier,
         }
     }
 }
@@ -64,14 +77,14 @@ impl InferenceAgent for LMStudioAgent {
         AgentProfile {
             backend_type: "lmstudio".to_string(),
             version: None,
-            privacy_zone: PrivacyZone::Restricted, // Local backend
+            privacy_zone: self.privacy_zone,
             capabilities: AgentCapabilities {
                 embeddings: false,
                 model_lifecycle: false,
                 token_counting: false,
                 resource_monitoring: false,
             },
-            capability_tier: None, // Will be set per-model in future
+            capability_tier: self.capability_tier,
         }
     }
 
@@ -308,6 +321,8 @@ mod tests {
             "Test LM Studio".to_string(),
             base_url,
             client,
+            PrivacyZone::Restricted,
+            None,
         )
     }
 

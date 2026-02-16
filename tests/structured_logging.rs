@@ -294,7 +294,7 @@ mod us3_routing_visibility {
             needs_tools: false,
             needs_json_mode: false,
         };
-        let result = router.select_backend(&requirements).unwrap();
+        let result = router.select_backend(&requirements, None).unwrap();
 
         assert!(
             result.route_reason.starts_with("highest_score:")
@@ -360,7 +360,7 @@ mod us3_routing_visibility {
             needs_tools: false,
             needs_json_mode: false,
         };
-        let result = router.select_backend(&requirements).unwrap();
+        let result = router.select_backend(&requirements, None).unwrap();
 
         assert!(result.fallback_used);
         assert_eq!(result.actual_model, "gpt-3.5-turbo");
@@ -422,7 +422,7 @@ mod us3_routing_visibility {
             needs_tools: false,
             needs_json_mode: false,
         };
-        let result = router.select_backend(&requirements).unwrap();
+        let result = router.select_backend(&requirements, None).unwrap();
 
         assert_eq!(result.route_reason, "only_healthy_backend");
     }

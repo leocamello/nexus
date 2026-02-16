@@ -35,6 +35,10 @@ pub struct GenericOpenAIAgent {
     base_url: String,
     /// Shared HTTP client for connection pooling
     client: Arc<Client>,
+    /// Privacy zone classification from config
+    privacy_zone: PrivacyZone,
+    /// Capability tier from config
+    capability_tier: Option<u8>,
 }
 
 impl GenericOpenAIAgent {
@@ -44,6 +48,8 @@ impl GenericOpenAIAgent {
         backend_type: BackendType,
         base_url: String,
         client: Arc<Client>,
+        privacy_zone: PrivacyZone,
+        capability_tier: Option<u8>,
     ) -> Self {
         Self {
             id,
@@ -51,6 +57,8 @@ impl GenericOpenAIAgent {
             backend_type,
             base_url,
             client,
+            privacy_zone,
+            capability_tier,
         }
     }
 }
@@ -88,14 +96,14 @@ impl InferenceAgent for GenericOpenAIAgent {
         AgentProfile {
             backend_type: backend_type.to_string(),
             version: None,
-            privacy_zone: PrivacyZone::Restricted, // All generic backends are local
+            privacy_zone: self.privacy_zone,
             capabilities: AgentCapabilities {
                 embeddings: false,
                 model_lifecycle: false,
                 token_counting: false,
                 resource_monitoring: false,
             },
-            capability_tier: None, // Will be set per-model in future
+            capability_tier: self.capability_tier,
         }
     }
 
@@ -337,6 +345,8 @@ mod tests {
             backend_type,
             base_url,
             client,
+            PrivacyZone::Restricted,
+            None,
         )
     }
 

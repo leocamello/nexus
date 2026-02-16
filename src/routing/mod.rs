@@ -243,6 +243,7 @@ impl Router {
         &self,
         requirements: &RequestRequirements,
         model: &str,
+        tier_enforcement_mode: Option<crate::routing::reconciler::intent::TierEnforcementMode>,
     ) -> Result<RoutingDecision, RoutingError> {
         // Build a pipeline with aliases that will resolve to the target model directly
         // (alias resolution already happened in the caller)
@@ -260,15 +261,31 @@ impl Router {
             vec![], // will be populated by RequestAnalyzer
         );
 
+        // Set tier enforcement mode from request headers (T032)
+        if let Some(mode) = tier_enforcement_mode {
+            intent.tier_enforcement_mode = mode;
+        }
+
         // Build pipeline with empty aliases (model is already resolved)
         let mut pipeline = self.build_pipeline(HashMap::new());
         pipeline.execute(&mut intent)
     }
 
     /// Select the best backend for the given requirements
+    ///
+    /// # Arguments
+    ///
+    /// * `requirements` - The extracted requirements from the request
+    /// * `tier_enforcement_mode` - Optional tier enforcement mode from request headers (T032)
+    ///
+    /// # Returns
+    ///
+    /// Returns a `RoutingResult` with the selected backend and routing metadata,
+    /// or a `RoutingError` if no suitable backend is available.
     pub fn select_backend(
         &self,
         requirements: &RequestRequirements,
+        tier_enforcement_mode: Option<crate::routing::reconciler::intent::TierEnforcementMode>,
     ) -> Result<RoutingResult, RoutingError> {
         // Step 1: Resolve alias using existing logic (reused by pipeline too)
         let model = self.resolve_alias(&requirements.model);
@@ -278,7 +295,7 @@ impl Router {
         let model_exists = !all_backends.is_empty();
 
         // Step 3: Run pipeline for primary model
-        let decision = self.run_pipeline_for_model(requirements, &model)?;
+        let decision = self.run_pipeline_for_model(requirements, &model, tier_enforcement_mode)?;
 
         if let RoutingDecision::Route {
             agent_id,
@@ -313,7 +330,8 @@ impl Router {
         // Step 4: Try fallback chain
         let fallbacks = self.get_fallbacks(&model);
         for fallback_model in &fallbacks {
-            let decision = self.run_pipeline_for_model(requirements, fallback_model)?;
+            let decision =
+                self.run_pipeline_for_model(requirements, fallback_model, tier_enforcement_mode)?;
 
             if let RoutingDecision::Route {
                 agent_id, reason, ..
@@ -989,7 +1007,7 @@ mod smart_strategy_tests {
             needs_json_mode: false,
         };
 
-        let result = router.select_backend(&requirements).unwrap();
+        let result = router.select_backend(&requirements, None).unwrap();
         assert_eq!(result.backend.name, "Backend A");
     }
 
@@ -1010,7 +1028,7 @@ mod smart_strategy_tests {
             needs_json_mode: false,
         };
 
-        let result = router.select_backend(&requirements).unwrap();
+        let result = router.select_backend(&requirements, None).unwrap();
         assert_eq!(result.backend.name, "Backend A"); // Lower load
     }
 
@@ -1031,7 +1049,7 @@ mod smart_strategy_tests {
             needs_json_mode: false,
         };
 
-        let result = router.select_backend(&requirements).unwrap();
+        let result = router.select_backend(&requirements, None).unwrap();
         assert_eq!(result.backend.name, "Backend A"); // Lower latency
     }
 
@@ -1054,7 +1072,7 @@ mod smart_strategy_tests {
             needs_json_mode: false,
         };
 
-        let result = router.select_backend(&requirements);
+        let result = router.select_backend(&requirements, None);
         assert!(matches!(result, Err(RoutingError::ModelNotFound { .. })));
     }
 }
@@ -1127,7 +1145,7 @@ mod other_strategies_tests {
         let names: Vec<String> = (0..6)
             .map(|_| {
                 router
-                    .select_backend(&requirements)
+                    .select_backend(&requirements, None)
                     .unwrap()
                     .backend
                     .name
@@ -1163,7 +1181,7 @@ mod other_strategies_tests {
 
         // Should always select Backend B (priority 1)
         for _ in 0..5 {
-            let result = router.select_backend(&requirements).unwrap();
+            let result = router.select_backend(&requirements, None).unwrap();
             assert_eq!(result.backend.name, "Backend B");
         }
     }
@@ -1188,7 +1206,7 @@ mod other_strategies_tests {
         // Should select from all three backends over many iterations
         let mut selected = HashMap::new();
         for _ in 0..30 {
-            let result = router.select_backend(&requirements).unwrap();
+            let result = router.select_backend(&requirements, None).unwrap();
             *selected.entry(result.backend.name.clone()).or_insert(0) += 1;
         }
 
@@ -1266,7 +1284,7 @@ mod alias_and_fallback_tests {
             needs_json_mode: false,
         };
 
-        let result = router.select_backend(&requirements).unwrap();
+        let result = router.select_backend(&requirements, None).unwrap();
         assert_eq!(result.backend.name, "Backend A");
     }
 
@@ -1305,7 +1323,7 @@ mod alias_and_fallback_tests {
             needs_json_mode: false,
         };
 
-        let result = router.select_backend(&requirements).unwrap();
+        let result = router.select_backend(&requirements, None).unwrap();
         assert_eq!(result.backend.name, "Backend A");
     }
 
@@ -1344,7 +1362,7 @@ mod alias_and_fallback_tests {
             needs_json_mode: false,
         };
 
-        let result = router.select_backend(&requirements);
+        let result = router.select_backend(&requirements, None);
         assert!(matches!(
             result,
             Err(RoutingError::FallbackChainExhausted { .. })
@@ -1386,7 +1404,7 @@ mod alias_and_fallback_tests {
             needs_json_mode: false,
         };
 
-        let result = router.select_backend(&requirements).unwrap();
+        let result = router.select_backend(&requirements, None).unwrap();
         assert_eq!(result.backend.name, "Backend A");
     }
 
@@ -1427,7 +1445,7 @@ mod alias_and_fallback_tests {
 
         // When resolving "gpt-4"
         // Then should resolve through chain to "llama3:70b"
-        let result = router.select_backend(&requirements).unwrap();
+        let result = router.select_backend(&requirements, None).unwrap();
         assert_eq!(result.backend.name, "Backend A");
     }
 
@@ -1468,7 +1486,7 @@ mod alias_and_fallback_tests {
 
         // When resolving "a"
         // Then should resolve through 3-level chain to "final-model"
-        let result = router.select_backend(&requirements).unwrap();
+        let result = router.select_backend(&requirements, None).unwrap();
         assert_eq!(result.backend.name, "Backend A");
     }
 
@@ -1510,7 +1528,7 @@ mod alias_and_fallback_tests {
 
         // When resolving "a" (4-level chain)
         // Then should stop at 3 levels and resolve to "d"
-        let result = router.select_backend(&requirements).unwrap();
+        let result = router.select_backend(&requirements, None).unwrap();
         assert_eq!(result.backend.name, "Backend D");
     }
 
@@ -1547,7 +1565,7 @@ mod alias_and_fallback_tests {
             needs_json_mode: false,
         };
 
-        let result = router.select_backend(&requirements).unwrap();
+        let result = router.select_backend(&requirements, None).unwrap();
         assert_eq!(result.backend.name, "Backend A");
     }
 
@@ -1587,7 +1605,7 @@ mod alias_and_fallback_tests {
         };
 
         // When select_backend("primary")
-        let result = router.select_backend(&requirements).unwrap();
+        let result = router.select_backend(&requirements, None).unwrap();
 
         // Then result.fallback_used == true
         assert!(result.fallback_used, "Expected fallback_used to be true");
@@ -1631,7 +1649,7 @@ mod alias_and_fallback_tests {
         };
 
         // When select_backend("primary")
-        let result = router.select_backend(&requirements).unwrap();
+        let result = router.select_backend(&requirements, None).unwrap();
 
         // Then result.fallback_used == false
         assert!(!result.fallback_used, "Expected fallback_used to be false");
