@@ -7,7 +7,7 @@ use crate::api::{
 };
 use crate::logging::generate_request_id;
 use crate::registry::Backend;
-use crate::routing::reconciler::intent::RejectionReason;
+use crate::routing::reconciler::intent::{RejectionReason, TierEnforcementMode};
 use crate::routing::RequestRequirements;
 use axum::{
     extract::State,
@@ -27,6 +27,43 @@ pub const FALLBACK_HEADER: &str = "x-nexus-fallback-model";
 
 /// Header name for rejection reasons summary (lowercase for HTTP/2 compatibility)
 const REJECTION_REASONS_HEADER: &str = "x-nexus-rejection-reasons";
+
+/// Header name for strict tier enforcement (lowercase for HTTP/2 compatibility)
+const STRICT_HEADER: &str = "x-nexus-strict";
+
+/// Header name for flexible tier enforcement (lowercase for HTTP/2 compatibility)
+const FLEXIBLE_HEADER: &str = "x-nexus-flexible";
+
+/// Extract tier enforcement mode from request headers (FR-007, FR-008, FR-009).
+///
+/// # Header Priority
+/// 1. If `X-Nexus-Strict` is present → Strict mode (safer default)
+/// 2. If `X-Nexus-Flexible` is present → Flexible mode
+/// 3. If neither present → Strict mode (default, FR-009)
+///
+/// # Examples
+/// ```text
+/// No headers              → Strict
+/// X-Nexus-Strict: true    → Strict
+/// X-Nexus-Flexible: true  → Flexible
+/// Both headers            → Strict (takes precedence)
+/// ```
+fn extract_tier_enforcement_mode(headers: &HeaderMap) -> TierEnforcementMode {
+    // Strict takes precedence if present (FR-007)
+    if headers.contains_key(STRICT_HEADER) {
+        return TierEnforcementMode::Strict;
+    }
+
+    // Check flexible header (FR-008)
+    if let Some(val) = headers.get(FLEXIBLE_HEADER) {
+        if val.to_str().ok() == Some("true") {
+            return TierEnforcementMode::Flexible;
+        }
+    }
+
+    // Default to strict (FR-009)
+    TierEnforcementMode::Strict
+}
 
 /// Build a structured 503 response for routing rejections with actionable details.
 fn rejection_response(rejection_reasons: Vec<RejectionReason>) -> Response {
@@ -903,4 +940,61 @@ fn determine_route_reason(
     // - "round_robin:..." (model matched, round-robin selection)
     // - "random:..." (model matched, random selection)
     RouteReason::CapabilityMatch
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_tier_enforcement_mode_no_headers() {
+        let headers = HeaderMap::new();
+        assert_eq!(
+            extract_tier_enforcement_mode(&headers),
+            TierEnforcementMode::Strict
+        );
+    }
+
+    #[test]
+    fn test_extract_tier_enforcement_mode_strict() {
+        let mut headers = HeaderMap::new();
+        headers.insert(STRICT_HEADER, HeaderValue::from_static("true"));
+        assert_eq!(
+            extract_tier_enforcement_mode(&headers),
+            TierEnforcementMode::Strict
+        );
+    }
+
+    #[test]
+    fn test_extract_tier_enforcement_mode_flexible() {
+        let mut headers = HeaderMap::new();
+        headers.insert(FLEXIBLE_HEADER, HeaderValue::from_static("true"));
+        assert_eq!(
+            extract_tier_enforcement_mode(&headers),
+            TierEnforcementMode::Flexible
+        );
+    }
+
+    #[test]
+    fn test_extract_tier_enforcement_mode_both_headers() {
+        let mut headers = HeaderMap::new();
+        headers.insert(STRICT_HEADER, HeaderValue::from_static("true"));
+        headers.insert(FLEXIBLE_HEADER, HeaderValue::from_static("true"));
+        // Strict takes precedence
+        assert_eq!(
+            extract_tier_enforcement_mode(&headers),
+            TierEnforcementMode::Strict
+        );
+    }
+
+    #[test]
+    fn test_extract_tier_enforcement_mode_flexible_false() {
+        let mut headers = HeaderMap::new();
+        headers.insert(FLEXIBLE_HEADER, HeaderValue::from_static("false"));
+        // Should default to Strict
+        assert_eq!(
+            extract_tier_enforcement_mode(&headers),
+            TierEnforcementMode::Strict
+        );
+    }
 }
