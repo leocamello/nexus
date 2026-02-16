@@ -298,6 +298,13 @@ pub async fn handle(
                     None,
                 );
 
+                // Estimate cost from usage data (cloud backends only)
+                let cost_estimated = response.usage.as_ref().and_then(|u| {
+                    state
+                        .pricing
+                        .estimate_cost(&actual_model, u.prompt_tokens, u.completion_tokens)
+                });
+
                 // Create response with fallback header if applicable
                 let mut resp = Json(response).into_response();
 
@@ -322,7 +329,7 @@ pub async fn handle(
                     backend.backend_type,
                     route_reason,
                     privacy_zone,
-                    routing_result.cost_estimated,
+                    cost_estimated,
                 );
                 nexus_headers.inject_into_response(&mut resp);
 

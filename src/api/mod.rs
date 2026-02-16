@@ -102,6 +102,8 @@ pub struct AppState {
     pub request_history: Arc<RequestHistory>,
     /// WebSocket broadcast channel for dashboard real-time updates
     pub ws_broadcast: broadcast::Sender<WebSocketUpdate>,
+    /// Pricing table for cloud cost estimation
+    pub pricing: Arc<crate::agent::pricing::PricingTable>,
 }
 
 impl AppState {
@@ -148,6 +150,9 @@ impl AppState {
         // Create WebSocket broadcast channel for dashboard real-time updates
         let (ws_broadcast, _) = broadcast::channel(1000);
 
+        // Create pricing table for cloud cost estimation
+        let pricing = Arc::new(crate::agent::pricing::PricingTable::new());
+
         Self {
             registry,
             config,
@@ -157,6 +162,7 @@ impl AppState {
             metrics_collector,
             request_history,
             ws_broadcast,
+            pricing,
         }
     }
 }
