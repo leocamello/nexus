@@ -317,14 +317,20 @@ impl Reconciler for BudgetReconciler {
 /// with CancellationToken for graceful shutdown.
 pub struct BudgetReconciliationLoop {
     budget_state: Arc<DashMap<String, BudgetMetrics>>,
+    budget_config: BudgetConfig,
     interval_secs: u64,
 }
 
 impl BudgetReconciliationLoop {
     /// Create a new reconciliation loop.
-    pub fn new(budget_state: Arc<DashMap<String, BudgetMetrics>>, interval_secs: u64) -> Self {
+    pub fn new(
+        budget_state: Arc<DashMap<String, BudgetMetrics>>,
+        budget_config: BudgetConfig,
+        interval_secs: u64,
+    ) -> Self {
         Self {
             budget_state,
+            budget_config,
             interval_secs,
         }
     }
@@ -355,10 +361,10 @@ impl BudgetReconciliationLoop {
         })
     }
 
-    /// Reconcile spending data.
+    /// Reconcile spending data and record metrics.
     ///
-    /// Currently: checks for month rollover and updates timestamps.
-    /// Future: query telemetry for actual spending data.
+    /// Records Prometheus gauges for budget spending, utilization, and status.
+    /// Checks for month rollover and updates timestamps.
     fn reconcile_spending(&self) {
         let current_month = BudgetMetrics::current_month_key();
         let now = chrono::Utc::now();
@@ -382,11 +388,46 @@ impl BudgetReconciliationLoop {
             .or_default();
 
         if let Some(metrics) = self.budget_state.get(GLOBAL_BUDGET_KEY) {
+            // T030: Record current spending gauge
+            metrics::gauge!(
+                "nexus_budget_spending_usd",
+                "billing_month" => metrics.month_key.clone()
+            ).set(metrics.current_month_spending);
+
+            // T031, T032: Record utilization and status gauges
+            if let Some(monthly_limit) = self.budget_config.monthly_limit_usd {
+                if monthly_limit > 0.0 {
+                    let utilization = (metrics.current_month_spending / monthly_limit) * 100.0;
+                    metrics::gauge!(
+                        "nexus_budget_utilization_percent",
+                        "billing_month" => metrics.month_key.clone()
+                    ).set(utilization);
+
+                    // Calculate status: 0=Normal, 1=SoftLimit, 2=HardLimit
+                    let status = if utilization >= 100.0 {
+                        2.0 // HardLimit
+                    } else if utilization >= self.budget_config.soft_limit_percent {
+                        1.0 // SoftLimit
+                    } else {
+                        0.0 // Normal
+                    };
+                    metrics::gauge!(
+                        "nexus_budget_status",
+                        "billing_month" => metrics.month_key.clone()
+                    ).set(status);
+                }
+            }
+
             tracing::debug!(
                 month = %metrics.month_key,
                 spending = metrics.current_month_spending,
                 "Budget reconciliation completed"
             );
+        }
+
+        // T033: Record budget limit gauge (global, no billing_month label)
+        if let Some(limit) = self.budget_config.monthly_limit_usd {
+            metrics::gauge!("nexus_budget_limit_usd").set(limit);
         }
     }
 }
@@ -816,7 +857,8 @@ mod tests {
         let state = Arc::new(DashMap::new());
         state.insert(GLOBAL_BUDGET_KEY.to_string(), BudgetMetrics::new());
 
-        let loop_task = BudgetReconciliationLoop::new(Arc::clone(&state), 1);
+        let budget_config = budget_config(Some(100.0), HardLimitAction::Warn);
+        let loop_task = BudgetReconciliationLoop::new(Arc::clone(&state), budget_config, 1);
         let cancel = CancellationToken::new();
         let handle = loop_task.start(cancel.clone());
 
