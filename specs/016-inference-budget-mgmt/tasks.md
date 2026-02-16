@@ -133,12 +133,12 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T041 [P] Update quickstart.md with actual testing results and example metrics output in specs/016-inference-budget-mgmt/quickstart.md
-- [ ] T042 [P] Add unit tests for TokenizerRegistry pattern matching (optional enhancement) in tests/unit/tokenizer_test.rs
-- [ ] T043 [P] Add integration test for soft limit routing shift (optional enhancement) in tests/integration/budget_reconciliation.rs
-- [ ] T044 [P] Add integration test for month rollover reset (optional enhancement) in tests/integration/budget_reconciliation.rs
-- [ ] T045 [P] Add contract test for Prometheus metric format validation (optional enhancement) in tests/contract/budget_metrics_test.rs
-- [ ] T046 Verify quickstart.md scenarios work as documented (all 4 scenarios: zero-config, soft limit, rollover, token accuracy)
+- [x] T041 [P] Update quickstart.md with actual testing results and example metrics output in specs/016-inference-budget-mgmt/quickstart.md
+- [x] T042 [P] Add unit tests for TokenizerRegistry pattern matching (optional enhancement) in tests/unit/tokenizer_test.rs
+- [x] T043 [P] Add integration test for soft limit routing shift (optional enhancement) in tests/integration/budget_reconciliation.rs
+- [x] T044 [P] Add integration test for month rollover reset (optional enhancement) in tests/integration/budget_reconciliation.rs
+- [x] T045 [P] Add contract test for Prometheus metric format validation (optional enhancement) in tests/contract/budget_metrics_test.rs
+- [x] T046 Verify quickstart.md scenarios work as documented (all 4 scenarios: zero-config, soft limit, rollover, token accuracy)
 - [X] T047 Add documentation for TokenizerRegistry usage in README or developer guide
 - [X] T048 Review all error handling paths for graceful degradation (tokenizer failures fall back to heuristic)
 - [X] T049 Performance validation: Verify token counting overhead <200ms P95 per SC-007
