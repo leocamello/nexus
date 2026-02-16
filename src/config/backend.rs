@@ -41,9 +41,9 @@ impl BackendConfig {
             .unwrap_or_else(|| self.backend_type.default_privacy_zone())
     }
 
-    /// Get the effective tier, defaulting to 3 if not specified
+    /// Get the effective tier, defaulting to 1 if not specified (FR-022)
     pub fn effective_tier(&self) -> u8 {
-        self.tier.unwrap_or(3)
+        self.tier.unwrap_or(1)
     }
 
     /// Validate configuration fields
@@ -181,7 +181,7 @@ mod tests {
     #[test]
     fn test_effective_tier_default() {
         let cfg = local_backend();
-        assert_eq!(cfg.effective_tier(), 3);
+        assert_eq!(cfg.effective_tier(), 1); // FR-022: default tier is 1
     }
 
     #[test]
