@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use crate::agent::types::PrivacyZone;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, AtomicU64};
@@ -23,6 +24,31 @@ pub enum BackendType {
     LMStudio,
     /// Generic/unknown backend type
     Generic,
+    /// Anthropic Claude API (F12: Cloud Backend Support)
+    Anthropic,
+    /// Google Generative AI API (F12: Cloud Backend Support)
+    Google,
+}
+
+impl BackendType {
+    /// Get the default privacy zone for this backend type.
+    ///
+    /// Local backends default to Restricted, cloud backends default to Open.
+    /// This can be overridden in BackendConfig.zone field.
+    pub fn default_privacy_zone(&self) -> PrivacyZone {
+        match self {
+            BackendType::Ollama
+            | BackendType::VLLM
+            | BackendType::LlamaCpp
+            | BackendType::Exo
+            | BackendType::LMStudio
+            | BackendType::Generic => PrivacyZone::Restricted,
+
+            BackendType::OpenAI | BackendType::Anthropic | BackendType::Google => {
+                PrivacyZone::Open
+            }
+        }
+    }
 }
 
 /// Backend health status.

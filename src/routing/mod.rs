@@ -32,6 +32,9 @@ pub struct RoutingResult {
     /// Explanation of backend selection decision
     /// Examples: "highest_score:0.95", "round_robin:index_3", "only_healthy_backend"
     pub route_reason: String,
+    /// Estimated cost in USD (F12: Cloud Backend Support)
+    /// Populated for cloud backends with token counting capability
+    pub cost_estimated: Option<f64>,
 }
 
 /// Router selects the best backend for each request
@@ -232,6 +235,7 @@ impl Router {
                 actual_model: model.clone(),
                 fallback_used: false,
                 route_reason,
+                cost_estimated: None, // Populated later in completions.rs after token counting
             });
         }
 
@@ -312,6 +316,7 @@ impl Router {
                     actual_model: fallback_model.clone(),
                     fallback_used: true,
                     route_reason,
+                    cost_estimated: None, // Populated later in completions.rs after token counting
                 });
             }
         }

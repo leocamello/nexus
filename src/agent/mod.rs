@@ -13,6 +13,8 @@ pub mod generic;
 pub mod lmstudio;
 pub mod ollama;
 pub mod openai;
+pub mod pricing;
+pub mod translation;
 pub mod types;
 
 // Re-export key types for convenience

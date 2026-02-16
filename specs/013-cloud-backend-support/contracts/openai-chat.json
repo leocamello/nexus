@@ -1,0 +1,193 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "OpenAI Chat Completion API",
+  "description": "Reference format for OpenAI-compatible chat completion requests and responses. This is the canonical format that all cloud backends must translate to/from.",
+  
+  "request": {
+    "type": "object",
+    "required": ["model", "messages"],
+    "properties": {
+      "model": {
+        "type": "string",
+        "description": "Model identifier (e.g., 'gpt-4', 'gpt-3.5-turbo')",
+        "examples": ["gpt-4", "gpt-3.5-turbo"]
+      },
+      "messages": {
+        "type": "array",
+        "description": "Array of message objects in conversation order",
+        "items": {
+          "type": "object",
+          "required": ["role", "content"],
+          "properties": {
+            "role": {
+              "type": "string",
+              "enum": ["system", "user", "assistant"],
+              "description": "Message role: system (instructions), user (user input), assistant (AI response)"
+            },
+            "content": {
+              "type": "string",
+              "description": "Message content (text)"
+            },
+            "name": {
+              "type": "string",
+              "description": "Optional name for the message author"
+            }
+          }
+        },
+        "minItems": 1
+      },
+      "temperature": {
+        "type": "number",
+        "minimum": 0.0,
+        "maximum": 2.0,
+        "default": 1.0,
+        "description": "Sampling temperature (0-2). Higher = more random."
+      },
+      "max_tokens": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Maximum tokens to generate in completion"
+      },
+      "stream": {
+        "type": "boolean",
+        "default": false,
+        "description": "Enable streaming responses via SSE"
+      },
+      "top_p": {
+        "type": "number",
+        "minimum": 0.0,
+        "maximum": 1.0,
+        "default": 1.0,
+        "description": "Nucleus sampling threshold"
+      },
+      "n": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 1,
+        "description": "Number of completion choices to generate"
+      },
+      "stop": {
+        "oneOf": [
+          {"type": "string"},
+          {"type": "array", "items": {"type": "string"}}
+        ],
+        "description": "Stop sequence(s) to end generation"
+      }
+    }
+  },
+  
+  "response": {
+    "type": "object",
+    "required": ["id", "object", "created", "model", "choices"],
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "Unique completion identifier",
+        "examples": ["chatcmpl-123"]
+      },
+      "object": {
+        "type": "string",
+        "const": "chat.completion",
+        "description": "Object type identifier"
+      },
+      "created": {
+        "type": "integer",
+        "description": "Unix timestamp of creation"
+      },
+      "model": {
+        "type": "string",
+        "description": "Model that generated the completion"
+      },
+      "choices": {
+        "type": "array",
+        "description": "Array of completion choices",
+        "items": {
+          "type": "object",
+          "required": ["index", "message", "finish_reason"],
+          "properties": {
+            "index": {
+              "type": "integer",
+              "description": "Choice index (0-based)"
+            },
+            "message": {
+              "type": "object",
+              "required": ["role", "content"],
+              "properties": {
+                "role": {
+                  "type": "string",
+                  "const": "assistant"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "Generated text"
+                }
+              }
+            },
+            "finish_reason": {
+              "type": "string",
+              "enum": ["stop", "length", "content_filter", "function_call"],
+              "description": "Reason completion ended"
+            }
+          }
+        }
+      },
+      "usage": {
+        "type": "object",
+        "required": ["prompt_tokens", "completion_tokens", "total_tokens"],
+        "properties": {
+          "prompt_tokens": {
+            "type": "integer",
+            "description": "Tokens in prompt"
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "description": "Tokens in completion"
+          },
+          "total_tokens": {
+            "type": "integer",
+            "description": "Total tokens used"
+          }
+        }
+      }
+    }
+  },
+  
+  "examples": {
+    "request_simple": {
+      "model": "gpt-4",
+      "messages": [
+        {"role": "user", "content": "What is the capital of France?"}
+      ]
+    },
+    "request_with_system": {
+      "model": "gpt-3.5-turbo",
+      "messages": [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Tell me a joke"}
+      ],
+      "temperature": 0.8,
+      "max_tokens": 100
+    },
+    "response_simple": {
+      "id": "chatcmpl-abc123",
+      "object": "chat.completion",
+      "created": 1677652288,
+      "model": "gpt-4-0613",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "The capital of France is Paris."
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 13,
+        "completion_tokens": 9,
+        "total_tokens": 22
+      }
+    }
+  }
+}

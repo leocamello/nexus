@@ -80,6 +80,13 @@ pub fn create_agent(
         BackendType::VLLM | BackendType::LlamaCpp | BackendType::Exo | BackendType::Generic => Ok(
             Arc::new(GenericOpenAIAgent::new(id, name, backend_type, url, client)),
         ),
+        // Cloud backends (Anthropic, Google) not yet implemented - Phase 6 (T093, T108)
+        BackendType::Anthropic | BackendType::Google => {
+            Err(AgentError::Configuration(format!(
+                "{:?} backend not yet implemented (Phase 6: User Story 3)",
+                backend_type
+            )))
+        }
     }
 }
 

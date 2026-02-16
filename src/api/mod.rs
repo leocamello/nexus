@@ -61,6 +61,8 @@
 //! ```
 
 mod completions;
+pub mod error;
+pub mod headers;
 mod health;
 pub mod models;
 pub mod types;
