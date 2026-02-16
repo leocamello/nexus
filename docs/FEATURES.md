@@ -19,7 +19,7 @@ Detailed specifications for each feature in the Nexus LLM Orchestrator.
 | F09 | Request Metrics | v0.2 | ✅ Complete | [specs/009-request-metrics](../specs/009-request-metrics/) |
 | F10 | Web Dashboard | v0.2 | ✅ Complete | [specs/010-web-dashboard](../specs/010-web-dashboard/) |
 | F11 | Structured Request Logging | v0.2 | ✅ Complete | [specs/011-structured-logging](../specs/011-structured-logging/) |
-| F12 | Cloud Backend Support | v0.3 | Planned | - |
+| F12 | Cloud Backend Support | v0.3 | ✅ Complete | [specs/013-cloud-backend-support](../specs/013-cloud-backend-support/) |
 | F13 | Privacy Zones & Capability Tiers | v0.3 | Planned | - |
 | F14 | Inference Budget Management | v0.3 | Planned | - |
 | F15 | Speculative Router | v0.4 | Planned | - |

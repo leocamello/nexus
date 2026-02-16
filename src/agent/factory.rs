@@ -1,8 +1,8 @@
 //! Agent factory for creating InferenceAgent trait objects from configuration.
 
 use super::{
-    generic::GenericOpenAIAgent, lmstudio::LMStudioAgent, ollama::OllamaAgent, openai::OpenAIAgent,
-    AgentError, InferenceAgent,
+    anthropic::AnthropicAgent, generic::GenericOpenAIAgent, google::GoogleAIAgent,
+    lmstudio::LMStudioAgent, ollama::OllamaAgent, openai::OpenAIAgent, AgentError, InferenceAgent,
 };
 use crate::registry::BackendType;
 use reqwest::Client;
@@ -80,6 +80,46 @@ pub fn create_agent(
         BackendType::VLLM | BackendType::LlamaCpp | BackendType::Exo | BackendType::Generic => Ok(
             Arc::new(GenericOpenAIAgent::new(id, name, backend_type, url, client)),
         ),
+        BackendType::Anthropic => {
+            // Extract API key from metadata (T093)
+            let api_key = if let Some(key) = metadata.get("api_key") {
+                key.clone()
+            } else if let Some(env_var) = metadata.get("api_key_env") {
+                std::env::var(env_var).map_err(|e| {
+                    AgentError::Configuration(format!(
+                        "Failed to read API key from env var '{}': {}",
+                        env_var, e
+                    ))
+                })?
+            } else {
+                return Err(AgentError::Configuration(
+                    "Anthropic backend requires 'api_key' or 'api_key_env' in metadata".to_string(),
+                ));
+            };
+
+            Ok(Arc::new(AnthropicAgent::new(
+                id, name, url, api_key, client,
+            )))
+        }
+        BackendType::Google => {
+            // Extract API key from metadata (T108)
+            let api_key = if let Some(key) = metadata.get("api_key") {
+                key.clone()
+            } else if let Some(env_var) = metadata.get("api_key_env") {
+                std::env::var(env_var).map_err(|e| {
+                    AgentError::Configuration(format!(
+                        "Failed to read API key from env var '{}': {}",
+                        env_var, e
+                    ))
+                })?
+            } else {
+                return Err(AgentError::Configuration(
+                    "Google backend requires 'api_key' or 'api_key_env' in metadata".to_string(),
+                ));
+            };
+
+            Ok(Arc::new(GoogleAIAgent::new(id, name, url, api_key, client)))
+        }
     }
 }
 
@@ -273,5 +313,121 @@ mod tests {
         // Both agents should share the same client (connection pooling)
         assert_eq!(agent1.id(), "test-10");
         assert_eq!(agent2.id(), "test-11");
+    }
+
+    #[test]
+    fn test_create_anthropic_agent_with_direct_key() {
+        let mut metadata = HashMap::new();
+        metadata.insert("api_key".to_string(), "sk-ant-test123".to_string());
+
+        let agent = create_agent(
+            "test-12".to_string(),
+            "Test Anthropic".to_string(),
+            "https://api.anthropic.com".to_string(),
+            BackendType::Anthropic,
+            test_client(),
+            metadata,
+        )
+        .unwrap();
+
+        assert_eq!(agent.id(), "test-12");
+        assert_eq!(agent.profile().backend_type, "anthropic");
+    }
+
+    #[test]
+    fn test_create_anthropic_agent_with_env_key() {
+        std::env::set_var("TEST_ANTHROPIC_KEY", "sk-ant-test-env");
+
+        let mut metadata = HashMap::new();
+        metadata.insert("api_key_env".to_string(), "TEST_ANTHROPIC_KEY".to_string());
+
+        let agent = create_agent(
+            "test-13".to_string(),
+            "Test Anthropic Env".to_string(),
+            "https://api.anthropic.com".to_string(),
+            BackendType::Anthropic,
+            test_client(),
+            metadata,
+        )
+        .unwrap();
+
+        assert_eq!(agent.id(), "test-13");
+        assert_eq!(agent.profile().backend_type, "anthropic");
+
+        std::env::remove_var("TEST_ANTHROPIC_KEY");
+    }
+
+    #[test]
+    fn test_create_anthropic_agent_missing_key() {
+        let result = create_agent(
+            "test-14".to_string(),
+            "Test Anthropic No Key".to_string(),
+            "https://api.anthropic.com".to_string(),
+            BackendType::Anthropic,
+            test_client(),
+            HashMap::new(),
+        );
+
+        assert!(
+            matches!(result, Err(AgentError::Configuration(ref msg)) if msg.contains("api_key"))
+        );
+    }
+
+    #[test]
+    fn test_create_google_agent_with_direct_key() {
+        let mut metadata = HashMap::new();
+        metadata.insert("api_key".to_string(), "test-google-key".to_string());
+
+        let agent = create_agent(
+            "test-15".to_string(),
+            "Test Google".to_string(),
+            "https://generativelanguage.googleapis.com".to_string(),
+            BackendType::Google,
+            test_client(),
+            metadata,
+        )
+        .unwrap();
+
+        assert_eq!(agent.id(), "test-15");
+        assert_eq!(agent.profile().backend_type, "google");
+    }
+
+    #[test]
+    fn test_create_google_agent_with_env_key() {
+        std::env::set_var("TEST_GOOGLE_KEY", "test-google-env");
+
+        let mut metadata = HashMap::new();
+        metadata.insert("api_key_env".to_string(), "TEST_GOOGLE_KEY".to_string());
+
+        let agent = create_agent(
+            "test-16".to_string(),
+            "Test Google Env".to_string(),
+            "https://generativelanguage.googleapis.com".to_string(),
+            BackendType::Google,
+            test_client(),
+            metadata,
+        )
+        .unwrap();
+
+        assert_eq!(agent.id(), "test-16");
+        assert_eq!(agent.profile().backend_type, "google");
+
+        std::env::remove_var("TEST_GOOGLE_KEY");
+    }
+
+    #[test]
+    fn test_create_google_agent_missing_key() {
+        let result = create_agent(
+            "test-17".to_string(),
+            "Test Google No Key".to_string(),
+            "https://generativelanguage.googleapis.com".to_string(),
+            BackendType::Google,
+            test_client(),
+            HashMap::new(),
+        );
+
+        assert!(
+            matches!(result, Err(AgentError::Configuration(ref msg)) if msg.contains("api_key"))
+        );
     }
 }

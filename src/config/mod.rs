@@ -364,6 +364,8 @@ mod tests {
             backend_type: crate::registry::BackendType::Ollama,
             priority: 1,
             api_key_env: None,
+            zone: None,
+            tier: None,
         });
 
         let result = config.validate();
@@ -382,6 +384,8 @@ mod tests {
             backend_type: crate::registry::BackendType::Ollama,
             priority: 1,
             api_key_env: None,
+            zone: None,
+            tier: None,
         });
 
         let result = config.validate();
