@@ -1,0 +1,271 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Anthropic Messages API",
+  "description": "Anthropic's native message format. Must be translated to/from OpenAI format by AnthropicAgent.",
+  
+  "request": {
+    "type": "object",
+    "required": ["model", "messages", "max_tokens"],
+    "properties": {
+      "model": {
+        "type": "string",
+        "description": "Anthropic model identifier",
+        "examples": ["claude-3-opus-20240229", "claude-3-sonnet-20240229"]
+      },
+      "messages": {
+        "type": "array",
+        "description": "Array of message objects (NO system messages in array)",
+        "items": {
+          "type": "object",
+          "required": ["role", "content"],
+          "properties": {
+            "role": {
+              "type": "string",
+              "enum": ["user", "assistant"],
+              "description": "Message role (user or assistant only)"
+            },
+            "content": {
+              "oneOf": [
+                {"type": "string"},
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "type": {"type": "string", "enum": ["text", "image"]},
+                      "text": {"type": "string"}
+                    }
+                  }
+                }
+              ],
+              "description": "Message content (text or structured content blocks)"
+            }
+          }
+        },
+        "minItems": 1
+      },
+      "system": {
+        "type": "string",
+        "description": "System prompt (NOT in messages array - top-level parameter)"
+      },
+      "max_tokens": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Maximum tokens to generate (REQUIRED by Anthropic)"
+      },
+      "temperature": {
+        "type": "number",
+        "minimum": 0.0,
+        "maximum": 1.0,
+        "default": 1.0,
+        "description": "Sampling temperature"
+      },
+      "stream": {
+        "type": "boolean",
+        "default": false,
+        "description": "Enable streaming responses"
+      },
+      "top_p": {
+        "type": "number",
+        "minimum": 0.0,
+        "maximum": 1.0,
+        "description": "Nucleus sampling threshold"
+      },
+      "stop_sequences": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Stop sequences (OpenAI 'stop' parameter)"
+      }
+    }
+  },
+  
+  "response": {
+    "type": "object",
+    "required": ["id", "type", "role", "content", "model", "stop_reason", "usage"],
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "Unique message identifier",
+        "examples": ["msg_01XFDUDYJgAACzvnptvVoYEL"]
+      },
+      "type": {
+        "type": "string",
+        "const": "message",
+        "description": "Object type"
+      },
+      "role": {
+        "type": "string",
+        "const": "assistant",
+        "description": "Response role"
+      },
+      "content": {
+        "type": "array",
+        "description": "Array of content blocks",
+        "items": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["text"],
+              "description": "Content block type"
+            },
+            "text": {
+              "type": "string",
+              "description": "Generated text"
+            }
+          }
+        }
+      },
+      "model": {
+        "type": "string",
+        "description": "Model that generated the response"
+      },
+      "stop_reason": {
+        "type": "string",
+        "enum": ["end_turn", "max_tokens", "stop_sequence"],
+        "description": "Reason generation stopped"
+      },
+      "stop_sequence": {
+        "type": "string",
+        "description": "Stop sequence that triggered end (if applicable)"
+      },
+      "usage": {
+        "type": "object",
+        "required": ["input_tokens", "output_tokens"],
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "Tokens in input"
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "Tokens in output"
+          }
+        }
+      }
+    }
+  },
+  
+  "streaming": {
+    "description": "Anthropic uses Server-Sent Events with typed event messages",
+    "event_types": {
+      "message_start": {
+        "description": "Initial message metadata",
+        "example": {
+          "type": "message_start",
+          "message": {
+            "id": "msg_123",
+            "type": "message",
+            "role": "assistant",
+            "content": [],
+            "model": "claude-3-opus-20240229"
+          }
+        }
+      },
+      "content_block_start": {
+        "description": "Start of content block",
+        "example": {
+          "type": "content_block_start",
+          "index": 0,
+          "content_block": {
+            "type": "text",
+            "text": ""
+          }
+        }
+      },
+      "content_block_delta": {
+        "description": "Incremental text chunk",
+        "example": {
+          "type": "content_block_delta",
+          "index": 0,
+          "delta": {
+            "type": "text_delta",
+            "text": "Hello"
+          }
+        }
+      },
+      "content_block_stop": {
+        "description": "End of content block",
+        "example": {
+          "type": "content_block_stop",
+          "index": 0
+        }
+      },
+      "message_delta": {
+        "description": "Message-level updates (stop reason)",
+        "example": {
+          "type": "message_delta",
+          "delta": {
+            "stop_reason": "end_turn"
+          },
+          "usage": {
+            "output_tokens": 15
+          }
+        }
+      },
+      "message_stop": {
+        "description": "End of message",
+        "example": {
+          "type": "message_stop"
+        }
+      }
+    }
+  },
+  
+  "translation_rules": {
+    "openai_to_anthropic": {
+      "system_message": "Extract from messages array, set as top-level 'system' parameter",
+      "roles": "Keep 'user' and 'assistant', remove 'system' from messages",
+      "max_tokens": "Default to 4096 if not specified (required by Anthropic)",
+      "stop": "Rename to 'stop_sequences'"
+    },
+    "anthropic_to_openai": {
+      "content_blocks": "Join all text blocks into single content string",
+      "stop_reason": "Map: end_turn→stop, max_tokens→length, stop_sequence→stop",
+      "usage": "Map: input_tokens→prompt_tokens, output_tokens→completion_tokens",
+      "id": "Keep Anthropic msg_* ID",
+      "object": "Set to 'chat.completion'"
+    }
+  },
+  
+  "examples": {
+    "request_with_system": {
+      "model": "claude-3-opus-20240229",
+      "system": "You are a helpful assistant.",
+      "messages": [
+        {"role": "user", "content": "What is the capital of France?"}
+      ],
+      "max_tokens": 1024,
+      "temperature": 0.7
+    },
+    "response_simple": {
+      "id": "msg_01XFDUDYJgAACzvnptvVoYEL",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "The capital of France is Paris."
+        }
+      ],
+      "model": "claude-3-opus-20240229",
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 15,
+        "output_tokens": 10
+      }
+    }
+  },
+  
+  "authentication": {
+    "header": "x-api-key",
+    "value": "<ANTHROPIC_API_KEY>",
+    "note": "NOT 'Authorization: Bearer' like OpenAI"
+  },
+  
+  "endpoints": {
+    "base_url": "https://api.anthropic.com",
+    "messages": "/v1/messages",
+    "version_header": "anthropic-version: 2023-06-01"
+  }
+}

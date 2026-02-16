@@ -1,3 +1,4 @@
+use crate::agent::types::PrivacyZone;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -23,6 +24,29 @@ pub enum BackendType {
     LMStudio,
     /// Generic/unknown backend type
     Generic,
+    /// Anthropic Claude API (F12: Cloud Backend Support)
+    Anthropic,
+    /// Google Generative AI API (F12: Cloud Backend Support)
+    Google,
+}
+
+impl BackendType {
+    /// Get the default privacy zone for this backend type.
+    ///
+    /// Local backends default to Restricted, cloud backends default to Open.
+    /// This can be overridden in BackendConfig.zone field.
+    pub fn default_privacy_zone(&self) -> PrivacyZone {
+        match self {
+            BackendType::Ollama
+            | BackendType::VLLM
+            | BackendType::LlamaCpp
+            | BackendType::Exo
+            | BackendType::LMStudio
+            | BackendType::Generic => PrivacyZone::Restricted,
+
+            BackendType::OpenAI | BackendType::Anthropic | BackendType::Google => PrivacyZone::Open,
+        }
+    }
 }
 
 /// Backend health status.
@@ -225,6 +249,48 @@ impl From<&Backend> for BackendView {
                 .load(std::sync::atomic::Ordering::SeqCst),
             discovery_source: backend.discovery_source,
             metadata: backend.metadata.clone(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_privacy_zone_local_backends() {
+        let local_types = [
+            BackendType::Ollama,
+            BackendType::VLLM,
+            BackendType::LlamaCpp,
+            BackendType::Exo,
+            BackendType::LMStudio,
+            BackendType::Generic,
+        ];
+
+        for bt in local_types {
+            assert_eq!(
+                bt.default_privacy_zone(),
+                PrivacyZone::Restricted,
+                "{bt:?} should default to Restricted"
+            );
+        }
+    }
+
+    #[test]
+    fn test_default_privacy_zone_cloud_backends() {
+        let cloud_types = [
+            BackendType::OpenAI,
+            BackendType::Anthropic,
+            BackendType::Google,
+        ];
+
+        for bt in cloud_types {
+            assert_eq!(
+                bt.default_privacy_zone(),
+                PrivacyZone::Open,
+                "{bt:?} should default to Open"
+            );
         }
     }
 }

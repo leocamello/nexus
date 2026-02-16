@@ -21,6 +21,7 @@ use crate::api::{ApiError, ChatCompletionResponse};
 /// #   model: "test".to_string(),
 /// #   choices: vec![],
 /// #   usage: None,
+/// #   extra: std::collections::HashMap::new(),
 /// };
 /// let (prompt, completion, total) = extract_tokens(&response);
 /// ```
@@ -94,7 +95,7 @@ pub fn extract_status(
 ///         content: MessageContent::Text {
 ///             content: "Hello, world!".to_string(),
 ///         },
-///         name: None,
+///         name: None, function_call: None,
 ///     }],
 ///     stream: false,
 ///     temperature: None,
@@ -179,6 +180,7 @@ mod tests {
                 completion_tokens: 50,
                 total_tokens: 150,
             }),
+            extra: std::collections::HashMap::new(),
         };
 
         let (prompt, completion, total) = extract_tokens(&response);
@@ -218,6 +220,7 @@ mod tests {
                     content: "Hello!".to_string(),
                 },
                 name: None,
+                function_call: None,
             }],
             stream: false,
             temperature: None,
@@ -242,6 +245,7 @@ mod tests {
                     content: "Hello!".to_string(),
                 },
                 name: None,
+                function_call: None,
             }],
             stream: false,
             temperature: None,
@@ -266,6 +270,7 @@ mod tests {
                 role: "user".to_string(),
                 content: crate::api::MessageContent::Text { content: long_text },
                 name: None,
+                function_call: None,
             }],
             stream: false,
             temperature: None,
@@ -310,6 +315,7 @@ mod tests {
                     content: String::new(),
                 },
                 name: None,
+                function_call: None,
             }],
             stream: false,
             temperature: None,
@@ -347,6 +353,7 @@ mod tests {
                     ],
                 },
                 name: None,
+                function_call: None,
             }],
             stream: false,
             temperature: None,
@@ -378,6 +385,7 @@ mod tests {
                     }],
                 },
                 name: None,
+                function_call: None,
             }],
             stream: false,
             temperature: None,
@@ -401,6 +409,7 @@ mod tests {
             model: "test".to_string(),
             choices: vec![],
             usage: None,
+            extra: std::collections::HashMap::new(),
         };
 
         let (prompt, completion, total) = extract_tokens(&response);
