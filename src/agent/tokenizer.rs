@@ -227,9 +227,32 @@ impl TokenizerRegistry {
     }
 
     /// Count tokens for a model + text (convenience method)
+    /// 
+    /// Records timing metrics and tier counters for observability (US2: Precise Tracking)
     pub fn count_tokens(&self, model: &str, text: &str) -> Result<u32, TokenizerError> {
         let tokenizer = self.get_tokenizer(model);
-        tokenizer.count_tokens(text)
+        let tier_name = Self::tier_name(tokenizer.tier());
+        let model_name = model.to_string();
+        
+        // Measure tokenization duration (T022)
+        let start = std::time::Instant::now();
+        let result = tokenizer.count_tokens(text);
+        let duration = start.elapsed();
+
+        // Record metrics (T020, T021)
+        metrics::histogram!(
+            "nexus_token_count_duration_seconds",
+            "tier" => tier_name,
+            "model" => model_name.clone()
+        ).record(duration.as_secs_f64());
+
+        metrics::counter!(
+            "nexus_token_count_tier_total",
+            "tier" => tier_name,
+            "model" => model_name
+        ).increment(1);
+
+        result
     }
 
     /// Get tier name as string for metrics

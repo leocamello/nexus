@@ -213,7 +213,11 @@ impl Reconciler for BudgetReconciler {
         // Step 1: Estimate cost for this request (FR-017, FR-018)
         let cost_estimate =
             self.estimate_cost(&intent.resolved_model, intent.requirements.estimated_tokens);
-        intent.cost_estimate = cost_estimate;
+        intent.cost_estimate = cost_estimate.clone();
+
+        // Record cost metric (US2: Precise Tracking)
+        metrics::histogram!("nexus_cost_per_request_usd", "model" => intent.resolved_model.clone())
+            .record(cost_estimate.cost_usd);
 
         // Step 2: Calculate budget status (FR-019)
         let budget_status = self.calculate_budget_status();
@@ -221,7 +225,9 @@ impl Reconciler for BudgetReconciler {
 
         tracing::debug!(
             model = %intent.resolved_model,
-            cost_usd = intent.cost_estimate.cost_usd,
+            cost_usd = cost_estimate.cost_usd,
+            token_count_tier = cost_estimate.token_count_tier,
+            tier_name = cost_estimate.tier_name(),
             budget_status = ?budget_status,
             candidates = intent.candidate_agents.len(),
             "BudgetReconciler: evaluated budget status"
