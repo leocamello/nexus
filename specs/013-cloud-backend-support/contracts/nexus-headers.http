@@ -1,0 +1,467 @@
+# Nexus-Transparent Protocol: X-Nexus-* Headers
+
+**Feature**: F12 - Cloud Backend Support  
+**Version**: 1.0  
+**Status**: Specification
+
+This document defines the standard X-Nexus-* response headers that expose routing decisions and backend metadata without modifying OpenAI-compatible JSON response bodies.
+
+---
+
+## Header Specifications
+
+### 1. X-Nexus-Backend
+
+**Purpose**: Identifies which backend handled the request  
+**Type**: String  
+**Required**: Yes (always present)  
+**Format**: Backend name from configuration
+
+**Examples**:
+```http
+X-Nexus-Backend: openai-gpt4
+X-Nexus-Backend: ollama-local
+X-Nexus-Backend: anthropic-claude
+```
+
+**Use Cases**:
+- Debug routing decisions
+- Track backend usage patterns
+- Identify performance issues with specific backends
+- Audit which infrastructure processed sensitive data
+
+---
+
+### 2. X-Nexus-Backend-Type
+
+**Purpose**: Classifies backend as local or cloud  
+**Type**: String (enum)  
+**Required**: Yes (always present)  
+**Values**: `local` | `cloud`
+
+**Classification Rules**:
+```
+local: Ollama, VLLM, LlamaCpp, Exo, LMStudio, Generic
+cloud: OpenAI, Anthropic, Google
+```
+
+**Examples**:
+```http
+X-Nexus-Backend-Type: cloud
+X-Nexus-Backend-Type: local
+```
+
+**Use Cases**:
+- Quickly identify if request went to cloud (privacy implications)
+- Filter logs for cloud vs. local traffic
+- Cost monitoring (cloud requests incur charges)
+
+---
+
+### 3. X-Nexus-Route-Reason
+
+**Purpose**: Explains why this particular backend was selected  
+**Type**: String (enum)  
+**Required**: Yes (always present)  
+**Values**: `capability-match` | `capacity-overflow` | `privacy-requirement` | `failover`
+
+**Value Meanings**:
+
+| Value | Meaning | Example Scenario |
+|-------|---------|------------------|
+| `capability-match` | Backend had required model/capabilities | Request for gpt-4, OpenAI backend selected |
+| `capacity-overflow` | Primary backend saturated, used next available | Local backend at max load, routed to cloud |
+| `privacy-requirement` | Privacy zone filtering eliminated others | Request requires PrivacyZone::Restricted |
+| `failover` | Previous backend failed, using fallback | Local backend health check failed, failed over to cloud |
+
+**Examples**:
+```http
+X-Nexus-Route-Reason: capability-match
+X-Nexus-Route-Reason: capacity-overflow
+X-Nexus-Route-Reason: failover
+```
+
+**Use Cases**:
+- Understand routing logic
+- Detect capacity issues (frequent `capacity-overflow`)
+- Audit privacy enforcement (verify `privacy-requirement` when expected)
+- Monitor reliability (track `failover` frequency)
+
+---
+
+### 4. X-Nexus-Privacy-Zone
+
+**Purpose**: Indicates privacy classification of backend used  
+**Type**: String (enum)  
+**Required**: Yes (always present)  
+**Values**: `restricted` | `open`
+
+**Zone Definitions**:
+- **restricted**: Data never leaves trusted infrastructure (local backends)
+- **open**: Data may be processed by third-party services (cloud APIs)
+
+**Examples**:
+```http
+X-Nexus-Privacy-Zone: restricted
+X-Nexus-Privacy-Zone: open
+```
+
+**Use Cases**:
+- Verify data stayed within private infrastructure
+- Compliance auditing (GDPR, HIPAA, etc.)
+- Alert on unexpected zone transitions
+- Policy enforcement validation
+
+---
+
+### 5. X-Nexus-Cost-Estimated
+
+**Purpose**: Estimated per-request cost in USD (cloud backends only)  
+**Type**: String (decimal number)  
+**Required**: No (only for cloud backends with exact token counting)  
+**Format**: `"0.0025"` (4 decimal places, USD)
+
+**Calculation**:
+```
+cost = (input_tokens / 1000 * input_price_per_1k) 
+     + (output_tokens / 1000 * output_price_per_1k)
+```
+
+**Examples**:
+```http
+X-Nexus-Cost-Estimated: 0.0042
+X-Nexus-Cost-Estimated: 0.1250
+```
+
+**When Omitted**:
+- Local backends (no cost)
+- Cloud backends without exact token counting
+- Token counting fails or pricing unavailable
+
+**Use Cases**:
+- Real-time cost monitoring
+- Budget alerting
+- Cost attribution per client/project
+- Compare costs across models
+
+---
+
+## Complete Example Response
+
+### Non-Streaming Response (JSON)
+
+**Request**:
+```http
+POST /v1/chat/completions HTTP/1.1
+Host: nexus.example.com
+Content-Type: application/json
+
+{
+  "model": "gpt-4",
+  "messages": [
+    {"role": "user", "content": "What is Rust?"}
+  ]
+}
+```
+
+**Response**:
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+X-Nexus-Backend: openai-gpt4
+X-Nexus-Backend-Type: cloud
+X-Nexus-Route-Reason: capability-match
+X-Nexus-Privacy-Zone: open
+X-Nexus-Cost-Estimated: 0.0035
+
+{
+  "id": "chatcmpl-abc123",
+  "object": "chat.completion",
+  "created": 1677652288,
+  "model": "gpt-4-0613",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Rust is a systems programming language focused on safety and performance."
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 12,
+    "completion_tokens": 15,
+    "total_tokens": 27
+  }
+}
+```
+
+**Key Points**:
+1. Response body is **identical** to direct OpenAI API response
+2. All routing metadata is in **headers only**
+3. Body structure is **byte-compatible** with OpenAI
+
+---
+
+### Streaming Response (SSE)
+
+**Request**:
+```http
+POST /v1/chat/completions HTTP/1.1
+Host: nexus.example.com
+Content-Type: application/json
+
+{
+  "model": "claude-3-opus",
+  "messages": [{"role": "user", "content": "Hi"}],
+  "stream": true
+}
+```
+
+**Response**:
+```http
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+X-Nexus-Backend: anthropic-claude
+X-Nexus-Backend-Type: cloud
+X-Nexus-Route-Reason: capability-match
+X-Nexus-Privacy-Zone: open
+X-Nexus-Cost-Estimated: 0.0012
+
+data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1677652288,"model":"claude-3-opus","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1677652288,"model":"claude-3-opus","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1677652288,"model":"claude-3-opus","choices":[{"index":0,"delta":{"content":"!"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1677652288,"model":"claude-3-opus","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]
+```
+
+**Key Points**:
+1. Headers injected **before** first SSE chunk
+2. SSE format is **OpenAI-compatible** (translated from Anthropic format)
+3. Headers visible in HTTP response, not in SSE event stream
+
+---
+
+## Error Response with Headers
+
+**Request to unavailable model**:
+```http
+POST /v1/chat/completions HTTP/1.1
+Host: nexus.example.com
+Content-Type: application/json
+
+{
+  "model": "gpt-5",
+  "messages": [{"role": "user", "content": "Test"}]
+}
+```
+
+**Response**:
+```http
+HTTP/1.1 503 Service Unavailable
+Content-Type: application/json
+X-Nexus-Backend: none
+X-Nexus-Backend-Type: none
+X-Nexus-Route-Reason: none
+
+{
+  "error": {
+    "message": "Model 'gpt-5' not available on any backend",
+    "type": "service_unavailable",
+    "param": null,
+    "code": null
+  },
+  "context": {
+    "required_tier": null,
+    "available_backends": ["openai-gpt4", "ollama-llama2"],
+    "eta_seconds": null,
+    "privacy_zone_required": null
+  }
+}
+```
+
+**Note**: Headers may have `none` value when routing fails before backend selection.
+
+---
+
+## Implementation Guidelines
+
+### Response Pipeline Integration
+
+**Non-Streaming**:
+```rust
+// src/api/completions.rs
+let mut response = Json(response_body).into_response();
+
+// Inject X-Nexus-* headers
+let headers = NexusTransparentHeaders {
+    backend: routing_result.backend.name.clone(),
+    backend_type: routing_result.backend.backend_type,
+    route_reason: RouteReason::from_str(&routing_result.route_reason),
+    privacy_zone: routing_result.backend.agent.profile().privacy_zone,
+    cost_estimated: routing_result.cost_estimated,
+};
+headers.inject_into_response(&mut response);
+```
+
+**Streaming**:
+```rust
+// src/api/completions.rs
+let sse_response = Sse::new(stream).into_response();
+let mut response = sse_response;
+
+// Inject headers BEFORE stream starts
+let headers = NexusTransparentHeaders { /* ... */ };
+headers.inject_into_response(&mut response);
+```
+
+### Header Construction
+
+```rust
+// src/api/headers.rs
+impl NexusTransparentHeaders {
+    pub fn inject_into_response(&self, response: &mut Response) {
+        let headers = response.headers_mut();
+        
+        headers.insert(
+            HeaderName::from_static("x-nexus-backend"),
+            HeaderValue::from_str(&self.backend).unwrap()
+        );
+        
+        headers.insert(
+            HeaderName::from_static("x-nexus-backend-type"),
+            HeaderValue::from_static(self.backend_type.as_str())
+        );
+        
+        headers.insert(
+            HeaderName::from_static("x-nexus-route-reason"),
+            HeaderValue::from_static(self.route_reason.as_str())
+        );
+        
+        headers.insert(
+            HeaderName::from_static("x-nexus-privacy-zone"),
+            HeaderValue::from_static(self.privacy_zone.as_str())
+        );
+        
+        if let Some(cost) = self.cost_estimated {
+            headers.insert(
+                HeaderName::from_static("x-nexus-cost-estimated"),
+                HeaderValue::from_str(&format!("{:.4}", cost)).unwrap()
+            );
+        }
+    }
+}
+```
+
+---
+
+## Testing Verification
+
+### Contract Tests
+
+Verify response body is **identical** to OpenAI:
+```rust
+#[tokio::test]
+async fn test_openai_body_compatibility() {
+    let nexus_response = send_request_to_nexus("gpt-4", "Test").await;
+    let openai_response = send_request_to_openai("gpt-4", "Test").await;
+    
+    // Strip X-Nexus-* headers
+    let nexus_body = nexus_response.body;
+    let openai_body = openai_response.body;
+    
+    assert_json_eq!(nexus_body, openai_body);  // Must be identical
+}
+```
+
+### Header Presence Tests
+
+Verify all headers present:
+```rust
+#[tokio::test]
+async fn test_all_headers_present() {
+    let response = send_request_to_nexus("gpt-4", "Test").await;
+    
+    assert!(response.headers.contains_key("x-nexus-backend"));
+    assert!(response.headers.contains_key("x-nexus-backend-type"));
+    assert!(response.headers.contains_key("x-nexus-route-reason"));
+    assert!(response.headers.contains_key("x-nexus-privacy-zone"));
+    // x-nexus-cost-estimated optional for cloud
+}
+```
+
+---
+
+## Client Usage Examples
+
+### cURL
+```bash
+curl -i http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4",
+    "messages": [{"role": "user", "content": "Hello"}]
+  }' | grep -i x-nexus
+```
+
+### Python
+```python
+import requests
+
+response = requests.post(
+    "http://localhost:3000/v1/chat/completions",
+    json={
+        "model": "gpt-4",
+        "messages": [{"role": "user", "content": "Hello"}]
+    }
+)
+
+print(f"Backend: {response.headers['X-Nexus-Backend']}")
+print(f"Type: {response.headers['X-Nexus-Backend-Type']}")
+print(f"Reason: {response.headers['X-Nexus-Route-Reason']}")
+print(f"Privacy: {response.headers['X-Nexus-Privacy-Zone']}")
+if 'X-Nexus-Cost-Estimated' in response.headers:
+    print(f"Cost: ${response.headers['X-Nexus-Cost-Estimated']}")
+```
+
+### TypeScript (OpenAI SDK)
+```typescript
+import OpenAI from 'openai';
+
+const client = new OpenAI({
+  baseURL: 'http://localhost:3000/v1',
+  apiKey: 'not-used' // Nexus doesn't require auth
+});
+
+const response = await client.chat.completions.create({
+  model: 'gpt-4',
+  messages: [{role: 'user', content: 'Hello'}]
+});
+
+// Access via raw response
+const rawResponse = response._request.response;
+console.log('Backend:', rawResponse.headers.get('x-nexus-backend'));
+console.log('Type:', rawResponse.headers.get('x-nexus-backend-type'));
+```
+
+---
+
+## Version History
+
+- **1.0** (2024-02-11): Initial specification for F12
+  - 5 standard headers defined
+  - OpenAI body compatibility enforced
+  - Cost estimation for cloud backends
+
+---
+
+## See Also
+
+- [data-model.md](../data-model.md) - Entity definitions for headers
+- [spec.md](../spec.md) - Feature requirements (FR-006 through FR-011)
+- [openai-chat.json](openai-chat.json) - OpenAI format reference

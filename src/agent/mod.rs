@@ -7,12 +7,16 @@ use async_trait::async_trait;
 use axum::http::HeaderMap;
 use futures_util::stream::BoxStream;
 
+pub mod anthropic;
 pub mod error;
 pub mod factory;
 pub mod generic;
+pub mod google;
 pub mod lmstudio;
 pub mod ollama;
 pub mod openai;
+pub mod pricing;
+pub mod translation;
 pub mod types;
 
 // Re-export key types for convenience

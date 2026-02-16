@@ -959,6 +959,193 @@ Without this flag, logs contain model names, backends, and latency — but never
 
 ---
 
+## 12. Cloud Backend Support (F12)
+
+F12 adds cloud LLM APIs (OpenAI, Anthropic, Google) as backends alongside local inference
+servers, with X-Nexus-* response headers for routing transparency and actionable 503 errors.
+
+### 12.1 Cloud Backend Configuration
+
+Create a config with cloud backends:
+
+```toml
+# /tmp/nexus-cloud-test.toml
+[server]
+port = 8000
+
+[[backends]]
+name = "local-ollama"
+url = "http://localhost:11434"
+type = "ollama"
+priority = 50
+
+[[backends]]
+name = "openai-gpt4"
+url = "https://api.openai.com"
+type = "openai"
+priority = 40
+api_key_env = "OPENAI_API_KEY"
+zone = "open"
+tier = 4
+
+[[backends]]
+name = "anthropic-claude"
+url = "https://api.anthropic.com"
+type = "anthropic"
+priority = 40
+api_key_env = "ANTHROPIC_API_KEY"
+zone = "open"
+tier = 4
+```
+
+```bash
+# Set API keys (required for cloud backends)
+export OPENAI_API_KEY="sk-your-key"
+export ANTHROPIC_API_KEY="sk-ant-your-key"
+
+# Start with cloud config
+nexus serve --config /tmp/nexus-cloud-test.toml
+```
+
+**Expected**: Server starts, cloud backends appear in health check:
+```bash
+curl -s http://localhost:8000/health | jq .
+# Should show cloud backends with their health status
+```
+
+### 12.2 Transparent Protocol Headers
+
+Send a request and inspect the X-Nexus-* headers:
+
+```bash
+curl -si http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "gpt-4", "messages": [{"role": "user", "content": "Say hello"}]}' \
+  2>&1 | grep -i "x-nexus"
+```
+
+**Expected** (5 headers for cloud backends):
+```
+x-nexus-backend: openai-gpt4
+x-nexus-backend-type: cloud
+x-nexus-route-reason: capability-match
+x-nexus-privacy-zone: open
+x-nexus-cost-estimated: 0.0042
+```
+
+For local backends:
+```bash
+curl -si http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "llama3.2:latest", "messages": [{"role": "user", "content": "Say hello"}]}' \
+  2>&1 | grep -i "x-nexus"
+```
+
+**Expected** (4 headers, no cost):
+```
+x-nexus-backend: local-ollama
+x-nexus-backend-type: local
+x-nexus-route-reason: capability-match
+x-nexus-privacy-zone: restricted
+```
+
+### 12.3 Streaming with Transparent Headers
+
+Headers are injected into the HTTP response (not SSE events):
+
+```bash
+curl -si --no-buffer http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "gpt-4", "messages": [{"role": "user", "content": "Say hello"}], "stream": true}' \
+  2>&1 | head -20
+```
+
+**Expected**: X-Nexus-* headers in HTTP response headers, SSE chunks have no extra headers:
+```
+HTTP/1.1 200 OK
+content-type: text/event-stream
+x-nexus-backend: openai-gpt4
+x-nexus-backend-type: cloud
+x-nexus-route-reason: capability-match
+x-nexus-privacy-zone: open
+
+data: {"id":"chatcmpl-...","choices":[{"delta":{"content":"Hello"},...}]}
+```
+
+### 12.4 Actionable 503 Responses
+
+When no backend can serve a model, the 503 error includes context:
+
+```bash
+curl -s http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "nonexistent-model", "messages": [{"role": "user", "content": "Hi"}]}' | jq .
+```
+
+**Expected** (OpenAI-format error with context):
+```json
+{
+  "error": {
+    "message": "No backend available for model 'nonexistent-model'",
+    "type": "server_error",
+    "code": "model_not_found"
+  }
+}
+```
+
+### 12.5 Privacy Zone Verification
+
+Verify cloud backends report `open` and local backends report `restricted`:
+
+```bash
+# List models — check which backends are available
+curl -s http://localhost:8000/v1/models | jq '.data[] | {id, owned_by}'
+
+# Send to each and check privacy zone header
+for model in "gpt-4" "llama3.2:latest"; do
+  echo "--- $model ---"
+  curl -si http://localhost:8000/v1/chat/completions \
+    -H "Content-Type: application/json" \
+    -d "{\"model\": \"$model\", \"messages\": [{\"role\": \"user\", \"content\": \"Hi\"}]}" \
+    2>&1 | grep "x-nexus-privacy-zone"
+done
+```
+
+### 12.6 Cost Estimation
+
+Cost is estimated from response usage data for cloud backends:
+
+```bash
+curl -si http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "gpt-4", "messages": [{"role": "user", "content": "Write a short poem"}]}' \
+  2>&1 | grep -i "x-nexus-cost"
+```
+
+**Expected**: `x-nexus-cost-estimated: 0.XXXX` (4 decimal places, USD)
+
+The cost is only present for cloud backends where the model is in the pricing table.
+Local backends never have cost estimation headers.
+
+### 12.7 Config Validation
+
+Cloud backends without `api_key_env` should fail validation:
+
+```toml
+# Missing api_key_env — should fail
+[[backends]]
+name = "bad-openai"
+url = "https://api.openai.com"
+type = "openai"
+```
+
+```bash
+nexus serve --config /tmp/bad-config.toml
+# Expected: Error message about missing api_key_env
+```
+
+---
+
 ## E2E Test Script
 
 An automated smoke test is available at `scripts/e2e-test.sh`. It validates all core functionality in one run.
@@ -1068,6 +1255,7 @@ rm -f /tmp/nexus.{bash,zsh,fish}
 | F09: Metrics | `/metrics`, `/v1/stats`, `/v1/history` | Prometheus-compatible output |
 | F10: Dashboard | Web UI, WebSocket, dark mode | Live updates in browser |
 | F11: Logging | JSON format, component levels, correlation IDs | Structured, queryable logs |
+| F12: Cloud Backends | Cloud config, transparent headers, cost, 503s | X-Nexus-* headers on all responses |
 
 **Automated test suite**: `cargo test` — **468 tests**
 

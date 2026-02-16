@@ -535,6 +535,7 @@ mod tests {
                     content: "Hello".to_string(),
                 },
                 name: None,
+                function_call: None,
             }],
             stream: false,
             temperature: None,

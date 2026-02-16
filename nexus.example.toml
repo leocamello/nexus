@@ -64,12 +64,35 @@ priority = 1
 # type = "vllm"
 # priority = 3
 
+# Cloud backend examples with privacy zones and capability tiers
+# All cloud backends require API key via environment variable
+
 # [[backends]]
-# name = "cloud-fallback"
+# name = "openai-cloud"
 # url = "https://api.openai.com"
 # type = "openai"
 # priority = 100
 # api_key_env = "OPENAI_API_KEY"
+# zone = "open"  # privacy_zone: open | internal | confidential | restricted
+# tier = 3       # capability_tier: 1 (fast) | 2 (standard) | 3 (premium)
+
+# [[backends]]
+# name = "anthropic-cloud"
+# url = "https://api.anthropic.com"
+# type = "anthropic"
+# priority = 101
+# api_key_env = "ANTHROPIC_API_KEY"
+# zone = "open"
+# tier = 3
+
+# [[backends]]
+# name = "google-cloud"
+# url = "https://generativelanguage.googleapis.com"
+# type = "google"
+# priority = 102
+# api_key_env = "GOOGLE_API_KEY"
+# zone = "open"
+# tier = 2
 
 [logging]
 # Global log level: trace | debug | info | warn | error

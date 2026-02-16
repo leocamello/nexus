@@ -316,6 +316,8 @@ mod tests {
             backend_type: BackendType::Ollama,
             priority: 1,
             api_key_env: None,
+            zone: None,
+            tier: None,
         });
 
         let registry = Arc::new(Registry::new());
@@ -375,6 +377,8 @@ mod tests {
             backend_type: BackendType::Ollama,
             priority: 1,
             api_key_env: None,
+            zone: None,
+            tier: None,
         });
         config.backends.push(BackendConfig {
             name: "vllm-test".to_string(),
@@ -382,6 +386,8 @@ mod tests {
             backend_type: BackendType::VLLM,
             priority: 2,
             api_key_env: None,
+            zone: None,
+            tier: None,
         });
 
         let registry = Arc::new(Registry::new());
@@ -413,6 +419,8 @@ mod tests {
             backend_type: BackendType::OpenAI,
             priority: 1,
             api_key_env: Some("NEXUS_TEST_OPENAI_KEY".to_string()),
+            zone: None,
+            tier: None,
         });
 
         let registry = Arc::new(Registry::new());

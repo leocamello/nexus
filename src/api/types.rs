@@ -39,16 +39,55 @@ pub struct ChatMessage {
     pub role: String,
     #[serde(flatten)]
     pub content: MessageContent,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub name: Option<String>,
+    /// Function call (for assistant messages with function calls)
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub function_call: Option<FunctionCall>,
+}
+
+/// Function call information
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct FunctionCall {
+    pub name: String,
+    pub arguments: String,
 }
 
 /// Message content - either text or multimodal parts.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum MessageContent {
-    Text { content: String },
-    Parts { content: Vec<ContentPart> },
+    Text {
+        #[serde(
+            deserialize_with = "deserialize_nullable_string",
+            serialize_with = "serialize_empty_as_null"
+        )]
+        content: String,
+    },
+    Parts {
+        content: Vec<ContentPart>,
+    },
+}
+
+/// Custom deserializer for nullable strings (null becomes empty string)
+fn deserialize_nullable_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let opt: Option<String> = Option::deserialize(deserializer)?;
+    Ok(opt.unwrap_or_default())
+}
+
+/// Custom serializer for empty strings (empty string becomes null)
+fn serialize_empty_as_null<S>(value: &str, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    if value.is_empty() {
+        serializer.serialize_none()
+    } else {
+        serializer.serialize_str(value)
+    }
 }
 
 /// Content part for multimodal messages.
@@ -68,6 +107,15 @@ pub struct ImageUrl {
     pub url: String,
 }
 
+/// A single choice in the response.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Choice {
+    pub index: u32,
+    pub message: ChatMessage,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finish_reason: Option<String>,
+}
+
 /// Chat completion response (non-streaming).
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ChatCompletionResponse {
@@ -78,15 +126,9 @@ pub struct ChatCompletionResponse {
     pub choices: Vec<Choice>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<Usage>,
-}
-
-/// A single choice in the response.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Choice {
-    pub index: u32,
-    pub message: ChatMessage,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub finish_reason: Option<String>,
+    /// Additional fields (like system_fingerprint) preserved via flatten
+    #[serde(flatten, default)]
+    pub extra: HashMap<String, serde_json::Value>,
 }
 
 /// Token usage statistics.
@@ -136,9 +178,7 @@ pub struct ApiError {
 pub struct ApiErrorBody {
     pub message: String,
     pub r#type: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub param: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub code: Option<String>,
 }
 
@@ -205,6 +245,40 @@ impl ApiError {
                 param: None,
                 code: Some("service_unavailable".to_string()),
             },
+        }
+    }
+
+    /// Create error from raw backend response JSON (T050).
+    ///
+    /// This preserves the backend's error response unchanged, maintaining
+    /// OpenAI compatibility per Constitution Principle III.
+    ///
+    /// Returns Ok with the preserved error, or Err if unable to parse at all.
+    pub fn from_backend_json(status_code: u16, json_body: String) -> Result<Self, Self> {
+        // Try to parse to verify it's valid JSON with error structure
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&json_body) {
+            if parsed.get("error").is_some() {
+                // It has an error field, assume it's OpenAI-compatible
+                // Return a custom ApiError that will serialize to the raw JSON
+                return Ok(ApiError::from_raw_json(json_body));
+            }
+        }
+
+        // If parsing fails or no error field, wrap in a generic error
+        Err(Self::bad_gateway(&format!(
+            "Backend returned {}: {}",
+            status_code, json_body
+        )))
+    }
+
+    /// Create from raw JSON string (for preserving backend errors exactly)
+    fn from_raw_json(json: String) -> Self {
+        // Parse to extract error fields, but will be re-serialized identically
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let error_obj = value.get("error").unwrap();
+
+        Self {
+            error: serde_json::from_value(error_obj.clone()).unwrap(),
         }
     }
 
@@ -345,6 +419,7 @@ mod tests {
             model: "llama3:70b".to_string(),
             choices: vec![],
             usage: None,
+            extra: HashMap::new(),
         };
         let json = serde_json::to_value(&response).unwrap();
         assert_eq!(json["object"], "chat.completion");
@@ -405,6 +480,7 @@ mod tests {
                     content: "Hello!".to_string(),
                 },
                 name: None,
+                function_call: None,
             },
             finish_reason: Some("stop".to_string()),
         };

@@ -90,6 +90,8 @@ impl HealthChecker {
             | BackendType::OpenAI
             | BackendType::LMStudio
             | BackendType::Generic => "/v1/models",
+            // Cloud backends (Phase 6) - use OpenAI-compatible endpoint
+            BackendType::Anthropic | BackendType::Google => "/v1/models",
         }
     }
 
@@ -266,7 +268,9 @@ impl HealthChecker {
             | BackendType::Exo
             | BackendType::OpenAI
             | BackendType::LMStudio
-            | BackendType::Generic => match parser::parse_openai_response(body) {
+            | BackendType::Generic
+            | BackendType::Anthropic
+            | BackendType::Google => match parser::parse_openai_response(body) {
                 Ok(models) => HealthCheckResult::Success { latency_ms, models },
                 Err(error) => {
                     tracing::warn!(

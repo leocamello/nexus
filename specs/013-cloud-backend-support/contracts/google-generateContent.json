@@ -1,0 +1,271 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Google Generative AI API (Gemini)",
+  "description": "Google's Gemini API format. Must be translated to/from OpenAI format by GoogleAIAgent.",
+  
+  "request": {
+    "type": "object",
+    "required": ["contents"],
+    "properties": {
+      "contents": {
+        "type": "array",
+        "description": "Array of content objects with roles and parts",
+        "items": {
+          "type": "object",
+          "required": ["role", "parts"],
+          "properties": {
+            "role": {
+              "type": "string",
+              "enum": ["user", "model"],
+              "description": "Content role (user or model - NO 'assistant' or 'system')"
+            },
+            "parts": {
+              "type": "array",
+              "description": "Array of content parts (text, inline_data, etc.)",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "Text content"
+                  },
+                  "inline_data": {
+                    "type": "object",
+                    "description": "Binary data (images, etc.)"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "generationConfig": {
+        "type": "object",
+        "description": "Generation parameters",
+        "properties": {
+          "temperature": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 2.0,
+            "description": "Sampling temperature"
+          },
+          "maxOutputTokens": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Maximum tokens to generate (OpenAI 'max_tokens')"
+          },
+          "topP": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0,
+            "description": "Nucleus sampling threshold"
+          },
+          "topK": {
+            "type": "integer",
+            "description": "Top-K sampling (Google-specific)"
+          },
+          "stopSequences": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Stop sequences (OpenAI 'stop')"
+          }
+        }
+      },
+      "safetySettings": {
+        "type": "array",
+        "description": "Content safety filters (Google-specific)",
+        "items": {
+          "type": "object",
+          "properties": {
+            "category": {"type": "string"},
+            "threshold": {"type": "string"}
+          }
+        }
+      }
+    }
+  },
+  
+  "response": {
+    "type": "object",
+    "required": ["candidates"],
+    "properties": {
+      "candidates": {
+        "type": "array",
+        "description": "Array of response candidates",
+        "items": {
+          "type": "object",
+          "required": ["content", "finishReason"],
+          "properties": {
+            "content": {
+              "type": "object",
+              "required": ["parts", "role"],
+              "properties": {
+                "parts": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "text": {"type": "string"}
+                    }
+                  }
+                },
+                "role": {
+                  "type": "string",
+                  "const": "model"
+                }
+              }
+            },
+            "finishReason": {
+              "type": "string",
+              "enum": ["STOP", "MAX_TOKENS", "SAFETY", "RECITATION", "OTHER"],
+              "description": "Reason generation stopped"
+            },
+            "index": {
+              "type": "integer",
+              "description": "Candidate index"
+            },
+            "safetyRatings": {
+              "type": "array",
+              "description": "Safety filter ratings"
+            }
+          }
+        }
+      },
+      "usageMetadata": {
+        "type": "object",
+        "properties": {
+          "promptTokenCount": {
+            "type": "integer",
+            "description": "Tokens in prompt"
+          },
+          "candidatesTokenCount": {
+            "type": "integer",
+            "description": "Tokens in all candidates"
+          },
+          "totalTokenCount": {
+            "type": "integer",
+            "description": "Total tokens"
+          }
+        }
+      },
+      "modelVersion": {
+        "type": "string",
+        "description": "Model version used"
+      }
+    }
+  },
+  
+  "streaming": {
+    "description": "Google uses newline-delimited JSON chunks (NOT standard SSE)",
+    "format": "Each line is a complete JSON object with partial response",
+    "example_chunk": {
+      "candidates": [
+        {
+          "content": {
+            "parts": [{"text": "Hello"}],
+            "role": "model"
+          },
+          "finishReason": "STOP",
+          "index": 0
+        }
+      ]
+    }
+  },
+  
+  "translation_rules": {
+    "openai_to_google": {
+      "system_message": "Prepend to first user message with 'System: ' prefix (Google has no system role)",
+      "roles": "Map: user→user, assistant→model",
+      "messages": "Flatten into contents array with parts structure",
+      "max_tokens": "Map to generationConfig.maxOutputTokens",
+      "temperature": "Map to generationConfig.temperature",
+      "stop": "Map to generationConfig.stopSequences"
+    },
+    "google_to_openai": {
+      "candidates": "Use first candidate (index 0)",
+      "parts": "Join all text parts into single content string",
+      "role_model": "Map 'model' role to 'assistant'",
+      "finishReason": "Map: STOP→stop, MAX_TOKENS→length, SAFETY→content_filter",
+      "usageMetadata": "Map: promptTokenCount→prompt_tokens, candidatesTokenCount→completion_tokens",
+      "id": "Generate UUID (Google doesn't provide IDs)",
+      "object": "Set to 'chat.completion'"
+    }
+  },
+  
+  "examples": {
+    "request_simple": {
+      "contents": [
+        {
+          "role": "user",
+          "parts": [
+            {"text": "What is the capital of France?"}
+          ]
+        }
+      ],
+      "generationConfig": {
+        "temperature": 0.7,
+        "maxOutputTokens": 100
+      }
+    },
+    "request_with_system": {
+      "contents": [
+        {
+          "role": "user",
+          "parts": [
+            {"text": "System: You are a helpful assistant.\n\nUser: Tell me a joke"}
+          ]
+        }
+      ],
+      "generationConfig": {
+        "temperature": 0.8,
+        "maxOutputTokens": 150
+      }
+    },
+    "response_simple": {
+      "candidates": [
+        {
+          "content": {
+            "parts": [
+              {"text": "The capital of France is Paris."}
+            ],
+            "role": "model"
+          },
+          "finishReason": "STOP",
+          "index": 0,
+          "safetyRatings": []
+        }
+      ],
+      "usageMetadata": {
+        "promptTokenCount": 10,
+        "candidatesTokenCount": 8,
+        "totalTokenCount": 18
+      },
+      "modelVersion": "gemini-1.5-pro"
+    }
+  },
+  
+  "authentication": {
+    "method": "API key in query parameter OR header",
+    "query_param": "?key=<GOOGLE_API_KEY>",
+    "header": "x-goog-api-key: <GOOGLE_API_KEY>",
+    "recommendation": "Use query parameter for F12 (simplest)"
+  },
+  
+  "endpoints": {
+    "base_url": "https://generativelanguage.googleapis.com",
+    "generate_content": "/v1beta/models/{model}:generateContent",
+    "stream_generate_content": "/v1beta/models/{model}:streamGenerateContent",
+    "models": {
+      "gemini_pro": "gemini-1.5-pro",
+      "gemini_flash": "gemini-1.5-flash"
+    }
+  },
+  
+  "notes": {
+    "system_role_workaround": "Google doesn't support system role. Prepend system message to first user message with 'System: ' prefix.",
+    "role_names": "Google uses 'model' instead of 'assistant'",
+    "id_generation": "Google doesn't provide completion IDs - generate UUID on Nexus side",
+    "streaming_format": "Newline-delimited JSON chunks, NOT Server-Sent Events",
+    "safety_filters": "Google may reject prompts with SAFETY finish reason - map to OpenAI content_filter"
+  }
+}
