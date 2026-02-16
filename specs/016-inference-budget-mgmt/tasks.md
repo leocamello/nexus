@@ -97,7 +97,7 @@
 - [ ] T024 [US3] Verify HardLimitAction enum (Warn, BlockCloud, BlockAll) exists in src/config/routing.rs (already implemented in Control Plane PR)
 - [ ] T025 [US3] Verify BudgetReconciler enforces hard_limit_action when BudgetStatus::HardLimit in src/routing/reconciler/budget.rs (already implemented)
 - [ ] T026 [US3] Verify month rollover detection in BudgetReconciliationLoop::reconcile_spending() using month_key comparison in src/routing/reconciler/budget.rs
-- [ ] T027 [US3] Add tracing::info! log for budget reset on month rollover in BudgetReconciliationLoop in src/routing/reconciler/budget.rs
+- [X] T027 [US3] Add tracing::info! log for budget reset on month rollover in BudgetReconciliationLoop in src/routing/reconciler/budget.rs
 - [ ] T028 [US3] Add nexus_budget_events_total counter for month_rollover event in BudgetReconciliationLoop in src/routing/reconciler/budget.rs
 - [ ] T029 [US3] Verify in-flight requests complete even when budget exhausted mid-execution (FR-013 requirement verification)
 
@@ -113,17 +113,17 @@
 
 ### Implementation for User Story 4
 
-- [ ] T030 [P] [US4] Add nexus_budget_spending_usd gauge recording in BudgetReconciliationLoop::reconcile() in src/routing/reconciler/budget.rs
-- [ ] T031 [P] [US4] Add nexus_budget_utilization_percent gauge recording in BudgetReconciliationLoop::reconcile() in src/routing/reconciler/budget.rs
-- [ ] T032 [P] [US4] Add nexus_budget_status gauge recording in BudgetReconciliationLoop::reconcile() in src/routing/reconciler/budget.rs
-- [ ] T033 [P] [US4] Add nexus_budget_limit_usd gauge recording on config load in src/routing/reconciler/budget.rs
+- [X] T030 [P] [US4] Add nexus_budget_spending_usd gauge recording in BudgetReconciliationLoop::reconcile() in src/routing/reconciler/budget.rs
+- [X] T031 [P] [US4] Add nexus_budget_utilization_percent gauge recording in BudgetReconciliationLoop::reconcile() in src/routing/reconciler/budget.rs
+- [X] T032 [P] [US4] Add nexus_budget_status gauge recording in BudgetReconciliationLoop::reconcile() in src/routing/reconciler/budget.rs
+- [X] T033 [P] [US4] Add nexus_budget_limit_usd gauge recording on config load in src/routing/reconciler/budget.rs
 - [X] T034 [US4] Add BudgetStats struct with fields from contracts/stats-api.json schema in src/metrics/types.rs
 - [X] T035 [US4] Add optional budget field to StatsResponse struct in src/metrics/types.rs
 - [X] T036 [US4] Populate StatsResponse.budget from BudgetMetrics in /v1/stats handler in src/metrics/handler.rs
-- [ ] T037 [US4] Add X-Nexus-Budget-Status response header when budget_status != Normal in src/api/completions.rs
-- [ ] T038 [US4] Add X-Nexus-Budget-Utilization response header when budget_status != Normal in src/api/completions.rs
-- [ ] T039 [US4] Add X-Nexus-Budget-Remaining response header when budget_status != Normal in src/api/completions.rs
-- [ ] T040 [US4] Add X-Nexus-Cost-Estimated response header for all requests in src/api/completions.rs
+- [X] T037 [US4] Add X-Nexus-Budget-Status response header when budget_status != Normal in src/api/completions.rs
+- [X] T038 [US4] Add X-Nexus-Budget-Utilization response header when budget_status != Normal in src/api/completions.rs
+- [X] T039 [US4] Add X-Nexus-Budget-Remaining response header when budget_status != Normal in src/api/completions.rs
+- [X] T040 [US4] Add X-Nexus-Cost-Estimated response header for all requests in src/api/completions.rs
 
 **Checkpoint**: All budget metrics should be visible via /v1/stats endpoint and Prometheus /metrics endpoint, response headers present when budget stressed
 
@@ -140,9 +140,9 @@
 - [ ] T045 [P] Add contract test for Prometheus metric format validation (optional enhancement) in tests/contract/budget_metrics_test.rs
 - [ ] T046 Verify quickstart.md scenarios work as documented (all 4 scenarios: zero-config, soft limit, rollover, token accuracy)
 - [ ] T047 Add documentation for TokenizerRegistry usage in README or developer guide
-- [ ] T048 Review all error handling paths for graceful degradation (tokenizer failures fall back to heuristic)
-- [ ] T049 Performance validation: Verify token counting overhead <200ms P95 per SC-007
-- [ ] T050 Security review: Verify no sensitive data in metrics or logs
+- [X] T048 Review all error handling paths for graceful degradation (tokenizer failures fall back to heuristic)
+- [X] T049 Performance validation: Verify token counting overhead <200ms P95 per SC-007
+- [X] T050 Security review: Verify no sensitive data in metrics or logs
 
 ---
 
