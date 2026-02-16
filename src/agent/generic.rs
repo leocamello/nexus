@@ -95,6 +95,7 @@ impl InferenceAgent for GenericOpenAIAgent {
                 token_counting: false,
                 resource_monitoring: false,
             },
+            capability_tier: None, // Will be set per-model in future
         }
     }
 
@@ -453,5 +454,88 @@ mod tests {
 
         mock.assert_async().await;
         assert_eq!(result.unwrap(), HealthStatus::Unhealthy);
+    }
+
+    #[test]
+    fn test_name_heuristics_vision() {
+        let mut model = ModelCapability {
+            id: "llava-v1.5-7b".to_string(),
+            name: "llava-v1.5-7b".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        GenericOpenAIAgent::apply_name_heuristics(&mut model);
+        assert!(model.supports_vision);
+    }
+
+    #[test]
+    fn test_name_heuristics_tools() {
+        let mut model = ModelCapability {
+            id: "hermes-2-pro".to_string(),
+            name: "hermes-2-pro".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        GenericOpenAIAgent::apply_name_heuristics(&mut model);
+        assert!(model.supports_tools);
+        assert!(model.supports_json_mode);
+    }
+
+    #[test]
+    fn test_name_heuristics_context_128k() {
+        let mut model = ModelCapability {
+            id: "qwen-128k".to_string(),
+            name: "qwen-128k".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        GenericOpenAIAgent::apply_name_heuristics(&mut model);
+        assert_eq!(model.context_length, 131072);
+    }
+
+    #[test]
+    fn test_name_heuristics_context_8k() {
+        let mut model = ModelCapability {
+            id: "mistral-8k".to_string(),
+            name: "mistral-8k".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        GenericOpenAIAgent::apply_name_heuristics(&mut model);
+        assert_eq!(model.context_length, 8192);
+    }
+
+    #[test]
+    fn test_name_heuristics_no_match() {
+        let mut model = ModelCapability {
+            id: "phi-2".to_string(),
+            name: "phi-2".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        GenericOpenAIAgent::apply_name_heuristics(&mut model);
+        assert!(!model.supports_vision);
+        assert!(!model.supports_tools);
+        assert_eq!(model.context_length, 4096);
     }
 }

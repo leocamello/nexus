@@ -19,12 +19,17 @@
 //! - `nexus_request_duration_seconds{model, backend}` - Request duration
 //! - `nexus_backend_latency_seconds{backend}` - Health check latency
 //! - `nexus_tokens_total{model, backend, type}` - Token counts
+//! - `nexus_reconciler_duration_seconds{reconciler}` - Per-reconciler latency
+//! - `nexus_pipeline_duration_seconds` - Total pipeline execution latency
 //!
 //! **Gauges:**
 //! - `nexus_backends_total` - Total registered backends
 //! - `nexus_backends_healthy` - Healthy backends count
 //! - `nexus_models_available` - Unique models available
 //! - `nexus_pending_requests{backend}` - Pending requests per backend
+//!
+//! **Additional Counters:**
+//! - `nexus_reconciler_exclusions_total{reconciler}` - Agents excluded per reconciler
 
 pub mod handler;
 pub mod types;
@@ -163,6 +168,9 @@ pub fn setup_metrics(
         128000.0,
     ];
 
+    // Sub-millisecond buckets for reconciler/pipeline latency (FR-036, FR-009)
+    let pipeline_buckets = &[0.00005, 0.0001, 0.00025, 0.0005, 0.001, 0.0025, 0.005, 0.01];
+
     let handle = PrometheusBuilder::new()
         .set_buckets_for_metric(
             Matcher::Full("nexus_request_duration_seconds".to_string()),
@@ -175,6 +183,14 @@ pub fn setup_metrics(
         .set_buckets_for_metric(
             Matcher::Full("nexus_tokens_total".to_string()),
             token_buckets,
+        )?
+        .set_buckets_for_metric(
+            Matcher::Full("nexus_reconciler_duration_seconds".to_string()),
+            pipeline_buckets,
+        )?
+        .set_buckets_for_metric(
+            Matcher::Full("nexus_pipeline_duration_seconds".to_string()),
+            pipeline_buckets,
         )?
         .install_recorder()?;
 

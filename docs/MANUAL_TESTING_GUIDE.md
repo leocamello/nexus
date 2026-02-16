@@ -1146,6 +1146,163 @@ nexus serve --config /tmp/bad-config.toml
 
 ---
 
+## 13. Control Plane — Reconciler Pipeline (Phase 2)
+
+The Control Plane replaces the monolithic `Router::select_backend()` with a pipeline
+of independent Reconcilers that annotate a shared `RoutingIntent`. This enables
+privacy zones, budget management, and capability tier enforcement.
+
+### 13.1 Zero-Config Behavior (Default)
+
+Without any `[routing.policies]` configuration, the pipeline passes through all
+requests unchanged — existing routing behavior is preserved.
+
+```bash
+# Start with standard config (no policies)
+nexus serve &
+
+# Request should route normally
+curl -s http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "llama3:8b", "messages": [{"role": "user", "content": "hello"}]}' | jq .
+
+# Expected: Normal response, no X-Nexus-Rejection-Reasons header
+```
+
+### 13.2 Privacy Zone Enforcement
+
+Configure a traffic policy to restrict sensitive models to local backends only.
+
+```toml
+# nexus.toml
+[[routing.policies]]
+model_pattern = "llama3:*"
+privacy = "restricted"
+
+[[backends]]
+name = "local-ollama"
+url = "http://localhost:11434"
+backend_type = "ollama"
+
+[[backends]]
+name = "openai-gpt4"
+url = "https://api.openai.com"
+backend_type = "openai"
+api_key_env = "OPENAI_API_KEY"
+```
+
+```bash
+nexus serve --config nexus.toml &
+
+# Request for llama3:8b should only route to local-ollama
+curl -s http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "llama3:8b", "messages": [{"role": "user", "content": "test"}]}' \
+  -v 2>&1 | grep -i "x-nexus"
+
+# Expected: X-Nexus-Backend points to local-ollama, NOT openai-gpt4
+```
+
+### 13.3 Budget Management
+
+Configure monthly spending limits for cloud backends.
+
+```toml
+# nexus.toml
+[routing.budget]
+monthly_limit = 50.0
+soft_limit_percent = 80
+hard_limit_action = "block_cloud"
+```
+
+```bash
+nexus serve --config nexus.toml &
+
+# At soft limit (80%): local backends are preferred
+# At hard limit (100%): cloud backends are blocked entirely
+# Check current spending via stats
+curl -s http://localhost:3000/v1/stats | jq '.budget'
+```
+
+### 13.4 Capability Tier Enforcement
+
+Prevent silent quality downgrades by requiring minimum capability tiers.
+
+```toml
+# nexus.toml
+[[routing.policies]]
+model_pattern = "gpt-4*"
+min_tier = 3
+```
+
+```bash
+# Backends below tier 3 will be excluded for gpt-4* requests
+# If no backend meets the tier requirement, an actionable 503 is returned
+
+curl -s http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "gpt-4", "messages": [{"role": "user", "content": "test"}]}' \
+  -w "\nHTTP Status: %{http_code}\n"
+
+# Expected: 503 with rejection_reasons if no tier-3+ backend available
+```
+
+### 13.5 Actionable 503 Responses
+
+When no backend can serve a request, the 503 includes reasons from each reconciler.
+
+```bash
+# With all cloud backends excluded (privacy + no local fallback):
+curl -s http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "nonexistent-model", "messages": [{"role": "user", "content": "test"}]}' | jq .
+
+# Expected:
+# {
+#   "error": {
+#     "message": "No backends available...",
+#     "type": "service_unavailable",
+#     "context": {
+#       "rejection_reasons": [
+#         {"agent_id": "...", "reconciler": "privacy", "reason": "...", "suggested_action": "..."}
+#       ]
+#     }
+#   }
+# }
+```
+
+### 13.6 Pipeline Performance
+
+The entire reconciler pipeline must execute in under 1ms.
+
+```bash
+# Enable debug logging to see pipeline timing
+RUST_LOG=nexus=debug nexus serve &
+
+# Send requests and check logs for pipeline duration
+curl -s http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "llama3:8b", "messages": [{"role": "user", "content": "test"}]}'
+
+# Look for log entries like:
+# "ReconcilerPipeline: completed in 0.15ms"
+```
+
+### Automated Tests
+
+```bash
+# Unit tests (reconciler modules)
+cargo test routing::reconciler::   # 88+ reconciler tests
+
+# Integration test (full pipeline)
+cargo test --test reconciler_pipeline_test   # 6 pipeline tests
+
+# All tests
+cargo test   # 590+ tests
+```
+
+---
+
 ## E2E Test Script
 
 An automated smoke test is available at `scripts/e2e-test.sh`. It validates all core functionality in one run.
@@ -1256,7 +1413,8 @@ rm -f /tmp/nexus.{bash,zsh,fish}
 | F10: Dashboard | Web UI, WebSocket, dark mode | Live updates in browser |
 | F11: Logging | JSON format, component levels, correlation IDs | Structured, queryable logs |
 | F12: Cloud Backends | Cloud config, transparent headers, cost, 503s | X-Nexus-* headers on all responses |
+| Control Plane | Privacy zones, budget limits, tier enforcement, pipeline | < 1ms pipeline, actionable 503s |
 
-**Automated test suite**: `cargo test` — **468 tests**
+**Automated test suite**: `cargo test` — **590+ tests**
 
 For the full E2E smoke test: `./scripts/e2e-test.sh`

@@ -1,5 +1,6 @@
 //! Error types for routing failures
 
+use crate::routing::reconciler::intent::RejectionReason;
 use thiserror::Error;
 
 /// Errors that can occur during backend selection
@@ -20,4 +21,10 @@ pub enum RoutingError {
     /// All models in the fallback chain were exhausted
     #[error("All backends in fallback chain unavailable: {chain:?}")]
     FallbackChainExhausted { chain: Vec<String> },
+
+    /// Request rejected with detailed reasons from reconcilers (FR-004)
+    #[error("Request rejected by reconciliation pipeline")]
+    Reject {
+        rejection_reasons: Vec<RejectionReason>,
+    },
 }

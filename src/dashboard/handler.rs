@@ -174,4 +174,26 @@ mod tests {
         assert!(json.contains("3600"));
         assert!(json.contains("1234"));
     }
+
+    #[test]
+    fn test_assets_handler_not_found() {
+        // Test that non-existent asset returns 404
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let response = assets_handler(Path("nonexistent.js".to_string())).await;
+            assert_eq!(response.into_response().status(), StatusCode::NOT_FOUND);
+        });
+    }
+
+    #[test]
+    fn test_system_summary_fields() {
+        let summary = SystemSummary {
+            uptime_seconds: 7200,
+            total_requests: 5678,
+        };
+        let json = serde_json::to_string(&summary).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value["uptime_seconds"], 7200);
+        assert_eq!(value["total_requests"], 5678);
+    }
 }
