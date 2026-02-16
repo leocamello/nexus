@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Privacy Zones & Capability Tiers (F13)**: Structural enforcement of privacy boundaries and quality levels
+  - Privacy zones: backends declare `zone = "restricted"` or `"open"` in TOML config
+  - PrivacyReconciler enforces zone constraints — restricted traffic never routes to cloud backends
+  - Capability tiers: backends declare `tier = 1..5` for quality level enforcement
+  - TierReconciler prevents silent quality downgrades during failover
+  - `X-Nexus-Strict` / `X-Nexus-Flexible` request headers for client-controlled tier enforcement
+  - Strict mode (default): only same-or-higher tier backends accepted
+  - Flexible mode: higher-tier substitution allowed, but never downgrades
+  - Actionable 503 responses include `privacy_zone_required` and `required_tier` context
+  - `X-Nexus-Rejection-Reasons` and `X-Nexus-Rejection-Details` response headers
+  - Zero-config backward compatible: no policies → no filtering
 - **Control Plane — Reconciler Pipeline (RFC-001 Phase 2)**: Trait-based pipeline replacing imperative routing
   - `Reconciler` trait with `name()` and `reconcile()` methods
   - `ReconcilerPipeline` executor with per-reconciler timing and metrics

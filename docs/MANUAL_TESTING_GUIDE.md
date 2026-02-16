@@ -1298,7 +1298,155 @@ cargo test routing::reconciler::   # 88+ reconciler tests
 cargo test --test reconciler_pipeline_test   # 6 pipeline tests
 
 # All tests
-cargo test   # 590+ tests
+cargo test   # 829+ tests
+```
+
+---
+
+## 14. Privacy Zones & Capability Tiers (F13)
+
+### 14.1 Privacy Zone Configuration
+
+Test that backends respect privacy zone settings.
+
+```toml
+# nexus.toml - Add zone configuration
+[[backends]]
+name = "local-llama"
+url = "http://localhost:11434"
+backend_type = "ollama"
+zone = "restricted"
+tier = 3
+
+[[backends]]
+name = "openai-gpt4"
+url = "https://api.openai.com"
+backend_type = "openai"
+api_key_env = "OPENAI_API_KEY"
+zone = "open"
+tier = 4
+```
+
+**Verify zone is shown in model listing:**
+```bash
+curl -s http://localhost:3000/v1/models | jq '.data[].id'
+# Both backends should show their models
+```
+
+### 14.2 Privacy Zone Enforcement
+
+Test that restricted traffic policies prevent routing to cloud backends.
+
+```toml
+# Add traffic policy
+[routing.policies."sensitive-*"]
+privacy = "restricted"
+```
+
+```bash
+# Request model matching restricted policy
+curl -s http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "sensitive-model", "messages": [{"role": "user", "content": "test"}]}' \
+  -w "\n%{http_code}"
+
+# Expected: Routes to local backend only, or 503 if no local backend has the model
+# Check X-Nexus-Privacy-Zone header
+curl -sI http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "sensitive-model", "messages": [{"role": "user", "content": "test"}]}' \
+  | grep -i "x-nexus-privacy"
+```
+
+### 14.3 Tier Enforcement (Strict Mode)
+
+Test that strict mode (default) prevents routing to lower-tier backends.
+
+```bash
+# Default (strict) — only exact or higher tier
+curl -s http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "test-model", "messages": [{"role": "user", "content": "test"}]}'
+
+# Explicit strict header
+curl -s http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "X-Nexus-Strict: true" \
+  -d '{"model": "test-model", "messages": [{"role": "user", "content": "test"}]}'
+# Expected: Only routes to backends meeting minimum tier requirement
+```
+
+### 14.4 Tier Enforcement (Flexible Mode)
+
+```bash
+# Flexible mode — allows higher-tier substitution
+curl -s http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "X-Nexus-Flexible: true" \
+  -d '{"model": "test-model", "messages": [{"role": "user", "content": "test"}]}'
+# Expected: Routes to same-or-higher tier backend
+```
+
+### 14.5 Conflicting Headers
+
+```bash
+# Both strict and flexible — strict wins
+curl -s http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "X-Nexus-Strict: true" \
+  -H "X-Nexus-Flexible: true" \
+  -d '{"model": "test-model", "messages": [{"role": "user", "content": "test"}]}'
+# Expected: Strict mode applied
+```
+
+### 14.6 Actionable 503 Responses
+
+Test that rejected requests return structured error context.
+
+```bash
+# Trigger 503 by requesting restricted model with no local backends
+curl -s http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "sensitive-model", "messages": [{"role": "user", "content": "test"}]}' \
+  | jq '.'
+
+# Expected response includes:
+# {
+#   "error": { "message": "...", "type": "server_error", "code": "service_unavailable" },
+#   "context": {
+#     "available_backends": [...],
+#     "privacy_zone_required": "restricted",
+#     "required_tier": 3
+#   }
+# }
+```
+
+### 14.7 Backward Compatibility
+
+```bash
+# No policies, no headers — works exactly like before
+curl -s http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "llama3:8b", "messages": [{"role": "user", "content": "test"}]}'
+# Expected: Routes normally, no filtering applied
+```
+
+### 14.8 Run Automated Tests
+
+```bash
+# F13 unit tests (reconcilers)
+cargo test privacy -- --test-threads=1
+cargo test tier -- --test-threads=1
+
+# F13 integration tests
+cargo test --test privacy_enforcement_test
+cargo test --test privacy_zone_config_test
+cargo test --test tier_enforcement_test
+cargo test --test actionable_rejection_test
+cargo test --test backward_compat_test
+
+# All tests
+cargo test   # 829+ tests
 ```
 
 ---
@@ -1413,8 +1561,9 @@ rm -f /tmp/nexus.{bash,zsh,fish}
 | F10: Dashboard | Web UI, WebSocket, dark mode | Live updates in browser |
 | F11: Logging | JSON format, component levels, correlation IDs | Structured, queryable logs |
 | F12: Cloud Backends | Cloud config, transparent headers, cost, 503s | X-Nexus-* headers on all responses |
-| Control Plane | Privacy zones, budget limits, tier enforcement, pipeline | < 1ms pipeline, actionable 503s |
+| Control Plane | Reconciler pipeline, scheduling, request analysis | < 1ms pipeline, actionable 503s |
+| F13: Privacy & Tiers | Privacy zones, tier enforcement, strict/flexible | Zone-based filtering, no silent downgrades |
 
-**Automated test suite**: `cargo test` — **590+ tests**
+**Automated test suite**: `cargo test` — **829+ tests**
 
 For the full E2E smoke test: `./scripts/e2e-test.sh`

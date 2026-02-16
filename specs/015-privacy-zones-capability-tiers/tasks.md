@@ -19,11 +19,11 @@
 
 **Purpose**: Project initialization and validation of existing components from PR #157
 
-- [ ] T001 [P] Verify PrivacyReconciler exists and is tested in src/routing/reconciler/privacy.rs
-- [ ] T002 [P] Verify TierReconciler exists and is tested in src/routing/reconciler/tier.rs
-- [ ] T003 [P] Verify BackendConfig has zone/tier fields in src/config/backend.rs
-- [ ] T004 [P] Verify AgentProfile has privacy_zone/capability_tier fields in src/agent/types.rs
-- [ ] T005 Fix BackendConfig.effective_tier() default from 3 to 1 (FR-022) in src/config/backend.rs
+- [X] T001 [P] Verify PrivacyReconciler exists and is tested in src/routing/reconciler/privacy.rs
+- [X] T002 [P] Verify TierReconciler exists and is tested in src/routing/reconciler/tier.rs
+- [X] T003 [P] Verify BackendConfig has zone/tier fields in src/config/backend.rs
+- [X] T004 [P] Verify AgentProfile has privacy_zone/capability_tier fields in src/agent/types.rs
+- [X] T005 Fix BackendConfig.effective_tier() default from 3 to 1 (FR-022) in src/config/backend.rs
 
 ---
 
@@ -122,15 +122,15 @@
 
 ### Implementation for User Story 4
 
-- [ ] T043 [US4] Flow RoutingIntent.rejection_reasons to ActionableErrorContext in src/api/completions.rs
-- [ ] T044 [US4] Serialize ActionableErrorContext with privacy/tier fields in 503 JSON response in src/api/error.rs
-- [ ] T045 [US4] Ensure privacy_zone_required field uses skip_serializing_if for null values in src/api/error.rs
-- [ ] T046 [US4] Ensure required_tier field uses skip_serializing_if for null values in src/api/error.rs
-- [ ] T047 [US4] Integration test: privacy rejection → 503 includes privacy_zone_required field
-- [ ] T048 [US4] Integration test: tier rejection → 503 includes required_tier field
-- [ ] T049 [US4] Integration test: combined rejection → 503 includes both privacy_zone_required and required_tier
-- [ ] T050 [US4] Integration test: rejection includes RejectionReason with agent_id, reconciler, reason, suggested_action
-- [ ] T051 [US4] Integration test: 503 response includes Retry-After header with appropriate retry timing
+- [X] T043 [US4] Flow RoutingIntent.rejection_reasons to ActionableErrorContext in src/api/completions.rs
+- [X] T044 [US4] Serialize ActionableErrorContext with privacy/tier fields in 503 JSON response in src/api/error.rs
+- [X] T045 [US4] Ensure privacy_zone_required field uses skip_serializing_if for null values in src/api/error.rs
+- [X] T046 [US4] Ensure required_tier field uses skip_serializing_if for null values in src/api/error.rs
+- [X] T047 [US4] Integration test: privacy rejection → 503 includes privacy_zone_required field
+- [X] T048 [US4] Integration test: tier rejection → 503 includes required_tier field
+- [X] T049 [US4] Integration test: combined rejection → 503 includes both privacy_zone_required and required_tier
+- [X] T050 [US4] Integration test: rejection includes RejectionReason with agent_id, reconciler, reason, suggested_action
+- [-] T051 [US4] Integration test: 503 response includes Retry-After header with appropriate retry timing
 
 **Checkpoint**: Error responses provide actionable debugging information
 
@@ -144,12 +144,12 @@
 
 ### Implementation for User Story 5
 
-- [ ] T052 [US5] Verify default behavior: no traffic_policies → no filtering in PrivacyReconciler
-- [ ] T053 [US5] Verify default behavior: no traffic_policies → no filtering in TierReconciler
-- [ ] T054 [US5] Integration test: configuration without zone fields → backends default to backend type defaults
-- [ ] T055 [US5] Integration test: configuration without tier fields → backends default to tier 1
-- [ ] T056 [US5] Integration test: no TrafficPolicies defined → all requests route normally without enforcement
-- [ ] T057 [US5] Integration test: mixed configuration (some backends with zones, some without) → correct defaults applied
+- [X] T052 [US5] Verify default behavior: no traffic_policies → no filtering in PrivacyReconciler
+- [X] T053 [US5] Verify default behavior: no traffic_policies → no filtering in TierReconciler
+- [X] T054 [US5] Integration test: configuration without zone fields → backends default to backend type defaults
+- [X] T055 [US5] Integration test: configuration without tier fields → backends default to tier 1
+- [X] T056 [US5] Integration test: no TrafficPolicies defined → all requests route normally without enforcement
+- [X] T057 [US5] Integration test: mixed configuration (some backends with zones, some without) → correct defaults applied
 
 **Checkpoint**: Backward compatibility verified - existing deployments unaffected
 
@@ -159,14 +159,14 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T058 [P] Add debug logging to PrivacyReconciler exclusion decisions in src/routing/reconciler/privacy.rs
-- [ ] T059 [P] Add debug logging to TierReconciler exclusion decisions in src/routing/reconciler/tier.rs
-- [ ] T060 [P] Update README.md with privacy zones and capability tiers feature description
-- [ ] T061 [P] Update CHANGELOG.md with F13 feature entry
-- [ ] T062 Verify all existing reconciler pipeline tests pass after wiring privacy/tier reconcilers
-- [ ] T063 Run performance benchmarks to verify reconciler pipeline overhead < 1ms (FR-023)
-- [ ] T064 Validate quickstart.md examples by running configuration scenarios
-- [ ] T065 Run full integration test suite to verify end-to-end flows
+- [X] T058 [P] Add debug logging to PrivacyReconciler exclusion decisions in src/routing/reconciler/privacy.rs
+- [X] T059 [P] Add debug logging to TierReconciler exclusion decisions in src/routing/reconciler/tier.rs
+- [X] T060 [P] Update README.md with privacy zones and capability tiers feature description
+- [X] T061 [P] Update CHANGELOG.md with F13 feature entry
+- [X] T062 Verify all existing reconciler pipeline tests pass after wiring privacy/tier reconcilers
+- [X] T063 Run performance benchmarks to verify reconciler pipeline overhead < 1ms (FR-023)
+- [X] T064 Validate quickstart.md examples by running configuration scenarios
+- [X] T065 Run full integration test suite to verify end-to-end flows
 
 ---
 

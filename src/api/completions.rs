@@ -66,7 +66,15 @@ fn extract_tier_enforcement_mode(headers: &HeaderMap) -> TierEnforcementMode {
 }
 
 /// Build a structured 503 response for routing rejections with actionable details.
-fn rejection_response(rejection_reasons: Vec<RejectionReason>) -> Response {
+///
+/// Extracts privacy zone and tier info from rejection reasons to populate
+/// ActionableErrorContext alongside the rejection details.
+fn rejection_response(
+    rejection_reasons: Vec<RejectionReason>,
+    available_backends: Vec<String>,
+) -> Response {
+    use crate::api::error::{ActionableErrorContext, ServiceUnavailableError};
+
     let count = rejection_reasons.len();
     let reconcilers: HashSet<&str> = rejection_reasons
         .iter()
@@ -74,28 +82,70 @@ fn rejection_response(rejection_reasons: Vec<RejectionReason>) -> Response {
         .collect();
     let reconciler_list: Vec<&str> = reconcilers.into_iter().collect();
 
-    // Build X-Nexus-Rejection-Reasons header value
+    // Extract privacy zone from rejection reasons (if PrivacyReconciler rejected)
+    let privacy_zone_required = rejection_reasons
+        .iter()
+        .find(|r| r.reconciler == "PrivacyReconciler")
+        .map(|r| {
+            if r.reason.contains("restricted") {
+                "restricted".to_string()
+            } else {
+                "open".to_string()
+            }
+        });
+
+    // Extract required tier from rejection reasons (if TierReconciler rejected)
+    let required_tier = rejection_reasons
+        .iter()
+        .find(|r| r.reconciler == "TierReconciler")
+        .and_then(|r| {
+            // Extract tier number from reason like "agent tier 2 below minimum 3"
+            r.reason
+                .split("minimum ")
+                .nth(1)
+                .and_then(|s| s.split_whitespace().next())
+                .and_then(|s| s.parse::<u8>().ok())
+        });
+
+    let context = ActionableErrorContext {
+        required_tier,
+        available_backends,
+        eta_seconds: None,
+        privacy_zone_required,
+    };
+
+    let message = format!("Request rejected: {} agents excluded", count);
+
+    warn!(
+        rejection_count = count,
+        reconcilers = ?reconciler_list,
+        privacy_zone = ?context.privacy_zone_required,
+        required_tier = ?context.required_tier,
+        "Routing rejection with actionable context"
+    );
+
+    let error = ServiceUnavailableError::new(message, context);
+    let mut response = error.into_response();
+
+    // Add rejection details header
     let header_value = format!(
         "{} agents rejected by {}",
         count,
         reconciler_list.join(", ")
     );
-
-    // Build structured JSON body
-    let body = serde_json::json!({
-        "error": {
-            "type": "routing_rejected",
-            "message": format!("Request rejected: {} agents excluded", count),
-            "rejection_reasons": rejection_reasons,
-        }
-    });
-
-    let mut response = (axum::http::StatusCode::SERVICE_UNAVAILABLE, Json(body)).into_response();
-
     if let Ok(val) = HeaderValue::from_str(&header_value) {
         response
             .headers_mut()
             .insert(HeaderName::from_static(REJECTION_REASONS_HEADER), val);
+    }
+
+    // Add rejection reasons as JSON in a separate header for programmatic access
+    if let Ok(json) = serde_json::to_string(&rejection_reasons) {
+        if let Ok(val) = HeaderValue::from_str(&json) {
+            response
+                .headers_mut()
+                .insert(HeaderName::from_static("x-nexus-rejection-details"), val);
+        }
     }
 
     response
@@ -271,7 +321,8 @@ pub async fn handle(
                     )));
                 }
                 crate::routing::RoutingError::Reject { rejection_reasons } => {
-                    return Ok(rejection_response(rejection_reasons));
+                    let backends = available_backend_names(&state);
+                    return Ok(rejection_response(rejection_reasons, backends));
                 }
             }
         }
@@ -653,7 +704,8 @@ async fn handle_streaming(
                     )));
                 }
                 crate::routing::RoutingError::Reject { rejection_reasons } => {
-                    return Ok(rejection_response(rejection_reasons));
+                    let backends = available_backend_names(&state);
+                    return Ok(rejection_response(rejection_reasons, backends));
                 }
             }
         }
