@@ -119,13 +119,20 @@ impl AppState {
 
         let start_time = Instant::now();
 
-        // Create router from config
-        let router = Arc::new(routing::Router::with_aliases_and_fallbacks(
+        // Create router from config, compiling traffic policies for privacy enforcement
+        let policy_matcher = crate::config::PolicyMatcher::compile(config.routing.policies.clone())
+            .unwrap_or_else(|e| {
+                tracing::warn!("Failed to compile traffic policies, using defaults: {}", e);
+                crate::config::PolicyMatcher::default()
+            });
+
+        let router = Arc::new(routing::Router::with_aliases_fallbacks_and_policies(
             Arc::clone(&registry),
             config.routing.strategy.into(),
             config.routing.weights.clone().into(),
             config.routing.aliases.clone(),
             config.routing.fallbacks.clone(),
+            policy_matcher,
         ));
 
         // Initialize metrics (safe to call multiple times - will reuse existing if already set)

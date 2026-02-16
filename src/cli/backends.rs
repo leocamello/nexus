@@ -326,4 +326,79 @@ mod tests {
 
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_parse_status_all_variants() {
+        assert_eq!(parse_status("healthy").unwrap(), BackendStatus::Healthy);
+        assert_eq!(parse_status("unhealthy").unwrap(), BackendStatus::Unhealthy);
+        assert_eq!(parse_status("unknown").unwrap(), BackendStatus::Unknown);
+        assert_eq!(parse_status("draining").unwrap(), BackendStatus::Draining);
+        assert_eq!(parse_status("HEALTHY").unwrap(), BackendStatus::Healthy);
+    }
+
+    #[test]
+    fn test_parse_status_invalid() {
+        let result = parse_status("invalid_status");
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_backends_add_unknown_type() {
+        let registry = Arc::new(Registry::new());
+        let args = BackendsAddArgs {
+            url: "http://localhost:8000".to_string(),
+            name: Some("test".to_string()),
+            backend_type: Some("unknown_type".to_string()),
+            priority: 1,
+            config: std::path::PathBuf::from("nexus.toml"),
+        };
+
+        let result = handle_backends_add(&args, &registry).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_backends_add_all_backend_types() {
+        for (type_str, expected) in [
+            ("ollama", BackendType::Ollama),
+            ("vllm", BackendType::VLLM),
+            ("llamacpp", BackendType::LlamaCpp),
+            ("llama.cpp", BackendType::LlamaCpp),
+            ("exo", BackendType::Exo),
+            ("openai", BackendType::OpenAI),
+            ("generic", BackendType::Generic),
+        ] {
+            let registry = Registry::new();
+            let args = BackendsAddArgs {
+                url: "http://localhost:8000".to_string(),
+                name: Some(format!("test-{}", type_str)),
+                backend_type: Some(type_str.to_string()),
+                priority: 1,
+                config: std::path::PathBuf::from("nexus.toml"),
+            };
+            handle_backends_add(&args, &registry).await.unwrap();
+            let backends = registry.get_all_backends();
+            assert_eq!(backends[0].backend_type, expected);
+        }
+    }
+
+    #[test]
+    fn test_backends_list_filter_unhealthy() {
+        let registry = Arc::new(Registry::new());
+
+        let mut b1 = create_test_backend();
+        b1.id = "b1".to_string();
+        registry.add_backend(b1).unwrap();
+        registry
+            .update_status("b1", BackendStatus::Unhealthy, Some("err".to_string()))
+            .unwrap();
+
+        let args = BackendsListArgs {
+            json: false,
+            status: Some("unhealthy".to_string()),
+            config: std::path::PathBuf::from("nexus.toml"),
+        };
+        let output = handle_backends_list(&args, &registry).unwrap();
+        assert!(output.contains("Test Backend") || output.contains("b1"));
+    }
 }

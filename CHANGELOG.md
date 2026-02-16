@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Control Plane — Reconciler Pipeline (RFC-001 Phase 2)**: Trait-based pipeline replacing imperative routing
+  - `Reconciler` trait with `name()` and `reconcile()` methods
+  - `ReconcilerPipeline` executor with per-reconciler timing and metrics
+  - `RoutingIntent` shared state object for pipeline data flow
+  - `RoutingDecision` enum: Route, Queue, Reject with actionable context
+  - **RequestAnalyzer**: Alias resolution (max 3 levels) and candidate population
+  - **PrivacyReconciler**: Traffic policy matching via pre-compiled glob patterns, privacy zone enforcement
+  - **BudgetReconciler**: Monthly spending tracking, cost estimation, hard/soft limit enforcement
+  - **TierReconciler**: Capability tier enforcement with strict and flexible (X-Nexus-Flexible) modes
+  - **QualityReconciler**: Pass-through placeholder for future quality metrics
+  - **SchedulerReconciler**: Health/capability filtering, strategy-based scoring (Smart, RoundRobin, PriorityOnly, Random), budget-aware score adjustment
+  - Background budget reconciliation loop with month rollover detection
+  - Pipeline observability: `nexus_reconciler_duration_seconds`, `nexus_pipeline_duration_seconds`, `nexus_reconciler_exclusions_total` metrics
+  - Pipeline tracing at `trace!` level for production-safe diagnostics
+  - Routing benchmarks for full pipeline (<1ms p95) and RequestAnalyzer (<0.5ms)
 - **NII Agent Abstraction (RFC-001 Phase 1)**: `InferenceAgent` trait with built-in agents for all backend types
   - `OllamaAgent`: health via `/api/tags`, model enrichment via `/api/show`, chat via OpenAI-compat endpoint
   - `OpenAIAgent`: cloud backend with Bearer auth support

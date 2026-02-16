@@ -218,6 +218,126 @@ fn bench_routing_with_alias(c: &mut Criterion) {
     });
 }
 
+// === Reconciler Pipeline Benchmarks ===
+
+use nexus::config::{BudgetConfig, PolicyMatcher};
+use nexus::routing::reconciler::budget::{BudgetMetrics, BudgetReconciler};
+use nexus::routing::reconciler::intent::RoutingIntent;
+use nexus::routing::reconciler::privacy::PrivacyReconciler;
+use nexus::routing::reconciler::quality::QualityReconciler;
+use nexus::routing::reconciler::request_analyzer::RequestAnalyzer;
+use nexus::routing::reconciler::scheduler::SchedulerReconciler;
+use nexus::routing::reconciler::tier::TierReconciler;
+use nexus::routing::reconciler::ReconcilerPipeline;
+
+fn create_pipeline_registry(backend_count: usize, models_per_backend: usize) -> Arc<Registry> {
+    let registry = Arc::new(Registry::new());
+    for i in 0..backend_count {
+        registry
+            .add_backend(create_backend(i, models_per_backend))
+            .unwrap();
+    }
+    registry
+}
+
+/// Benchmark full reconciler pipeline execution (FR-036: <1ms p95).
+fn bench_full_pipeline(c: &mut Criterion) {
+    let mut group = c.benchmark_group("pipeline");
+
+    for count in [5, 10, 25, 50] {
+        let registry = create_pipeline_registry(count, 3);
+        let budget_state = Arc::new(dashmap::DashMap::new());
+        budget_state.insert("global".to_string(), BudgetMetrics::new());
+
+        group.bench_with_input(BenchmarkId::new("backends", count), &count, |b, _| {
+            b.iter(|| {
+                let mut pipeline = ReconcilerPipeline::new(vec![
+                    Box::new(RequestAnalyzer::new(HashMap::new(), Arc::clone(&registry))),
+                    Box::new(PrivacyReconciler::new(
+                        Arc::clone(&registry),
+                        PolicyMatcher::default(),
+                    )),
+                    Box::new(BudgetReconciler::new(
+                        Arc::clone(&registry),
+                        BudgetConfig::default(),
+                        Arc::clone(&budget_state),
+                    )),
+                    Box::new(TierReconciler::new(
+                        Arc::clone(&registry),
+                        PolicyMatcher::default(),
+                    )),
+                    Box::new(QualityReconciler::new()),
+                    Box::new(SchedulerReconciler::new(
+                        Arc::clone(&registry),
+                        RoutingStrategy::Smart,
+                        ScoringWeights {
+                            priority: 50,
+                            load: 30,
+                            latency: 20,
+                        },
+                        Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                    )),
+                ]);
+
+                let mut intent = RoutingIntent::new(
+                    "bench-req".to_string(),
+                    "model-0".to_string(),
+                    "model-0".to_string(),
+                    RequestRequirements {
+                        model: "model-0".to_string(),
+                        needs_vision: false,
+                        needs_tools: false,
+                        needs_json_mode: false,
+                        estimated_tokens: 100,
+                    },
+                    vec![],
+                );
+
+                black_box(pipeline.execute(&mut intent).unwrap());
+            });
+        });
+    }
+
+    group.finish();
+}
+
+/// Benchmark RequestAnalyzer alone (FR-009: <0.5ms).
+fn bench_request_analyzer(c: &mut Criterion) {
+    let mut group = c.benchmark_group("request_analyzer");
+
+    for count in [5, 10, 25, 50] {
+        let registry = create_pipeline_registry(count, 3);
+
+        let mut aliases = HashMap::new();
+        aliases.insert("gpt4".to_string(), "model-0".to_string());
+
+        let analyzer = RequestAnalyzer::new(aliases.clone(), Arc::clone(&registry));
+
+        group.bench_with_input(BenchmarkId::new("backends", count), &count, |b, _| {
+            b.iter(|| {
+                let mut intent = RoutingIntent::new(
+                    "bench-req".to_string(),
+                    "gpt4".to_string(),
+                    "gpt4".to_string(),
+                    RequestRequirements {
+                        model: "gpt4".to_string(),
+                        needs_vision: false,
+                        needs_tools: false,
+                        needs_json_mode: false,
+                        estimated_tokens: 100,
+                    },
+                    vec![],
+                );
+
+                nexus::routing::reconciler::Reconciler::reconcile(&analyzer, &mut intent).unwrap();
+                black_box(&intent);
+            });
+        });
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_smart_routing_by_backend_count,
@@ -225,5 +345,7 @@ criterion_group!(
     bench_capability_filtered_routing,
     bench_routing_with_fallback,
     bench_routing_with_alias,
+    bench_full_pipeline,
+    bench_request_analyzer,
 );
 criterion_main!(benches);

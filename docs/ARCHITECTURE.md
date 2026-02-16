@@ -753,39 +753,118 @@ pub trait InferenceAgent: Send + Sync + 'static {
 
 ### Control Plane — Reconciler Pipeline (v0.3)
 
-Replaces the imperative `Router::select_backend()` with independent reconcilers:
+Replaces the imperative `Router::select_backend()` with independent reconcilers that annotate a shared `RoutingIntent`. Each reconciler only **adds** constraints — never removes them — ensuring order-independence and composability.
+
+#### Pipeline Architecture
+
+The pipeline follows a trait-based design where each reconciler implements `Reconciler`:
+
+```rust
+pub trait Reconciler: Send + Sync {
+    fn name(&self) -> &'static str;
+    fn reconcile(&self, intent: &mut RoutingIntent) -> Result<(), RoutingError>;
+}
+```
+
+`RoutingIntent` is the shared state object carrying request identity, model resolution, requirements, policy constraints, budget state, and the candidate/excluded agent lists. Reconcilers read from any field but only write to their own domain fields and the exclusion list.
+
+`RoutingDecision` is the pipeline output — one of three variants:
+- **Route**: agent selected, model resolved, cost estimated
+- **Queue**: all agents busy, estimated wait time (future)
+- **Reject**: no viable agents, with accumulated rejection reasons
+
+#### Execution Order
 
 ```
-ChatCompletionRequest
+Request
     │
     ▼
 ┌──────────────────────────────┐
-│  RequestAnalyzer (F15)       │  Extract vision/tools/tokens, resolve aliases
-│  Budget: < 0.5ms             │  Build RoutingIntent with requirements
+│  1. RequestAnalyzer          │  Resolve aliases (max 3 levels), populate candidates
+│     Budget: < 0.5ms         │  from registry by model availability
 └──────────┬───────────────────┘
            ▼
 ┌──────────────────────────────┐
-│  PrivacyReconciler (F13)     │  Exclude cloud agents if restricted
+│  2. PrivacyReconciler        │  Match model against traffic policies,
+│                              │  exclude agents violating privacy zone
 └──────────┬───────────────────┘
            ▼
 ┌──────────────────────────────┐
-│  BudgetReconciler (F14)      │  Check spending, estimate costs
+│  3. BudgetReconciler         │  Estimate cost, calculate budget status,
+│                              │  exclude cloud agents at hard limit
 └──────────┬───────────────────┘
            ▼
 ┌──────────────────────────────┐
-│  TierReconciler (F13)        │  Enforce minimum capability tier
+│  4. TierReconciler           │  Enforce minimum capability tier from
+│                              │  policy (strict or flexible mode)
 └──────────┬───────────────────┘
            ▼
 ┌──────────────────────────────┐
-│  QualityReconciler (F16)     │  Exclude high-error-rate agents
+│  5. QualityReconciler        │  Reserved for future quality metrics
+│     (pass-through Phase 1)   │  (latency, accuracy, user ratings)
 └──────────┬───────────────────┘
            ▼
 ┌──────────────────────────────┐
-│  SchedulerReconciler (F06)   │  Score candidates → Route | Queue | Reject
+│  6. SchedulerReconciler      │  Filter by health + capabilities,
+│                              │  score candidates → select best agent
 └──────────────────────────────┘
+    │
+    ▼
+RoutingDecision (Route | Queue | Reject)
 ```
 
-Each reconciler is independent — Privacy doesn't know about Budget, Budget doesn't know about Quality. They annotate shared `RoutingIntent` state. Rejection reasons accumulate for actionable 503 responses.
+**Order matters because:**
+1. RequestAnalyzer must run first to resolve aliases and populate candidates
+2. Privacy and Budget filter policy-violating agents before scoring
+3. TierReconciler runs after Budget to avoid tier-filtering already-budget-excluded agents
+4. SchedulerReconciler must run last — it selects the single best agent from remaining candidates
+
+**Order-independence of constraint reconcilers:** Privacy, Budget, and Tier each only **add** constraints and exclusions. They never remove rejection reasons or re-add excluded agents. This means reordering the middle three (Privacy, Budget, Tier) would produce the same final candidate set.
+
+#### Data Flow
+
+```
+RoutingIntent fields written by each reconciler:
+
+RequestAnalyzer:    resolved_model, candidate_agents
+PrivacyReconciler:  privacy_constraint, excluded_agents, rejection_reasons
+BudgetReconciler:   cost_estimate, budget_status, excluded_agents, rejection_reasons
+TierReconciler:     min_capability_tier, excluded_agents, rejection_reasons
+QualityReconciler:  (none — pass-through)
+SchedulerReconciler: candidate_agents (→ single winner), route_reason
+```
+
+#### Observability
+
+The pipeline emits metrics and trace logs at each stage:
+
+- `nexus_reconciler_duration_seconds{reconciler}` — Per-reconciler latency histogram
+- `nexus_reconciler_exclusions_total{reconciler}` — Agents excluded per reconciler
+- `nexus_pipeline_duration_seconds` — Total pipeline execution latency
+- `trace!`-level logs for each reconciler with timing and candidate counts
+
+#### Adding a New Reconciler
+
+1. Create `src/routing/reconciler/your_reconciler.rs`
+2. Implement the `Reconciler` trait (add constraints, never remove)
+3. Add `pub mod your_reconciler;` to `src/routing/reconciler/mod.rs`
+4. Insert into the pipeline construction in `Router::select_backend()` (in `src/routing/mod.rs`)
+5. Add metrics and tracing (automatic via pipeline executor)
+
+```rust
+pub struct YourReconciler { /* config */ }
+
+impl Reconciler for YourReconciler {
+    fn name(&self) -> &'static str { "YourReconciler" }
+
+    fn reconcile(&self, intent: &mut RoutingIntent) -> Result<(), RoutingError> {
+        // Read intent.requirements, intent.resolved_model, etc.
+        // Add constraints or exclude agents via intent.exclude_agent()
+        // NEVER remove from intent.rejection_reasons or intent.excluded_agents
+        Ok(())
+    }
+}
+```
 
 ### Architecture Topology (v0.3+)
 
