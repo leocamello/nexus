@@ -197,18 +197,18 @@ This is a single Rust project with structure:
 
 **Purpose**: Improvements that affect multiple user stories and final validation
 
-- [ ] T085 [P] Update docs/ARCHITECTURE.md with reconciler pipeline architecture documentation
-- [ ] T086 [P] Add performance benchmarks for pipeline in benches/routing.rs to validate <1ms p95 target per FR-036
-- [ ] T087 [P] Add performance benchmarks for RequestAnalyzer in benches/routing.rs to validate <0.5ms target per FR-009
-- [ ] T088 [P] Add example TrafficPolicy configurations to nexus.example.toml demonstrating privacy, budget, tier constraints per FR-034
-- [ ] T089 Validate pipeline overhead meets <1ms target with profiling per FR-036
-- [ ] T090 Validate RequestAnalyzer meets <0.5ms target with profiling per FR-009
-- [ ] T091 Run full integration test suite to ensure backward compatibility per FR-038, SC-002
-- [ ] T092 [P] Add logging for pipeline execution with reconciler timing and decision tracing
-- [ ] T093 [P] Add metrics for per-reconciler latency and exclusion rates
-- [ ] T094 Run specs/014-control-plane-reconciler/quickstart.md validation workflow
-- [ ] T095 Code review focusing on order-independence of reconcilers per FR-001 (only add constraints, never remove)
-- [ ] T096 [P] Update CHANGELOG.md with reconciler pipeline feature description
+- [X] T085 [P] Update docs/ARCHITECTURE.md with reconciler pipeline architecture documentation
+- [X] T086 [P] Add performance benchmarks for pipeline in benches/routing.rs to validate <1ms p95 target per FR-036
+- [X] T087 [P] Add performance benchmarks for RequestAnalyzer in benches/routing.rs to validate <0.5ms target per FR-009
+- [X] T088 [P] Add example TrafficPolicy configurations to nexus.example.toml demonstrating privacy, budget, tier constraints per FR-034
+- [X] T089 Validate pipeline overhead meets <1ms target with profiling per FR-036
+- [X] T090 Validate RequestAnalyzer meets <0.5ms target with profiling per FR-009
+- [X] T091 Run full integration test suite to ensure backward compatibility per FR-038, SC-002
+- [X] T092 [P] Add logging for pipeline execution with reconciler timing and decision tracing
+- [X] T093 [P] Add metrics for per-reconciler latency and exclusion rates
+- [X] T094 Run specs/014-control-plane-reconciler/quickstart.md validation workflow
+- [X] T095 Code review focusing on order-independence of reconcilers per FR-001 (only add constraints, never remove)
+- [X] T096 [P] Update CHANGELOG.md with reconciler pipeline feature description
 
 ---
 

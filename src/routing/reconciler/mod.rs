@@ -16,6 +16,7 @@ pub mod tier;
 use crate::routing::error::RoutingError;
 use decision::RoutingDecision;
 use intent::RoutingIntent;
+use std::time::Instant;
 
 /// Reconciler trait for pipeline stages.
 /// Each reconciler annotates RoutingIntent without removing prior constraints.
@@ -59,18 +60,64 @@ impl ReconcilerPipeline {
     /// 2. If any reconciler fails, return error immediately
     /// 3. After all reconcilers complete, convert intent to decision
     pub fn execute(&mut self, intent: &mut RoutingIntent) -> Result<RoutingDecision, RoutingError> {
-        // Execute each reconciler in sequence
+        let pipeline_start = Instant::now();
+
+        tracing::trace!(
+            request_id = %intent.request_id,
+            model = %intent.requested_model,
+            reconciler_count = self.reconcilers.len(),
+            "Pipeline execution started"
+        );
+
+        // Execute each reconciler in sequence with per-reconciler timing
         for reconciler in &self.reconcilers {
+            let reconciler_start = Instant::now();
+            let candidates_before = intent.candidate_agents.len();
+
             reconciler.reconcile(intent)?;
+
+            let reconciler_elapsed = reconciler_start.elapsed();
+            let excluded_count = candidates_before.saturating_sub(intent.candidate_agents.len());
+
+            // T093: Per-reconciler latency histogram
+            metrics::histogram!(
+                "nexus_reconciler_duration_seconds",
+                "reconciler" => reconciler.name().to_string(),
+            )
+            .record(reconciler_elapsed.as_secs_f64());
+
+            // T093: Per-reconciler exclusion counter
+            if excluded_count > 0 {
+                metrics::counter!(
+                    "nexus_reconciler_exclusions_total",
+                    "reconciler" => reconciler.name().to_string(),
+                )
+                .increment(excluded_count as u64);
+            }
+
+            tracing::trace!(
+                request_id = %intent.request_id,
+                reconciler = reconciler.name(),
+                elapsed_us = reconciler_elapsed.as_micros() as u64,
+                candidates_remaining = intent.candidate_agents.len(),
+                excluded = excluded_count,
+                "Reconciler completed"
+            );
         }
 
+        let pipeline_elapsed = pipeline_start.elapsed();
+
+        // T093: Pipeline total latency histogram
+        metrics::histogram!("nexus_pipeline_duration_seconds")
+            .record(pipeline_elapsed.as_secs_f64());
+
         // Convert intent to decision based on final state
-        if intent.candidate_agents.is_empty() {
-            Ok(RoutingDecision::Reject {
+        let decision = if intent.candidate_agents.is_empty() {
+            RoutingDecision::Reject {
                 rejection_reasons: intent.rejection_reasons.clone(),
-            })
+            }
         } else {
-            Ok(RoutingDecision::Route {
+            RoutingDecision::Route {
                 agent_id: intent.candidate_agents[0].clone(),
                 model: intent.resolved_model.clone(),
                 reason: intent
@@ -78,7 +125,16 @@ impl ReconcilerPipeline {
                     .clone()
                     .unwrap_or_else(|| "Pipeline execution completed".to_string()),
                 cost_estimate: intent.cost_estimate.clone(),
-            })
-        }
+            }
+        };
+
+        tracing::trace!(
+            request_id = %intent.request_id,
+            elapsed_us = pipeline_elapsed.as_micros() as u64,
+            decision = ?std::mem::discriminant(&decision),
+            "Pipeline execution completed"
+        );
+
+        Ok(decision)
     }
 }

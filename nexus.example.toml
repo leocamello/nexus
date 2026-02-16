@@ -50,12 +50,27 @@ latency = 20
 # Example: Restrict GPT-4 models to local-only backends (no cloud overflow)
 # [[routing.policies]]
 # model_pattern = "gpt-4*"
-# privacy = "restricted"
+# privacy = "restricted"       # restricted | unrestricted
+# min_tier = 3                 # Minimum capability tier (1-3, optional)
+
+# Example: Route Claude models to premium backends only
+# [[routing.policies]]
+# model_pattern = "claude-*"
+# privacy = "unrestricted"
+# min_tier = 2
 
 # Example: Allow all other models to use any backend
 # [[routing.policies]]
 # model_pattern = "*"
 # privacy = "unrestricted"
+
+# Budget configuration - monthly spending limits for cloud backends (optional)
+# If not configured, no budget enforcement is applied (zero-config default).
+# [routing.budget]
+# monthly_limit_usd = 100.00          # Monthly spending cap in USD
+# soft_limit_percent = 75.0           # At 75%: prefer local, reduce cloud scores 50%
+# hard_limit_action = "block_cloud"   # At 100%: warn | block_cloud | block_all
+# reconciliation_interval_secs = 60   # Background reconciliation interval
 
 # Static backend configuration
 # Backends can also be auto-discovered via mDNS
