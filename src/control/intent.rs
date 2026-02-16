@@ -77,6 +77,16 @@ pub struct RoutingAnnotations {
     /// Backends excluded due to capability mismatches
     pub capability_excluded: HashMap<String, CapabilityMismatch>,
 
+    // Traffic Policy (F13)
+    /// Applied traffic policy (if any matched)
+    pub applied_policy: Option<String>,
+
+    /// Overflow decision for cross-zone routing
+    pub overflow_decision: Option<String>,
+
+    /// Affinity key for sticky routing (backend selection)
+    pub affinity_key: Option<String>,
+
     // Observability
     /// Trace messages for debugging and audit
     pub trace_info: Vec<String>,

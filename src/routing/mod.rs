@@ -14,7 +14,7 @@ pub mod scoring;
 pub mod strategies;
 
 pub use error::RoutingError;
-pub use requirements::RequestRequirements;
+pub use requirements::{RequestRequirements, RoutingPreference};
 pub use scoring::{score_backend, ScoringWeights};
 pub use strategies::RoutingStrategy;
 
@@ -732,6 +732,8 @@ mod filter_tests {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: RoutingPreference::default(),
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -766,6 +768,8 @@ mod filter_tests {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: RoutingPreference::default(),
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -800,6 +804,8 @@ mod filter_tests {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: RoutingPreference::default(),
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -834,6 +840,8 @@ mod filter_tests {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: RoutingPreference::default(),
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -860,6 +868,8 @@ mod filter_tests {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: RoutingPreference::default(),
         };
 
         let candidates = router.filter_candidates("nonexistent", &requirements);
@@ -893,6 +903,8 @@ mod filter_tests {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: RoutingPreference::default(),
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -946,6 +958,8 @@ mod filter_tests {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: RoutingPreference::default(),
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -990,6 +1004,8 @@ mod filter_tests {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: RoutingPreference::default(),
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -1067,6 +1083,8 @@ mod smart_strategy_tests {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: RoutingPreference::default(),
         };
 
         let result = router.select_backend(&requirements).unwrap();
@@ -1091,6 +1109,8 @@ mod smart_strategy_tests {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: RoutingPreference::default(),
         };
 
         let result = router.select_backend(&requirements).unwrap();
@@ -1115,6 +1135,8 @@ mod smart_strategy_tests {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: RoutingPreference::default(),
         };
 
         let result = router.select_backend(&requirements).unwrap();
@@ -1141,6 +1163,8 @@ mod smart_strategy_tests {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: RoutingPreference::default(),
         };
 
         let result = router.select_backend(&requirements);
@@ -1213,6 +1237,8 @@ mod other_strategies_tests {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: RoutingPreference::default(),
         };
 
         // Should cycle through: A, B, C, A, B, C
@@ -1254,6 +1280,8 @@ mod other_strategies_tests {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: RoutingPreference::default(),
         };
 
         // Should always select Backend B (priority 1)
@@ -1281,6 +1309,8 @@ mod other_strategies_tests {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: RoutingPreference::default(),
         };
 
         // Should select from all three backends over many iterations
@@ -1365,6 +1395,8 @@ mod alias_and_fallback_tests {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: RoutingPreference::default(),
         };
 
         let result = router.select_backend(&requirements).unwrap();
@@ -1407,6 +1439,8 @@ mod alias_and_fallback_tests {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: RoutingPreference::default(),
         };
 
         let result = router.select_backend(&requirements).unwrap();
@@ -1449,6 +1483,8 @@ mod alias_and_fallback_tests {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: RoutingPreference::default(),
         };
 
         let result = router.select_backend(&requirements);
@@ -1494,6 +1530,8 @@ mod alias_and_fallback_tests {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: RoutingPreference::default(),
         };
 
         let result = router.select_backend(&requirements).unwrap();
@@ -1536,6 +1574,8 @@ mod alias_and_fallback_tests {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: RoutingPreference::default(),
         };
 
         // When resolving "gpt-4"
@@ -1580,6 +1620,8 @@ mod alias_and_fallback_tests {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: RoutingPreference::default(),
         };
 
         // When resolving "a"
@@ -1625,6 +1667,8 @@ mod alias_and_fallback_tests {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: RoutingPreference::default(),
         };
 
         // When resolving "a" (4-level chain)
@@ -1667,6 +1711,8 @@ mod alias_and_fallback_tests {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: RoutingPreference::default(),
         };
 
         let result = router.select_backend(&requirements).unwrap();
@@ -1709,6 +1755,8 @@ mod alias_and_fallback_tests {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: RoutingPreference::default(),
         };
 
         // When select_backend("primary")
@@ -1756,6 +1804,8 @@ mod alias_and_fallback_tests {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: RoutingPreference::default(),
         };
 
         // When select_backend("primary")

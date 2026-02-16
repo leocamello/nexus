@@ -87,6 +87,8 @@ fn bench_smart_routing_by_backend_count(c: &mut Criterion) {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: nexus::routing::RoutingPreference::default(),
             estimated_tokens: 100,
         };
 
@@ -114,6 +116,8 @@ fn bench_round_robin_routing(c: &mut Criterion) {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: nexus::routing::RoutingPreference::default(),
             estimated_tokens: 100,
         };
 
@@ -139,6 +143,8 @@ fn bench_capability_filtered_routing(c: &mut Criterion) {
         privacy_zone: None,
         budget_limit: None,
         min_capability_tier: None,
+        has_conversation_history: false,
+        routing_preference: nexus::routing::RoutingPreference::default(),
         estimated_tokens: 100,
     };
 
@@ -183,6 +189,8 @@ fn bench_routing_with_fallback(c: &mut Criterion) {
         privacy_zone: None,
         budget_limit: None,
         min_capability_tier: None,
+        has_conversation_history: false,
+        routing_preference: nexus::routing::RoutingPreference::default(),
         estimated_tokens: 100,
     };
 
@@ -223,6 +231,8 @@ fn bench_routing_with_alias(c: &mut Criterion) {
         privacy_zone: None,
         budget_limit: None,
         min_capability_tier: None,
+        has_conversation_history: false,
+        routing_preference: nexus::routing::RoutingPreference::default(),
         estimated_tokens: 100,
     };
 

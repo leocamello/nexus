@@ -65,8 +65,8 @@ pub async fn handle(
         return handle_streaming(state, headers, request).await;
     }
 
-    // Use router to select backend
-    let requirements = RequestRequirements::from_request(&request);
+    // Use router to select backend (with header-based routing preference)
+    let requirements = RequestRequirements::from_request_with_headers(&request, &headers);
     let routing_result = state.router.select_backend(&requirements).map_err(|e| {
         let available = available_models(&state);
 
@@ -457,8 +457,8 @@ async fn handle_streaming(
     headers: HeaderMap,
     request: ChatCompletionRequest,
 ) -> Result<Response, ApiError> {
-    // Use router to select backend
-    let requirements = RequestRequirements::from_request(&request);
+    // Use router to select backend (with header-based routing preference)
+    let requirements = RequestRequirements::from_request_with_headers(&request, &headers);
     let routing_result = state.router.select_backend(&requirements).map_err(|e| {
         let available = available_models(&state);
         match e {

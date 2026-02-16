@@ -318,6 +318,7 @@ mod tests {
             api_key_env: None,
             zone: crate::agent::types::PrivacyZone::Restricted,
             tier: None,
+            capability_tier: None,
         });
 
         let registry = Arc::new(Registry::new());
@@ -379,6 +380,7 @@ mod tests {
             api_key_env: None,
             zone: crate::agent::types::PrivacyZone::Restricted,
             tier: None,
+            capability_tier: None,
         });
         config.backends.push(BackendConfig {
             name: "vllm-test".to_string(),
@@ -388,6 +390,7 @@ mod tests {
             api_key_env: None,
             zone: crate::agent::types::PrivacyZone::Restricted,
             tier: None,
+            capability_tier: None,
         });
 
         let registry = Arc::new(Registry::new());
@@ -421,6 +424,7 @@ mod tests {
             api_key_env: Some("NEXUS_TEST_OPENAI_KEY".to_string()),
             zone: crate::agent::types::PrivacyZone::Open,
             tier: Some(4),
+            capability_tier: None,
         });
 
         let registry = Arc::new(Registry::new());

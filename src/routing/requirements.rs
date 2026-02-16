@@ -1,6 +1,17 @@
 //! Request requirements extraction
 
 use crate::api::types::{ChatCompletionRequest, MessageContent};
+use axum::http::HeaderMap;
+
+/// Routing preference extracted from headers
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RoutingPreference {
+    /// Only exact model (default per spec)
+    #[default]
+    Strict,
+    /// Tier-equivalent alternatives OK
+    Flexible,
+}
 
 /// Requirements extracted from an incoming request
 #[derive(Debug, Clone, PartialEq)]
@@ -20,6 +31,9 @@ pub struct RequestRequirements {
     /// Whether the request requires JSON mode
     pub needs_json_mode: bool,
 
+    /// Whether the request has conversation history (multi-turn)
+    pub has_conversation_history: bool,
+
     // Control plane extensions (RFC-001 Phase 2)
     /// Privacy zone constraint (if specified)
     pub privacy_zone: Option<crate::agent::types::PrivacyZone>,
@@ -29,6 +43,9 @@ pub struct RequestRequirements {
 
     /// Minimum capability tier required (if specified)
     pub min_capability_tier: Option<u8>,
+
+    /// Routing preference (Strict or Flexible)
+    pub routing_preference: RoutingPreference,
 }
 
 impl RequestRequirements {
@@ -72,16 +89,52 @@ impl RequestRequirements {
             .map(|t: &str| t == "json_object")
             .unwrap_or(false);
 
+        // Check for conversation history
+        // History exists if: >1 message OR any "assistant" role message
+        let has_conversation_history = request.messages.len() > 1
+            || request
+                .messages
+                .iter()
+                .any(|m| m.role.eq_ignore_ascii_case("assistant"));
+
         Self {
             model,
             estimated_tokens,
             needs_vision,
             needs_tools,
             needs_json_mode,
+            has_conversation_history,
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            routing_preference: RoutingPreference::default(),
         }
+    }
+
+    /// Extract requirements from request with header support
+    pub fn from_request_with_headers(request: &ChatCompletionRequest, headers: &HeaderMap) -> Self {
+        let mut requirements = Self::from_request(request);
+
+        // Extract routing preference from headers
+        // X-Nexus-Strict takes precedence over X-Nexus-Flexible
+        if headers
+            .get("x-nexus-strict")
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+        {
+            requirements.routing_preference = RoutingPreference::Strict;
+        } else if headers
+            .get("x-nexus-flexible")
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+        {
+            requirements.routing_preference = RoutingPreference::Flexible;
+        }
+        // else: keep default (Strict)
+
+        requirements
     }
 }
 

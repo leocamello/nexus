@@ -295,6 +295,8 @@ mod us3_routing_visibility {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: nexus::routing::RoutingPreference::default(),
         };
         let result = router.select_backend(&requirements).unwrap();
 
@@ -364,6 +366,8 @@ mod us3_routing_visibility {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: nexus::routing::RoutingPreference::default(),
         };
         let result = router.select_backend(&requirements).unwrap();
 
@@ -429,6 +433,8 @@ mod us3_routing_visibility {
             privacy_zone: None,
             budget_limit: None,
             min_capability_tier: None,
+            has_conversation_history: false,
+            routing_preference: nexus::routing::RoutingPreference::default(),
         };
         let result = router.select_backend(&requirements).unwrap();
 

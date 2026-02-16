@@ -366,6 +366,7 @@ mod tests {
             api_key_env: None,
             zone: crate::agent::types::PrivacyZone::Restricted,
             tier: None,
+            capability_tier: None,
         });
 
         let result = config.validate();
@@ -386,6 +387,7 @@ mod tests {
             api_key_env: None,
             zone: crate::agent::types::PrivacyZone::Restricted,
             tier: None,
+            capability_tier: None,
         });
 
         let result = config.validate();

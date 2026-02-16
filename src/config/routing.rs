@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
+use crate::agent::types::PrivacyZone;
 use crate::config::error::ConfigError;
 
 /// Routing strategy for backend selection
@@ -42,6 +43,90 @@ pub struct RoutingConfig {
     pub aliases: HashMap<String, String>,
     #[serde(default)]
     pub fallbacks: HashMap<String, Vec<String>>,
+    /// Traffic policies for model-pattern-based routing rules
+    #[serde(default)]
+    pub policies: Vec<TrafficPolicy>,
+}
+
+/// Traffic policy for model-pattern-based routing rules
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrafficPolicy {
+    /// Glob pattern matching model names (e.g., "code-*", "gpt-4*")
+    pub model_pattern: String,
+    /// Required privacy zone (None = no restriction)
+    #[serde(default)]
+    pub privacy: Option<PrivacyZone>,
+    /// Minimum capability tier (None = no minimum)
+    #[serde(default)]
+    pub min_tier: Option<u8>,
+    /// Overflow mode for cross-zone routing
+    #[serde(default)]
+    pub overflow_mode: OverflowMode,
+    /// Capability requirements (optional)
+    #[serde(default)]
+    pub capabilities: Option<CapabilityRequirements>,
+}
+
+impl TrafficPolicy {
+    /// Check if this policy matches the given model name
+    pub fn matches(&self, model: &str) -> bool {
+        // Simple glob matching with * wildcards
+        let pattern = glob::Pattern::new(&self.model_pattern).unwrap_or_else(|_| {
+            // Invalid pattern never matches
+            glob::Pattern::new("").unwrap()
+        });
+        pattern.matches(model)
+    }
+
+    /// Calculate priority for policy specificity ordering
+    /// Higher priority = more specific pattern
+    pub fn priority(&self) -> u32 {
+        let pattern = &self.model_pattern;
+
+        // Exact match (no wildcards) = highest priority
+        if !pattern.contains('*') && !pattern.contains('?') {
+            return 100;
+        }
+
+        // Prefix/suffix patterns (single *) = medium priority
+        if pattern.matches('*').count() == 1 {
+            return 50;
+        }
+
+        // Multiple wildcards = lowest priority
+        10
+    }
+}
+
+/// Overflow mode for cross-zone routing
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum OverflowMode {
+    /// Block all cross-zone overflow (strict compliance)
+    #[default]
+    BlockEntirely,
+    /// Allow overflow for fresh conversations only (no history)
+    FreshOnly,
+}
+
+/// Capability requirements for routing decisions
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CapabilityRequirements {
+    /// Minimum reasoning score (0-10)
+    #[serde(default)]
+    pub min_reasoning: Option<u8>,
+    /// Minimum coding score (0-10)
+    #[serde(default)]
+    pub min_coding: Option<u8>,
+    /// Minimum context window size (tokens)
+    #[serde(default)]
+    pub min_context_window: Option<u32>,
+    /// Requires vision capability
+    #[serde(default)]
+    pub vision_required: bool,
+    /// Requires tools capability
+    #[serde(default)]
+    pub tools_required: bool,
 }
 
 /// Routing weights for backend selection
@@ -60,6 +145,7 @@ impl Default for RoutingConfig {
             weights: RoutingWeights::default(),
             aliases: HashMap::new(),
             fallbacks: HashMap::new(),
+            policies: Vec::new(),
         }
     }
 }

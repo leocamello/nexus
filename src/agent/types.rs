@@ -20,9 +20,10 @@ pub struct AgentProfile {
 }
 
 /// Privacy zone classification for routing decisions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum PrivacyZone {
     /// Restricted: Must not receive cloud overflow. Local-only backends.
+    #[default]
     Restricted,
 
     /// Open: Can receive cloud overflow from restricted zones (if policy allows).
