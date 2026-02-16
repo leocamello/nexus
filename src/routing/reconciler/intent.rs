@@ -43,8 +43,29 @@ pub struct CostEstimate {
     /// Total estimated cost in USD
     pub cost_usd: f64,
 
-    /// Token count tier for billing (e.g., 0-1K, 1K-10K, 10K+)
+    /// Token count tier: 0=exact, 1=approximation, 2=heuristic (FR-012)
     pub token_count_tier: u8,
+}
+
+impl CostEstimate {
+    /// Exact tokenizer tier (provider's official tokenizer)
+    pub const TIER_EXACT: u8 = 0;
+
+    /// Approximation tier (similar tokenizer as proxy)
+    pub const TIER_APPROXIMATION: u8 = 1;
+
+    /// Heuristic tier (character-based estimation)
+    pub const TIER_HEURISTIC: u8 = 2;
+
+    /// Get human-readable name for the token count tier
+    pub fn tier_name(&self) -> &'static str {
+        match self.token_count_tier {
+            Self::TIER_EXACT => "exact",
+            Self::TIER_APPROXIMATION => "approximation",
+            Self::TIER_HEURISTIC => "heuristic",
+            _ => "unknown",
+        }
+    }
 }
 
 /// Rejection reason for excluded agent (FR-004)
