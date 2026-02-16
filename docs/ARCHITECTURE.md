@@ -1004,3 +1004,92 @@ Backend VRAM ─────→ Headroom Check ──────────→
 - Never evict a hot model for a prediction
 - Only use idle capacity (configurable headroom %)
 - Suggestion system, not autonomous actor
+
+---
+
+## TokenizerRegistry (F14: Budget Management)
+
+**Purpose**: Provider-specific token counting for accurate cost estimation
+
+The TokenizerRegistry provides a fallback hierarchy for token counting across different model providers:
+
+```
+TokenizerRegistry
+│
+├── Tier 0: Exact (provider's official tokenizer)
+│   ├── gpt-4-turbo*, gpt-4o* → o200k_base (tiktoken-rs)
+│   └── gpt-{3.5,4}* → cl100k_base (tiktoken-rs)
+│
+├── Tier 1: Approximation (similar tokenizer)
+│   └── claude-* → cl100k_base (close enough for cost estimates)
+│
+└── Tier 2: Heuristic (conservative estimate)
+    └── unknown models → character_count / 4 * 1.15
+
+```
+
+### Usage
+
+```rust
+use nexus::agent::tokenizer::TokenizerRegistry;
+
+let registry = TokenizerRegistry::new()?;
+
+// Automatic tier selection
+let token_count = registry.count_tokens("gpt-4-turbo", "Hello, world!")?;
+
+// Check which tier was used
+let tokenizer = registry.get_tokenizer("gpt-4-turbo");
+match tokenizer.tier() {
+    0 => println!("Using exact tokenizer"),
+    1 => println!("Using approximation"),
+    2 => println!("Using heuristic"),
+    _ => unreachable!(),
+}
+```
+
+### Metrics
+
+Token counting operations emit Prometheus metrics:
+
+- `nexus_token_count_duration_seconds{tier,model}` - Tokenization latency
+- `nexus_token_count_tier_total{tier,model}` - Count by tier (exact/approximation/heuristic)
+- `nexus_cost_per_request_usd{model,tier}` - Estimated cost per request
+
+### Error Handling
+
+TokenizerRegistry gracefully degrades:
+
+1. **Initialization failure**: Returns `Err(TokenizerError)` at startup (fail-fast)
+2. **Unknown model**: Returns `HeuristicTokenizer` (tier 2, never fails)
+3. **Tokenization error**: Propagates `Result<u32, TokenizerError>` for caller handling
+
+**Pattern**: All tokenization is non-blocking and fails open (estimates $0.00 if pricing data missing).
+
+### Extension
+
+To add a new provider:
+
+```rust
+// 1. Add tokenizer patterns in TokenizerRegistry::new()
+let custom_patterns = vec!["provider-model-*"];
+for pattern in custom_patterns {
+    let glob = Glob::new(pattern)?;
+    matchers.push((
+        glob.compile_matcher(),
+        Arc::new(CustomTokenizer::new()?),
+    ));
+}
+
+// 2. Implement the Tokenizer trait
+impl Tokenizer for CustomTokenizer {
+    fn count_tokens(&self, text: &str) -> Result<u32, TokenizerError> {
+        // Your tokenization logic
+    }
+    
+    fn tier(&self) -> u8 { 0 } // 0=exact, 1=approx, 2=heuristic
+    fn name(&self) -> &str { "custom" }
+}
+```
+
+**Recommendation**: Use tier 1 (approximation) for new providers with similar tokenization to existing ones (e.g., GPT-like models can use cl100k_base).

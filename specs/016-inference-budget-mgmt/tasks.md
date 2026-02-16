@@ -23,9 +23,9 @@
 
 **Purpose**: Project initialization and tokenizer infrastructure setup
 
-- [ ] T001 Verify Rust toolchain 1.87 stable and required dependencies (tiktoken-rs, metrics, dashmap, chrono) in Cargo.toml
-- [ ] T002 [P] Create src/agent/tokenizer.rs file with module structure and exports
-- [ ] T003 [P] Update src/agent/mod.rs to export tokenizer module
+- [X] T001 Verify Rust toolchain 1.87 stable and required dependencies (tiktoken-rs, metrics, dashmap, chrono) in Cargo.toml
+- [X] T002 [P] Create src/agent/tokenizer.rs file with module structure and exports
+- [X] T003 [P] Update src/agent/mod.rs to export tokenizer module
 
 ---
 
@@ -35,14 +35,14 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 [P] Implement Tokenizer trait with count_tokens(), tier(), and name() methods in src/agent/tokenizer.rs
-- [ ] T005 [P] Implement TokenizerError enum with Encoding and ModelNotSupported variants in src/agent/tokenizer.rs
-- [ ] T006 Implement TiktokenExactTokenizer struct with o200k_base() and cl100k_base() constructors in src/agent/tokenizer.rs
-- [ ] T007 Implement TiktokenApproximationTokenizer struct with new() constructor in src/agent/tokenizer.rs
-- [ ] T008 Implement HeuristicTokenizer struct with 1.15x multiplier in src/agent/tokenizer.rs
-- [ ] T009 Implement TokenizerRegistry struct with get_tokenizer() and count_tokens() methods in src/agent/tokenizer.rs
-- [ ] T010 Add glob pattern matchers for OpenAI (gpt-4-turbo*, gpt-{3.5,4}) and Anthropic (claude-*) models in TokenizerRegistry in src/agent/tokenizer.rs
-- [ ] T011 Add CostEstimate::TIER_EXACT, TIER_APPROXIMATION, TIER_HEURISTIC constants and tier_name() method in src/routing/reconciler/intent.rs
+- [X] T004 [P] Implement Tokenizer trait with count_tokens(), tier(), and name() methods in src/agent/tokenizer.rs
+- [X] T005 [P] Implement TokenizerError enum with Encoding and ModelNotSupported variants in src/agent/tokenizer.rs
+- [X] T006 Implement TiktokenExactTokenizer struct with o200k_base() and cl100k_base() constructors in src/agent/tokenizer.rs
+- [X] T007 Implement TiktokenApproximationTokenizer struct with new() constructor in src/agent/tokenizer.rs
+- [X] T008 Implement HeuristicTokenizer struct with 1.15x multiplier in src/agent/tokenizer.rs
+- [X] T009 Implement TokenizerRegistry struct with get_tokenizer() and count_tokens() methods in src/agent/tokenizer.rs
+- [X] T010 Add glob pattern matchers for OpenAI (gpt-4-turbo*, gpt-{3.5,4}) and Anthropic (claude-*) models in TokenizerRegistry in src/agent/tokenizer.rs
+- [X] T011 Add CostEstimate::TIER_EXACT, TIER_APPROXIMATION, TIER_HEURISTIC constants and tier_name() method in src/routing/reconciler/intent.rs
 
 **Checkpoint**: Tokenizer foundation ready - user story implementation can now begin in parallel
 
@@ -56,13 +56,13 @@
 
 ### Implementation for User Story 1
 
-- [ ] T012 [US1] Enhance BudgetReconciler::estimate_cost() to accept TokenizerRegistry parameter in src/routing/reconciler/budget.rs
-- [ ] T013 [US1] Replace heuristic token counting with TokenizerRegistry.count_tokens() call in BudgetReconciler::estimate_cost() in src/routing/reconciler/budget.rs
-- [ ] T014 [US1] Set CostEstimate.token_count_tier from tokenizer.tier() in BudgetReconciler::estimate_cost() in src/routing/reconciler/budget.rs
-- [ ] T015 [US1] Verify BudgetReconciler::calculate_budget_status() correctly transitions at soft_limit_percent threshold in src/routing/reconciler/budget.rs
-- [ ] T016 [US1] Add TokenizerRegistry field to BudgetReconciler struct in src/routing/reconciler/budget.rs
-- [ ] T017 [US1] Wire BudgetReconciliationLoop with cancellation token in cli/serve.rs startup sequence
-- [ ] T018 [US1] Verify SchedulerReconciler adjusts agent scores based on BudgetStatus (existing behavior from Control Plane PR)
+- [X] T012 [US1] Enhance BudgetReconciler::estimate_cost() to accept TokenizerRegistry parameter in src/routing/reconciler/budget.rs
+- [X] T013 [US1] Replace heuristic token counting with TokenizerRegistry.count_tokens() call in BudgetReconciler::estimate_cost() in src/routing/reconciler/budget.rs
+- [X] T014 [US1] Set CostEstimate.token_count_tier from tokenizer.tier() in BudgetReconciler::estimate_cost() in src/routing/reconciler/budget.rs
+- [X] T015 [US1] Verify BudgetReconciler::calculate_budget_status() correctly transitions at soft_limit_percent threshold in src/routing/reconciler/budget.rs
+- [X] T016 [US1] Add TokenizerRegistry field to BudgetReconciler struct in src/routing/reconciler/budget.rs
+- [X] T017 [US1] Wire BudgetReconciliationLoop with cancellation token in cli/serve.rs startup sequence
+- [X] T018 [US1] Verify SchedulerReconciler adjusts agent scores based on BudgetStatus (existing behavior from Control Plane PR)
 
 **Checkpoint**: Soft limit routing shift should be fully functional - can test by sending requests until 80% budget utilized
 
@@ -76,11 +76,11 @@
 
 ### Implementation for User Story 2
 
-- [ ] T019 [P] [US2] Add nexus_cost_per_request_usd histogram metric recording in BudgetReconciler::estimate_cost() in src/routing/reconciler/budget.rs
-- [ ] T020 [P] [US2] Add nexus_token_count_duration_seconds histogram recording in TokenizerRegistry::count_tokens() in src/agent/tokenizer.rs
-- [ ] T021 [P] [US2] Add nexus_token_count_tier_total counter recording in TokenizerRegistry::count_tokens() in src/agent/tokenizer.rs
-- [ ] T022 [US2] Add timing instrumentation around tokenizer.count_tokens() calls in TokenizerRegistry in src/agent/tokenizer.rs
-- [ ] T023 [US2] Add tracing::debug! logs for token count results with tier information in BudgetReconciler::estimate_cost() in src/routing/reconciler/budget.rs
+- [X] T019 [P] [US2] Add nexus_cost_per_request_usd histogram metric recording in BudgetReconciler::estimate_cost() in src/routing/reconciler/budget.rs
+- [X] T020 [P] [US2] Add nexus_token_count_duration_seconds histogram recording in TokenizerRegistry::count_tokens() in src/agent/tokenizer.rs
+- [X] T021 [P] [US2] Add nexus_token_count_tier_total counter recording in TokenizerRegistry::count_tokens() in src/agent/tokenizer.rs
+- [X] T022 [US2] Add timing instrumentation around tokenizer.count_tokens() calls in TokenizerRegistry in src/agent/tokenizer.rs
+- [X] T023 [US2] Add tracing::debug! logs for token count results with tier information in BudgetReconciler::estimate_cost() in src/routing/reconciler/budget.rs
 
 **Checkpoint**: Prometheus metrics should show breakdown of exact vs approximation vs heuristic token counting per model
 
@@ -94,12 +94,12 @@
 
 ### Implementation for User Story 3
 
-- [ ] T024 [US3] Verify HardLimitAction enum (Warn, BlockCloud, BlockAll) exists in src/config/routing.rs (already implemented in Control Plane PR)
-- [ ] T025 [US3] Verify BudgetReconciler enforces hard_limit_action when BudgetStatus::HardLimit in src/routing/reconciler/budget.rs (already implemented)
-- [ ] T026 [US3] Verify month rollover detection in BudgetReconciliationLoop::reconcile_spending() using month_key comparison in src/routing/reconciler/budget.rs
+- [X] T024 [US3] Verify HardLimitAction enum (Warn, BlockCloud, BlockAll) exists in src/config/routing.rs (already implemented in Control Plane PR)
+- [X] T025 [US3] Verify BudgetReconciler enforces hard_limit_action when BudgetStatus::HardLimit in src/routing/reconciler/budget.rs (already implemented)
+- [X] T026 [US3] Verify month rollover detection in BudgetReconciliationLoop::reconcile_spending() using month_key comparison in src/routing/reconciler/budget.rs
 - [X] T027 [US3] Add tracing::info! log for budget reset on month rollover in BudgetReconciliationLoop in src/routing/reconciler/budget.rs
-- [ ] T028 [US3] Add nexus_budget_events_total counter for month_rollover event in BudgetReconciliationLoop in src/routing/reconciler/budget.rs
-- [ ] T029 [US3] Verify in-flight requests complete even when budget exhausted mid-execution (FR-013 requirement verification)
+- [X] T028 [US3] Add nexus_budget_events_total counter for month_rollover event in BudgetReconciliationLoop in src/routing/reconciler/budget.rs
+- [X] T029 [US3] Verify in-flight requests complete even when budget exhausted mid-execution (FR-013 requirement verification)
 
 **Checkpoint**: Hard limit enforcement should work - budget resets automatically on first of month
 
@@ -139,7 +139,7 @@
 - [ ] T044 [P] Add integration test for month rollover reset (optional enhancement) in tests/integration/budget_reconciliation.rs
 - [ ] T045 [P] Add contract test for Prometheus metric format validation (optional enhancement) in tests/contract/budget_metrics_test.rs
 - [ ] T046 Verify quickstart.md scenarios work as documented (all 4 scenarios: zero-config, soft limit, rollover, token accuracy)
-- [ ] T047 Add documentation for TokenizerRegistry usage in README or developer guide
+- [X] T047 Add documentation for TokenizerRegistry usage in README or developer guide
 - [X] T048 Review all error handling paths for graceful degradation (tokenizer failures fall back to heuristic)
 - [X] T049 Performance validation: Verify token counting overhead <200ms P95 per SC-007
 - [X] T050 Security review: Verify no sensitive data in metrics or logs
