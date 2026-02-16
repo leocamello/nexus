@@ -566,6 +566,16 @@ impl Router {
 
         candidates
     }
+
+    /// Get reference to the budget configuration (F14).
+    pub fn budget_config(&self) -> &BudgetConfig {
+        &self.budget_config
+    }
+
+    /// Get reference to the budget state (F14).
+    pub fn budget_state(&self) -> &Arc<DashMap<String, BudgetMetrics>> {
+        &self.budget_state
+    }
 }
 
 #[cfg(test)]

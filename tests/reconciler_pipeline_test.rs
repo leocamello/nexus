@@ -6,6 +6,7 @@
 mod common;
 
 use dashmap::DashMap;
+use nexus::agent::tokenizer::TokenizerRegistry;
 use nexus::config::routing::{BudgetConfig, PolicyMatcher, PrivacyConstraint, TrafficPolicy};
 use nexus::registry::{Backend, BackendStatus, BackendType, DiscoverySource, Model, Registry};
 use nexus::routing::reconciler::budget::BudgetReconciler;
@@ -154,11 +155,13 @@ fn full_pipeline_no_policies_routes_normally() {
     let empty_matcher = PolicyMatcher::compile(vec![]).unwrap();
     let budget_config = BudgetConfig::default();
     let budget_state = Arc::new(DashMap::new());
+    let tokenizer_registry = Arc::new(TokenizerRegistry::new().expect("Failed to create TokenizerRegistry"));
 
     let privacy = PrivacyReconciler::new(Arc::clone(&registry), empty_matcher);
     let budget = BudgetReconciler::new(
         Arc::clone(&registry),
         budget_config,
+        Arc::clone(&tokenizer_registry),
         Arc::clone(&budget_state),
     );
     let tier = TierReconciler::new(
@@ -315,7 +318,8 @@ fn budget_reconciler_annotates_intent() {
 
     let budget_config = BudgetConfig::default();
     let budget_state = Arc::new(DashMap::new());
-    let budget = BudgetReconciler::new(Arc::clone(&registry), budget_config, budget_state);
+    let tokenizer_registry = Arc::new(TokenizerRegistry::new().expect("Failed to create TokenizerRegistry"));
+    let budget = BudgetReconciler::new(Arc::clone(&registry), budget_config, Arc::clone(&tokenizer_registry), budget_state);
 
     let mut intent = create_intent("llama3:8b", vec!["b1"]);
     budget.reconcile(&mut intent).unwrap();

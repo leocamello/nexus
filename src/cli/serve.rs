@@ -2,7 +2,7 @@
 
 use crate::api::{create_router, AppState};
 use crate::cli::ServeArgs;
-use crate::config::{BudgetConfig, HardLimitAction, LogFormat, NexusConfig};
+use crate::config::{LogFormat, NexusConfig};
 use crate::health::HealthChecker;
 use crate::registry::{Backend, DiscoverySource, Registry};
 use crate::routing::reconciler::budget::{BudgetMetrics, BudgetReconciliationLoop};

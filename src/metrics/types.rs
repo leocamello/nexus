@@ -15,6 +15,9 @@ pub struct StatsResponse {
     pub backends: Vec<BackendStats>,
     /// Per-model breakdown
     pub models: Vec<ModelStats>,
+    /// Budget management statistics (F14 - optional, present when budget is configured)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub budget: Option<BudgetStats>,
 }
 
 /// Aggregate request statistics.
@@ -52,6 +55,37 @@ pub struct ModelStats {
     pub requests: u64,
     /// Average request duration in milliseconds
     pub average_duration_ms: f64,
+}
+
+/// Budget management statistics (F14).
+/// 
+/// Provides real-time visibility into inference budget status including:
+/// - Current spending and monthly limit
+/// - Utilization percentage and enforcement status
+/// - Billing cycle information and next reset date
+/// - Configured soft limit threshold and hard limit action
+#[derive(Debug, Clone, Serialize)]
+pub struct BudgetStats {
+    /// Current month spending in USD
+    pub current_spending_usd: f64,
+    /// Configured monthly budget limit in USD (null means no limit)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub monthly_limit_usd: Option<f64>,
+    /// Budget utilization percentage (can exceed 100%)
+    pub utilization_percent: f64,
+    /// Current budget enforcement status
+    pub status: String,
+    /// Current billing month in YYYY-MM format
+    pub billing_month: String,
+    /// ISO 8601 timestamp of last budget reconciliation
+    pub last_reconciliation: String,
+    /// Soft limit threshold percentage (from config)
+    pub soft_limit_threshold: f64,
+    /// Action taken when hard limit is reached (from config)
+    pub hard_limit_action: String,
+    /// Next billing cycle reset date (first day of next month, optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_reset_date: Option<String>,
 }
 
 #[cfg(test)]

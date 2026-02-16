@@ -45,6 +45,7 @@ pub async fn dashboard_handler(State(state): State<Arc<AppState>>) -> Response {
                 requests: crate::metrics::handler::compute_request_stats(&backend_stats),
                 backends: backend_stats,
                 models: crate::metrics::handler::compute_model_stats(registry),
+                budget: crate::metrics::handler::compute_budget_stats(&state),
             };
             let stats_json = serde_json::to_string(&stats).unwrap_or_else(|_| "{}".to_string());
 

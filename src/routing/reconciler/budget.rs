@@ -55,7 +55,7 @@ impl BudgetMetrics {
 }
 
 /// Shared budget state key for the global spending tracker
-const GLOBAL_BUDGET_KEY: &str = "global";
+pub const GLOBAL_BUDGET_KEY: &str = "global";
 
 /// BudgetReconciler estimates costs and enforces spending limits.
 ///
