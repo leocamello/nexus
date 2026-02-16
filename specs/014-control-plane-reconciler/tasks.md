@@ -141,10 +141,10 @@ This is a single Rust project with structure:
 - [X] T061 [US3] Implement BudgetReconciliationLoop::new() in src/routing/reconciler/budget.rs
 - [X] T062 [US3] Implement BudgetReconciliationLoop::start() with tokio::spawn in src/routing/reconciler/budget.rs per FR-022, research.md
 - [X] T063 [US3] Implement BudgetReconciliationLoop::reconcile_spending() with 60s interval in src/routing/reconciler/budget.rs per FR-022
-- [ ] T064 [US3] Integrate BudgetReconciliationLoop startup in cli/serve.rs with CancellationToken per research.md
-- [ ] T065 [US3] Pass spending Arc<DashMap> to Router construction in cli/serve.rs
-- [ ] T066 [US3] Add BudgetReconciler to pipeline construction in Router::select_backend() in src/routing/mod.rs between PrivacyReconciler and SchedulerReconciler per FR-005
-- [ ] T067 [US3] Update SchedulerReconciler to adjust scores for BudgetStatus::SoftLimit in src/routing/reconciler/scheduler.rs per FR-020
+- [X] T064 [US3] Integrate BudgetReconciliationLoop startup in cli/serve.rs with CancellationToken per research.md
+- [X] T065 [US3] Pass spending Arc<DashMap> to Router construction in cli/serve.rs
+- [X] T066 [US3] Add BudgetReconciler to pipeline construction in Router::select_backend() in src/routing/mod.rs between PrivacyReconciler and SchedulerReconciler per FR-005
+- [X] T067 [US3] Update SchedulerReconciler to adjust scores for BudgetStatus::SoftLimit in src/routing/reconciler/scheduler.rs per FR-020
 
 **Checkpoint**: All user stories 1-3 should now be independently functional - budget limits enforced, spending tracked, agent preference based on budget status
 
@@ -166,7 +166,7 @@ This is a single Rust project with structure:
 - [X] T073 [US4] Implement capability_tier filtering in TierReconciler in src/routing/reconciler/tier.rs per FR-026
 - [X] T074 [US4] Implement X-Nexus-Strict header handling in TierReconciler in src/routing/reconciler/tier.rs per FR-027
 - [X] T075 [US4] Implement X-Nexus-Flexible header fallback logic in TierReconciler in src/routing/reconciler/tier.rs per FR-028
-- [ ] T076 [US4] Add TierReconciler to pipeline construction in Router::select_backend() in src/routing/mod.rs between BudgetReconciler and SchedulerReconciler per FR-005
+- [X] T076 [US4] Add TierReconciler to pipeline construction in Router::select_backend() in src/routing/mod.rs between BudgetReconciler and SchedulerReconciler per FR-005
 
 **Checkpoint**: User Story 4 complete - tier constraints enforced, explicit quality control available
 
@@ -182,12 +182,12 @@ This is a single Rust project with structure:
 
 - [X] T077 [P] [US5] Create QualityReconciler stub struct in src/routing/reconciler/quality.rs (reserved for future, minimal implementation)
 - [X] T078 [US5] Implement minimal Reconciler trait for QualityReconciler in src/routing/reconciler/quality.rs (pass-through, no filtering)
-- [ ] T079 [US5] Add QualityReconciler to pipeline construction in Router::select_backend() in src/routing/mod.rs between TierReconciler and SchedulerReconciler per FR-005
-- [ ] T080 [US5] Implement rejection_reasons aggregation in ReconcilerPipeline::execute() in src/routing/reconciler/mod.rs for Reject decision per FR-032
-- [ ] T081 [US5] Extend RoutingError::Reject variant in src/routing/error.rs to include structured rejection_reasons per FR-004
-- [ ] T082 [US5] Update HTTP response handler for 503 errors in src/http/mod.rs or similar to serialize rejection_reasons as JSON
-- [ ] T083 [US5] Add X-Nexus-Rejection-Reasons response header with structured rejection data in HTTP handler
-- [ ] T084 [US5] Ensure suggested_action field populated in all reconciler RejectionReason calls (review RequestAnalyzer, PrivacyReconciler, BudgetReconciler, TierReconciler)
+- [X] T079 [US5] Add QualityReconciler to pipeline construction in Router::select_backend() in src/routing/mod.rs between TierReconciler and SchedulerReconciler per FR-005
+- [X] T080 [US5] Implement rejection_reasons aggregation in ReconcilerPipeline::execute() in src/routing/reconciler/mod.rs for Reject decision per FR-032
+- [X] T081 [US5] Extend RoutingError::Reject variant in src/routing/error.rs to include structured rejection_reasons per FR-004
+- [X] T082 [US5] Update HTTP response handler for 503 errors in src/api/completions.rs to serialize rejection_reasons as JSON
+- [X] T083 [US5] Add X-Nexus-Rejection-Reasons response header with structured rejection data in HTTP handler
+- [X] T084 [US5] Ensure suggested_action field populated in all reconciler RejectionReason calls (review RequestAnalyzer, PrivacyReconciler, BudgetReconciler, TierReconciler)
 
 **Checkpoint**: All user stories should now be independently functional - actionable error responses provide clear guidance on routing failures
 
