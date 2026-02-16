@@ -9,10 +9,10 @@ use std::sync::atomic::{AtomicU32, AtomicU64};
 use std::sync::Arc;
 
 pub mod error;
+pub mod reconciler;
 pub mod requirements;
 pub mod scoring;
-pub mod strategies;
-pub mod reconciler;  // Reconciler pipeline module
+pub mod strategies; // Reconciler pipeline module
 
 pub use error::RoutingError;
 pub use requirements::RequestRequirements;
@@ -20,6 +20,11 @@ pub use scoring::{score_backend, ScoringWeights};
 pub use strategies::RoutingStrategy;
 
 use crate::registry::{Backend, BackendStatus, Registry};
+use reconciler::decision::RoutingDecision;
+use reconciler::intent::RoutingIntent;
+use reconciler::request_analyzer::RequestAnalyzer;
+use reconciler::scheduler::SchedulerReconciler;
+use reconciler::ReconcilerPipeline;
 
 /// Result of a successful routing decision
 #[derive(Debug)]
@@ -56,8 +61,8 @@ pub struct Router {
     /// Fallback chains (model → [fallback1, fallback2, ...])
     fallbacks: HashMap<String, Vec<String>>,
 
-    /// Round-robin counter for round-robin strategy
-    round_robin_counter: AtomicU64,
+    /// Round-robin counter for round-robin strategy (shared with pipeline)
+    round_robin_counter: Arc<AtomicU64>,
 }
 
 impl Router {
@@ -73,7 +78,7 @@ impl Router {
             weights,
             aliases: HashMap::new(),
             fallbacks: HashMap::new(),
-            round_robin_counter: AtomicU64::new(0),
+            round_robin_counter: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -91,7 +96,7 @@ impl Router {
             weights,
             aliases,
             fallbacks,
-            round_robin_counter: AtomicU64::new(0),
+            round_robin_counter: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -134,211 +139,130 @@ impl Router {
         self.fallbacks.get(model).cloned().unwrap_or_default()
     }
 
+    /// Build a reconciler pipeline for the given model
+    fn build_pipeline(&self, model_aliases: HashMap<String, String>) -> ReconcilerPipeline {
+        let analyzer = RequestAnalyzer::new(model_aliases, Arc::clone(&self.registry));
+        let scheduler = SchedulerReconciler::new(
+            Arc::clone(&self.registry),
+            self.strategy,
+            self.weights,
+            Arc::clone(&self.round_robin_counter),
+        );
+        ReconcilerPipeline::new(vec![Box::new(analyzer), Box::new(scheduler)])
+    }
+
+    /// Run the pipeline for a specific model (primary or fallback) and return the decision
+    fn run_pipeline_for_model(
+        &self,
+        requirements: &RequestRequirements,
+        model: &str,
+    ) -> Result<RoutingDecision, RoutingError> {
+        // Build a pipeline with aliases that will resolve to the target model directly
+        // (alias resolution already happened in the caller)
+        let mut intent = RoutingIntent::new(
+            format!(
+                "req-{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos()
+            ),
+            model.to_string(),
+            model.to_string(), // pre-resolved
+            requirements.clone(),
+            vec![], // will be populated by RequestAnalyzer
+        );
+
+        // Build pipeline with empty aliases (model is already resolved)
+        let mut pipeline = self.build_pipeline(HashMap::new());
+        pipeline.execute(&mut intent)
+    }
+
     /// Select the best backend for the given requirements
     pub fn select_backend(
         &self,
         requirements: &RequestRequirements,
     ) -> Result<RoutingResult, RoutingError> {
-        // Resolve alias first
+        // Step 1: Resolve alias using existing logic (reused by pipeline too)
         let model = self.resolve_alias(&requirements.model);
 
-        // Check if model exists at all (in any backend, regardless of health)
+        // Step 2: Check if model exists at all (for proper error messages)
         let all_backends = self.registry.get_backends_for_model(&model);
         let model_exists = !all_backends.is_empty();
 
-        // Try to find backend for the primary model
-        let candidates = self.filter_candidates(&model, requirements);
+        // Step 3: Run pipeline for primary model
+        let decision = self.run_pipeline_for_model(requirements, &model)?;
 
-        if !candidates.is_empty() {
-            // Apply routing strategy
-            let (selected, route_reason) = match self.strategy {
-                RoutingStrategy::Smart => {
-                    let backend = self.select_smart(&candidates);
-                    let score = score_backend(
-                        backend.priority as u32,
-                        backend
-                            .pending_requests
-                            .load(std::sync::atomic::Ordering::Relaxed),
-                        backend
-                            .avg_latency_ms
-                            .load(std::sync::atomic::Ordering::Relaxed),
-                        &self.weights,
-                    );
-                    let reason = if candidates.len() == 1 {
-                        "only_healthy_backend".to_string()
-                    } else {
-                        format!("highest_score:{}:{:.2}", backend.name, score)
-                    };
-                    (backend, reason)
+        if let RoutingDecision::Route {
+            agent_id,
+            model: resolved_model,
+            reason,
+            ..
+        } = decision
+        {
+            let backend = self.registry.get_backend(&agent_id).ok_or_else(|| {
+                RoutingError::NoHealthyBackend {
+                    model: model.clone(),
                 }
-                RoutingStrategy::RoundRobin => {
-                    let counter = self
-                        .round_robin_counter
-                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    let index = (counter as usize) % candidates.len();
-                    let best = &candidates[index];
-
-                    // Create a new Backend snapshot
-                    let backend = Backend {
-                        id: best.id.clone(),
-                        name: best.name.clone(),
-                        url: best.url.clone(),
-                        backend_type: best.backend_type,
-                        status: best.status,
-                        last_health_check: best.last_health_check,
-                        last_error: best.last_error.clone(),
-                        models: best.models.clone(),
-                        priority: best.priority,
-                        pending_requests: AtomicU32::new(
-                            best.pending_requests
-                                .load(std::sync::atomic::Ordering::Relaxed),
-                        ),
-                        total_requests: AtomicU64::new(
-                            best.total_requests
-                                .load(std::sync::atomic::Ordering::Relaxed),
-                        ),
-                        avg_latency_ms: AtomicU32::new(
-                            best.avg_latency_ms
-                                .load(std::sync::atomic::Ordering::Relaxed),
-                        ),
-                        discovery_source: best.discovery_source,
-                        metadata: best.metadata.clone(),
-                    };
-
-                    let reason = if candidates.len() == 1 {
-                        "only_healthy_backend".to_string()
-                    } else {
-                        format!("round_robin:index_{}", index)
-                    };
-                    (backend, reason)
-                }
-                RoutingStrategy::PriorityOnly => {
-                    let backend = self.select_priority_only(&candidates);
-                    let reason = if candidates.len() == 1 {
-                        "only_healthy_backend".to_string()
-                    } else {
-                        format!("priority:{}:{}", backend.name, backend.priority)
-                    };
-                    (backend, reason)
-                }
-                RoutingStrategy::Random => {
-                    let backend = self.select_random(&candidates);
-                    let reason = if candidates.len() == 1 {
-                        "only_healthy_backend".to_string()
-                    } else {
-                        format!("random:{}", backend.name)
-                    };
-                    (backend, reason)
-                }
-            };
+            })?;
 
             tracing::debug!(
-                backend = %selected.name,
-                backend_type = ?selected.backend_type,
-                model = %model,
-                route_reason = %route_reason,
+                backend = %backend.name,
+                backend_type = ?backend.backend_type,
+                model = %resolved_model,
+                route_reason = %reason,
                 "routing decision made"
             );
 
             return Ok(RoutingResult {
-                backend: Arc::new(selected),
-                actual_model: model.clone(),
+                backend: Arc::new(backend),
+                actual_model: resolved_model,
                 fallback_used: false,
-                route_reason,
-                cost_estimated: None, // Populated later in completions.rs after token counting
+                route_reason: reason,
+                cost_estimated: None,
             });
         }
 
-        // Try fallback chain
+        // Step 4: Try fallback chain
         let fallbacks = self.get_fallbacks(&model);
         for fallback_model in &fallbacks {
-            let candidates = self.filter_candidates(fallback_model, requirements);
-            if !candidates.is_empty() {
-                let (selected, mut route_reason) = match self.strategy {
-                    RoutingStrategy::Smart => {
-                        let backend = self.select_smart(&candidates);
-                        let score = score_backend(
-                            backend.priority as u32,
-                            backend
-                                .pending_requests
-                                .load(std::sync::atomic::Ordering::Relaxed),
-                            backend
-                                .avg_latency_ms
-                                .load(std::sync::atomic::Ordering::Relaxed),
-                            &self.weights,
-                        );
-                        (backend, format!("highest_score:{:.2}", score))
-                    }
-                    RoutingStrategy::RoundRobin => {
-                        let counter = self
-                            .round_robin_counter
-                            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                        let index = (counter as usize) % candidates.len();
-                        let best = &candidates[index];
+            let decision = self.run_pipeline_for_model(requirements, fallback_model)?;
 
-                        // Create a new Backend snapshot
-                        let backend = Backend {
-                            id: best.id.clone(),
-                            name: best.name.clone(),
-                            url: best.url.clone(),
-                            backend_type: best.backend_type,
-                            status: best.status,
-                            last_health_check: best.last_health_check,
-                            last_error: best.last_error.clone(),
-                            models: best.models.clone(),
-                            priority: best.priority,
-                            pending_requests: AtomicU32::new(
-                                best.pending_requests
-                                    .load(std::sync::atomic::Ordering::Relaxed),
-                            ),
-                            total_requests: AtomicU64::new(
-                                best.total_requests
-                                    .load(std::sync::atomic::Ordering::Relaxed),
-                            ),
-                            avg_latency_ms: AtomicU32::new(
-                                best.avg_latency_ms
-                                    .load(std::sync::atomic::Ordering::Relaxed),
-                            ),
-                            discovery_source: best.discovery_source,
-                            metadata: best.metadata.clone(),
-                        };
+            if let RoutingDecision::Route {
+                agent_id, reason, ..
+            } = decision
+            {
+                let backend = self.registry.get_backend(&agent_id).ok_or_else(|| {
+                    RoutingError::NoHealthyBackend {
+                        model: fallback_model.clone(),
+                    }
+                })?;
 
-                        (backend, format!("round_robin:index_{}", index))
-                    }
-                    RoutingStrategy::PriorityOnly => {
-                        let backend = self.select_priority_only(&candidates);
-                        let priority = backend.priority;
-                        (backend, format!("priority:{}", priority))
-                    }
-                    RoutingStrategy::Random => {
-                        (self.select_random(&candidates), "random".to_string())
-                    }
-                };
-                route_reason = format!("fallback:{}:{}", model, route_reason);
+                let route_reason = format!("fallback:{}:{}", model, reason);
+
                 tracing::warn!(
                     requested_model = %model,
                     fallback_model = %fallback_model,
-                    backend = %selected.name,
+                    backend = %backend.name,
                     "Using fallback model"
                 );
+
                 return Ok(RoutingResult {
-                    backend: Arc::new(selected),
+                    backend: Arc::new(backend),
                     actual_model: fallback_model.clone(),
                     fallback_used: true,
                     route_reason,
-                    cost_estimated: None, // Populated later in completions.rs after token counting
+                    cost_estimated: None,
                 });
             }
         }
 
-        // All attempts failed
+        // Step 5: All attempts failed - produce the right error
         if !fallbacks.is_empty() {
-            // Build chain for error message
             let mut chain = vec![model.clone()];
             chain.extend(fallbacks);
             Err(RoutingError::FallbackChainExhausted { chain })
         } else if model_exists {
-            // Model exists but no healthy backends
             Err(RoutingError::NoHealthyBackend {
                 model: model.clone(),
             })
@@ -350,6 +274,7 @@ impl Router {
     }
 
     /// Select backend using smart scoring
+    #[allow(dead_code)] // Retained for potential direct use; scoring now in SchedulerReconciler
     fn select_smart(&self, candidates: &[Backend]) -> Backend {
         let best = candidates
             .iter()
@@ -393,8 +318,8 @@ impl Router {
         }
     }
 
-    /// Select backend using round-robin
     /// Select backend using priority-only
+    #[allow(dead_code)] // Retained for potential direct use; scoring now in SchedulerReconciler
     fn select_priority_only(&self, candidates: &[Backend]) -> Backend {
         let best = candidates
             .iter()
@@ -430,6 +355,7 @@ impl Router {
     }
 
     /// Select backend using random
+    #[allow(dead_code)] // Retained for potential direct use; scoring now in SchedulerReconciler
     fn select_random(&self, candidates: &[Backend]) -> Backend {
         use std::collections::hash_map::RandomState;
         use std::hash::BuildHasher;

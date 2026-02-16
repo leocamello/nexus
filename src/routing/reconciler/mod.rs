@@ -3,13 +3,15 @@
 //! Implements the reconciler pipeline architecture for intelligent routing decisions.
 //! Each reconciler reads and annotates RoutingIntent without removing constraints.
 
-pub mod intent;
 pub mod decision;
+pub mod intent;
+pub mod request_analyzer;
+pub mod scheduler;
 pub mod scheduling;
 
-use intent::RoutingIntent;
-use decision::RoutingDecision;
 use crate::routing::error::RoutingError;
+use decision::RoutingDecision;
+use intent::RoutingIntent;
 
 /// Reconciler trait for pipeline stages.
 /// Each reconciler annotates RoutingIntent without removing prior constraints.
@@ -17,15 +19,15 @@ use crate::routing::error::RoutingError;
 pub trait Reconciler: Send + Sync {
     /// Returns reconciler identifier for logging and rejection reasons.
     fn name(&self) -> &'static str;
-    
+
     /// Reconcile routing intent based on reconciler's domain.
-    /// 
+    ///
     /// # Behavior
     /// - Read requirements, constraints, and candidate agents from intent
     /// - Add constraints to intent (privacy, budget, tier, etc.)
     /// - Move agents from candidates to excluded with RejectionReason
     /// - NEVER remove constraints or rejection reasons from prior reconcilers
-    /// 
+    ///
     /// # Returns
     /// - Ok(()) if reconciliation succeeded (even if all agents excluded)
     /// - Err(RoutingError) only for catastrophic failures (e.g., config missing)
@@ -44,10 +46,10 @@ impl ReconcilerPipeline {
     pub fn new(reconcilers: Vec<Box<dyn Reconciler>>) -> Self {
         Self { reconcilers }
     }
-    
+
     /// Execute the pipeline on the given routing intent.
     /// Returns a RoutingDecision based on the final state of the intent.
-    /// 
+    ///
     /// # Algorithm (FR-005)
     /// 1. Execute each reconciler in order
     /// 2. If any reconciler fails, return error immediately
@@ -57,24 +59,22 @@ impl ReconcilerPipeline {
         for reconciler in &self.reconcilers {
             reconciler.reconcile(intent)?;
         }
-        
-        // Convert intent to decision
-        // This will be implemented by SchedulerReconciler logic
-        // For now, placeholder implementation
+
+        // Convert intent to decision based on final state
         if intent.candidate_agents.is_empty() {
             Ok(RoutingDecision::Reject {
                 rejection_reasons: intent.rejection_reasons.clone(),
             })
         } else {
-            // Temporary: select first candidate
-            // Will be replaced by SchedulerReconciler's proper selection
             Ok(RoutingDecision::Route {
                 agent_id: intent.candidate_agents[0].clone(),
                 model: intent.resolved_model.clone(),
-                reason: "Pipeline execution completed".to_string(),
+                reason: intent
+                    .route_reason
+                    .clone()
+                    .unwrap_or_else(|| "Pipeline execution completed".to_string()),
                 cost_estimate: intent.cost_estimate.clone(),
             })
         }
     }
 }
-

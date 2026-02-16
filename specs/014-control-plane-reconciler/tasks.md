@@ -42,21 +42,21 @@ This is a single Rust project with structure:
 
 **⚠️ CRITICAL**: No user story reconciler work can begin until this phase is complete
 
-- [ ] T004 Define Reconciler trait in src/routing/reconciler/mod.rs with name() and reconcile() methods per data-model.md
-- [ ] T005 [P] Create RoutingIntent struct in src/routing/reconciler/intent.rs with all fields from FR-002
-- [ ] T006 [P] Create RoutingDecision enum in src/routing/reconciler/decision.rs with Route, Queue, Reject variants per FR-003
-- [ ] T007 [P] Create RejectionReason struct in src/routing/reconciler/intent.rs per FR-004
-- [ ] T008 [P] Create BudgetStatus enum in src/routing/reconciler/intent.rs with Normal, SoftLimit, HardLimit variants per FR-019
-- [ ] T009 [P] Create CostEstimate struct in src/routing/reconciler/intent.rs per FR-018
-- [ ] T010 Implement RoutingIntent::new() constructor in src/routing/reconciler/intent.rs
-- [ ] T011 Implement RoutingIntent::exclude_agent() helper method in src/routing/reconciler/intent.rs
-- [ ] T012 Create ReconcilerPipeline struct in src/routing/reconciler/mod.rs with Vec<Box<dyn Reconciler>>
-- [ ] T013 Implement ReconcilerPipeline::new() constructor in src/routing/reconciler/mod.rs
-- [ ] T014 Implement ReconcilerPipeline::execute() method in src/routing/reconciler/mod.rs per FR-005 (fixed order execution)
-- [ ] T015 [P] Create AgentSchedulingProfile struct in src/routing/reconciler/scheduling.rs per data-model.md
-- [ ] T016 [P] Create MetricsSnapshot struct in src/metrics/mod.rs with error_rate, avg_ttft, success_rate methods per data-model.md
-- [ ] T017 Implement AgentSchedulingProfile::from_backend() constructor in src/routing/reconciler/scheduling.rs
-- [ ] T018 [P] Extend RoutingError in src/routing/error.rs to add Reject variant with rejection_reasons field
+- [X] T004 Define Reconciler trait in src/routing/reconciler/mod.rs with name() and reconcile() methods per data-model.md
+- [X] T005 [P] Create RoutingIntent struct in src/routing/reconciler/intent.rs with all fields from FR-002
+- [X] T006 [P] Create RoutingDecision enum in src/routing/reconciler/decision.rs with Route, Queue, Reject variants per FR-003
+- [X] T007 [P] Create RejectionReason struct in src/routing/reconciler/intent.rs per FR-004
+- [X] T008 [P] Create BudgetStatus enum in src/routing/reconciler/intent.rs with Normal, SoftLimit, HardLimit variants per FR-019
+- [X] T009 [P] Create CostEstimate struct in src/routing/reconciler/intent.rs per FR-018
+- [X] T010 Implement RoutingIntent::new() constructor in src/routing/reconciler/intent.rs
+- [X] T011 Implement RoutingIntent::exclude_agent() helper method in src/routing/reconciler/intent.rs
+- [X] T012 Create ReconcilerPipeline struct in src/routing/reconciler/mod.rs with Vec<Box<dyn Reconciler>>
+- [X] T013 Implement ReconcilerPipeline::new() constructor in src/routing/reconciler/mod.rs
+- [X] T014 Implement ReconcilerPipeline::execute() method in src/routing/reconciler/mod.rs per FR-005 (fixed order execution)
+- [X] T015 [P] Create AgentSchedulingProfile struct in src/routing/reconciler/scheduling.rs per data-model.md
+- [X] T016 [P] Create MetricsSnapshot struct in src/metrics/mod.rs with error_rate, avg_ttft, success_rate methods per data-model.md
+- [X] T017 Implement AgentSchedulingProfile::from_backend() constructor in src/routing/reconciler/scheduling.rs
+- [X] T018 [P] Extend RoutingError in src/routing/error.rs to add Reject variant with rejection_reasons field
 
 **Checkpoint**: Foundation ready - user story reconciler implementation can now begin in parallel
 
@@ -70,20 +70,20 @@ This is a single Rust project with structure:
 
 ### Implementation for User Story 1
 
-- [ ] T019 [P] [US1] Create RequestAnalyzer struct in src/routing/reconciler/request_analyzer.rs
-- [ ] T020 [P] [US1] Create SchedulerReconciler struct in src/routing/reconciler/scheduler.rs
-- [ ] T021 [US1] Implement Reconciler trait for RequestAnalyzer in src/routing/reconciler/request_analyzer.rs with alias resolution (max 3 levels per FR-007)
-- [ ] T022 [US1] Implement requirement extraction in RequestAnalyzer in src/routing/reconciler/request_analyzer.rs per FR-008 (reuse RequestRequirements from RFC-001 Phase 1)
-- [ ] T023 [US1] Implement candidate agent population in RequestAnalyzer in src/routing/reconciler/request_analyzer.rs per FR-010
-- [ ] T024 [US1] Implement Reconciler trait for SchedulerReconciler in src/routing/reconciler/scheduler.rs with scoring formula from FR-029
-- [ ] T025 [US1] Implement quality_score calculation in SchedulerReconciler in src/routing/reconciler/scheduler.rs per FR-030
-- [ ] T026 [US1] Implement Queue decision logic in SchedulerReconciler for HealthStatus::Loading per FR-031
-- [ ] T027 [US1] Implement Reject decision logic in SchedulerReconciler when no candidates remain per FR-032
-- [ ] T028 [US1] Implement Route decision logic in SchedulerReconciler with agent selection per FR-033
-- [ ] T029 [US1] Integrate pipeline into Router::select_backend() in src/routing/mod.rs maintaining existing signature per FR-006
-- [ ] T030 [US1] Add pipeline construction with RequestAnalyzer and SchedulerReconciler in Router::select_backend() in src/routing/mod.rs
-- [ ] T031 [US1] Convert RoutingDecision to RoutingResult in Router::select_backend() in src/routing/mod.rs
-- [ ] T032 [US1] Validate all existing Router integration tests pass in tests/routing_integration.rs per FR-038
+- [X] T019 [P] [US1] Create RequestAnalyzer struct in src/routing/reconciler/request_analyzer.rs
+- [X] T020 [P] [US1] Create SchedulerReconciler struct in src/routing/reconciler/scheduler.rs
+- [X] T021 [US1] Implement Reconciler trait for RequestAnalyzer in src/routing/reconciler/request_analyzer.rs with alias resolution (max 3 levels per FR-007)
+- [X] T022 [US1] Implement requirement extraction in RequestAnalyzer in src/routing/reconciler/request_analyzer.rs per FR-008 (reuse RequestRequirements from RFC-001 Phase 1)
+- [X] T023 [US1] Implement candidate agent population in RequestAnalyzer in src/routing/reconciler/request_analyzer.rs per FR-010
+- [X] T024 [US1] Implement Reconciler trait for SchedulerReconciler in src/routing/reconciler/scheduler.rs with scoring formula from FR-029
+- [X] T025 [US1] Implement quality_score calculation in SchedulerReconciler in src/routing/reconciler/scheduler.rs per FR-030
+- [X] T026 [US1] Implement Queue decision logic in SchedulerReconciler for HealthStatus::Loading per FR-031
+- [X] T027 [US1] Implement Reject decision logic in SchedulerReconciler when no candidates remain per FR-032
+- [X] T028 [US1] Implement Route decision logic in SchedulerReconciler with agent selection per FR-033
+- [X] T029 [US1] Integrate pipeline into Router::select_backend() in src/routing/mod.rs maintaining existing signature per FR-006
+- [X] T030 [US1] Add pipeline construction with RequestAnalyzer and SchedulerReconciler in Router::select_backend() in src/routing/mod.rs
+- [X] T031 [US1] Convert RoutingDecision to RoutingResult in Router::select_backend() in src/routing/mod.rs
+- [X] T032 [US1] Validate all existing Router integration tests pass in tests/routing_integration.rs per FR-038
 
 **Checkpoint**: At this point, User Story 1 should be fully functional - basic pipeline routes requests through RequestAnalyzer and SchedulerReconciler, all existing tests pass
 

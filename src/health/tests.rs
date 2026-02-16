@@ -757,6 +757,7 @@ impl crate::agent::InferenceAgent for MockAgent {
             version: None,
             privacy_zone: PrivacyZone::Open,
             capabilities: AgentCapabilities::default(),
+            capability_tier: None,
         }
     }
     async fn health_check(&self) -> Result<HealthStatus, crate::agent::AgentError> {

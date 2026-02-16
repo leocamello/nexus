@@ -109,10 +109,7 @@ pub async fn handle(
                     )
                 }
                 crate::routing::RoutingError::Reject { rejection_reasons } => {
-                    format!(
-                        "Request rejected: {} reasons",
-                        rejection_reasons.len()
-                    )
+                    format!("Request rejected: {} reasons", rejection_reasons.len())
                 }
             };
 
