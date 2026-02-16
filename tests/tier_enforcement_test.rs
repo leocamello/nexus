@@ -8,7 +8,6 @@
 //! - T041: Tier 3 backend offline, tier 4 available, flexible mode → routes to tier 4
 //! - T042: Conflicting headers (both strict and flexible) → strict wins
 
-use axum::http::{HeaderMap, HeaderValue};
 use nexus::agent::factory::create_agent;
 use nexus::agent::PrivacyZone;
 use nexus::config::{PolicyMatcher, TrafficPolicy};

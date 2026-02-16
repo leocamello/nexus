@@ -89,7 +89,7 @@ fn bench_smart_routing_by_backend_count(c: &mut Criterion) {
 
         group.bench_with_input(BenchmarkId::new("backends", count), &count, |b, _| {
             b.iter(|| {
-                black_box(router.select_backend(&requirements).unwrap());
+                black_box(router.select_backend(&requirements, None).unwrap());
             });
         });
     }
@@ -113,7 +113,7 @@ fn bench_round_robin_routing(c: &mut Criterion) {
 
         group.bench_with_input(BenchmarkId::new("backends", count), &count, |b, _| {
             b.iter(|| {
-                black_box(router.select_backend(&requirements).unwrap());
+                black_box(router.select_backend(&requirements, None).unwrap());
             });
         });
     }
@@ -135,7 +135,7 @@ fn bench_capability_filtered_routing(c: &mut Criterion) {
 
     c.bench_function("capability_filtered_25_backends", |b| {
         b.iter(|| {
-            black_box(router.select_backend(&requirements).unwrap());
+            black_box(router.select_backend(&requirements, None).unwrap());
         });
     });
 }
@@ -176,7 +176,7 @@ fn bench_routing_with_fallback(c: &mut Criterion) {
 
     c.bench_function("routing_with_fallback_10_backends", |b| {
         b.iter(|| {
-            black_box(router.select_backend(&requirements).unwrap());
+            black_box(router.select_backend(&requirements, None).unwrap());
         });
     });
 }
@@ -213,7 +213,7 @@ fn bench_routing_with_alias(c: &mut Criterion) {
 
     c.bench_function("routing_with_alias_10_backends", |b| {
         b.iter(|| {
-            black_box(router.select_backend(&requirements).unwrap());
+            black_box(router.select_backend(&requirements, None).unwrap());
         });
     });
 }

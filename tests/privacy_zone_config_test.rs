@@ -199,7 +199,7 @@ fn test_tier_range_boundaries() {
 #[test]
 fn test_zone_tier_flow_to_agent_profile() {
     // T011: Verify AgentProfile population from BackendConfig
-    let registry = Arc::new(Registry::new());
+    let _registry = Arc::new(Registry::new());
     let client = Arc::new(reqwest::Client::new());
 
     // Create backend config with explicit zone and tier

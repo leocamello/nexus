@@ -16,7 +16,7 @@ use nexus::routing::reconciler::intent::RoutingIntent;
 use nexus::routing::reconciler::privacy::PrivacyReconciler;
 use nexus::routing::reconciler::request_analyzer::RequestAnalyzer;
 use nexus::routing::reconciler::scheduler::SchedulerReconciler;
-use nexus::routing::reconciler::{Reconciler, ReconcilerPipeline};
+use nexus::routing::reconciler::ReconcilerPipeline;
 use nexus::routing::{RequestRequirements, RoutingStrategy, ScoringWeights};
 use std::collections::HashMap;
 use std::sync::Arc;
