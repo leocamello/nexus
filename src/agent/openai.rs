@@ -117,6 +117,7 @@ impl InferenceAgent for OpenAIAgent {
                 token_counting: true, // F12: tiktoken-rs exact counting (T030)
                 resource_monitoring: false,
             },
+            capability_tier: None,  // Will be set per-model in future
         }
     }
 

@@ -81,6 +81,7 @@ pub async fn handle(
                 crate::routing::RoutingError::FallbackChainExhausted { .. } => "fallback_exhausted",
                 crate::routing::RoutingError::NoHealthyBackend { .. } => "no_healthy_backend",
                 crate::routing::RoutingError::CapabilityMismatch { .. } => "capability_mismatch",
+                crate::routing::RoutingError::Reject { .. } => "routing_rejected",
             };
 
             let sanitized_model = state.metrics_collector.sanitize_label(&requested_model);
@@ -107,6 +108,12 @@ pub async fn handle(
                         model, missing
                     )
                 }
+                crate::routing::RoutingError::Reject { rejection_reasons } => {
+                    format!(
+                        "Request rejected: {} reasons",
+                        rejection_reasons.len()
+                    )
+                }
             };
 
             record_request_completion(
@@ -129,6 +136,7 @@ pub async fn handle(
                 crate::routing::RoutingError::FallbackChainExhausted { .. } => 404u16,
                 crate::routing::RoutingError::NoHealthyBackend { .. } => 503u16,
                 crate::routing::RoutingError::CapabilityMismatch { .. } => 400u16,
+                crate::routing::RoutingError::Reject { .. } => 503u16,
             };
             Span::current().record("status_code", status_code);
 
@@ -180,6 +188,12 @@ pub async fn handle(
                     return Err(ApiError::bad_request(&format!(
                         "Model '{}' lacks required capabilities: {:?}",
                         model, missing
+                    )));
+                }
+                crate::routing::RoutingError::Reject { rejection_reasons } => {
+                    return Err(ApiError::service_unavailable(&format!(
+                        "Request rejected: {} reasons",
+                        rejection_reasons.len()
                     )));
                 }
             }
@@ -558,6 +572,12 @@ async fn handle_streaming(
                     return Err(ApiError::bad_request(&format!(
                         "Model '{}' lacks required capabilities: {:?}",
                         model, missing
+                    )));
+                }
+                crate::routing::RoutingError::Reject { rejection_reasons } => {
+                    return Err(ApiError::service_unavailable(&format!(
+                        "Request rejected: {} reasons",
+                        rejection_reasons.len()
                     )));
                 }
             }

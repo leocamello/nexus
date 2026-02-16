@@ -17,6 +17,10 @@ pub struct AgentProfile {
 
     /// Capability flags for this agent type.
     pub capabilities: AgentCapabilities,
+    
+    /// Capability tier for quality-cost tradeoffs (FR-025)
+    /// Higher tiers indicate more capable models (e.g., GPT-4 = tier 3, GPT-3.5 = tier 2)
+    pub capability_tier: Option<u8>,
 }
 
 /// Privacy zone classification for routing decisions.

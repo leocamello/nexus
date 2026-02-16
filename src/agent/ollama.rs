@@ -82,6 +82,7 @@ impl InferenceAgent for OllamaAgent {
                 token_counting: false,
                 resource_monitoring: false,
             },
+            capability_tier: None,  // Will be set per-model in future
         }
     }
 

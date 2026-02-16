@@ -12,6 +12,7 @@ pub mod error;
 pub mod requirements;
 pub mod scoring;
 pub mod strategies;
+pub mod reconciler;  // Reconciler pipeline module
 
 pub use error::RoutingError;
 pub use requirements::RequestRequirements;

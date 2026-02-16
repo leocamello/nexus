@@ -1,0 +1,156 @@
+# Contract: TrafficPolicy TOML Configuration
+
+**Module**: `src/config/routing.rs`  
+**Status**: Configuration Schema  
+**Version**: 1.0.0
+
+## TOML Schema
+
+```toml
+# Optional traffic policy section (zero configuration default)
+# Policies are evaluated in declaration order (first match wins)
+
+[[routing.policies]]
+# Glob pattern for model matching (* = any chars, ? = single char)
+model_pattern = "gpt-4-*"
+
+# Privacy constraint (optional, default: unrestricted)
+# Values: "unrestricted" | "restricted"
+privacy = "restricted"
+
+# Maximum cost per request in USD (optional)
+max_cost_per_request = 5.00
+
+# Minimum capability tier 0-255 (optional)
+min_tier = 3
+
+# Allow fallback to lower tiers (optional, default: true)
+fallback_allowed = false
+
+# Example: Multiple policies with specificity order
+[[routing.policies]]
+model_pattern = "gpt-4-turbo-*"  # More specific
+privacy = "restricted"
+min_tier = 4
+
+[[routing.policies]]
+model_pattern = "gpt-4-*"  # Less specific, evaluated after
+privacy = "restricted"
+min_tier = 3
+
+# Budget configuration (optional)
+[routing.budget]
+monthly_limit_usd = 1000.00
+soft_limit_percent = 0.75  # 75% threshold
+hard_limit_action = "block_cloud"  # "warn" | "block_cloud" | "block_all"
+```
+
+## Validation Rules
+
+1. **model_pattern** (required):
+   - Non-empty glob string
+   - Valid glob syntax (* and ? supported)
+   - Compilation error if invalid: `ConfigError::InvalidGlob`
+
+2. **privacy** (optional, default: "unrestricted"):
+   - Enum: `unrestricted` | `restricted`
+   - Case-insensitive in TOML
+
+3. **max_cost_per_request** (optional):
+   - Positive float
+   - USD denomination
+
+4. **min_tier** (optional):
+   - Integer 0-255
+   - Maps to AgentSchedulingProfile.capability_tier
+
+5. **fallback_allowed** (optional, default: true):
+   - Boolean
+   - Affects TierReconciler behavior with X-Nexus-Flexible header
+
+6. **Budget config**:
+   - `monthly_limit_usd`: Positive float (required if budget section present)
+   - `soft_limit_percent`: 0.0-1.0 (default 0.75)
+   - `hard_limit_action`: Enum (default "block_cloud")
+
+## Pattern Precedence
+
+**First match wins** (TOML declaration order):
+
+```toml
+# Order matters: more specific patterns should come first
+[[routing.policies]]
+model_pattern = "gpt-4-turbo-preview"  # Match first
+privacy = "restricted"
+
+[[routing.policies]]
+model_pattern = "gpt-4-*"  # Match if above doesn't match
+privacy = "unrestricted"
+```
+
+**Validation warning** if later patterns could shadow earlier:
+```
+WARN: Policy 'gpt-4-*' may be shadowed by earlier 'gpt-4-turbo-*'. 
+Reorder in TOML if specificity different.
+```
+
+## Loading Behavior
+
+```rust
+// In NexusConfig::load()
+let policies: Vec<TrafficPolicy> = config
+    .get_array("routing.policies")
+    .unwrap_or_default()
+    .into_iter()
+    .map(|v| v.try_into())
+    .collect::<Result<Vec<_>, _>>()?;
+
+// Compile glob patterns at config load
+let policy_matcher = PolicyMatcher::compile(policies)?;
+```
+
+## Error Handling
+
+| Error | TOML Cause | Behavior |
+|-------|-----------|----------|
+| `InvalidGlob` | Invalid pattern syntax | Config load fails, server won't start |
+| `CircularAlias` | Alias chain loops | Config load fails (alias validation) |
+| Missing section | No `[routing.policies]` | Treated as empty vec (zero config) |
+
+## Testing
+
+```rust
+#[test]
+fn parses_traffic_policy_from_toml() {
+    let toml = r#"
+        [[routing.policies]]
+        model_pattern = "gpt-4-*"
+        privacy = "restricted"
+        min_tier = 3
+    "#;
+    
+    let config: NexusConfig = toml::from_str(toml).unwrap();
+    assert_eq!(config.routing.policies.len(), 1);
+    assert_eq!(config.routing.policies[0].model_pattern, "gpt-4-*");
+}
+
+#[test]
+fn policy_order_preserved() {
+    let toml = r#"
+        [[routing.policies]]
+        model_pattern = "gpt-4-turbo-*"
+        
+        [[routing.policies]]
+        model_pattern = "gpt-4-*"
+    "#;
+    
+    let config: NexusConfig = toml::from_str(toml).unwrap();
+    assert_eq!(config.routing.policies[0].model_pattern, "gpt-4-turbo-*");
+    assert_eq!(config.routing.policies[1].model_pattern, "gpt-4-*");
+}
+```
+
+---
+
+**Version History**:
+- **1.0.0** (2025-01-09): Initial TOML schema for RFC-001 Phase 2
