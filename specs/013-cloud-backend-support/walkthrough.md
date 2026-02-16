@@ -1,234 +1,1322 @@
-# F12: Cloud Backend Support — Implementation Walkthrough
+# Cloud Backend Support - Code Walkthrough
 
-## 1. Overview
+**Feature**: F12 - Cloud Backend Support with Nexus-Transparent Protocol  
+**Audience**: Junior developers joining the project  
+**Last Updated**: 2026-02-16
 
-F12 adds cloud LLM providers (OpenAI, Anthropic, Google) as first-class backends alongside local inference engines. Each cloud provider is implemented as an `InferenceAgent` — the same trait used by Ollama, vLLM, and other local backends — so the router and API layer are completely provider-agnostic. Translation between OpenAI-compatible format and vendor-specific APIs happens inside each agent (no standalone translators), following the anti-abstraction principle.
+---
 
-Key additions: three cloud agent implementations, a cost estimation system, a transparent protocol for exposing routing metadata via HTTP headers, and actionable 503 error responses.
+## Table of Contents
 
-## 2. Architecture
+1. [The Big Picture](#the-big-picture)
+2. [File Structure](#file-structure)
+3. [File 1: registry/backend.rs - New Backend Types](#file-1-registrybackendrs---new-backend-types)
+4. [File 2: config/backend.rs - Cloud Configuration](#file-2-configbackendrs---cloud-configuration)
+5. [File 3: agent/factory.rs - Creating Cloud Agents](#file-3-agentfactoryrs---creating-cloud-agents)
+6. [File 4: agent/openai.rs - OpenAI Agent (Tiktoken)](#file-4-agentopenairs---openai-agent-tiktoken)
+7. [File 5: agent/anthropic.rs - Anthropic Agent](#file-5-agentanthropicrs---anthropic-agent)
+8. [File 6: agent/google.rs - Google AI Agent](#file-6-agentgooglers---google-ai-agent)
+9. [File 7: agent/pricing.rs - Cost Estimation](#file-7-agentpricingrs---cost-estimation)
+10. [File 8: api/headers.rs - The Transparent Protocol](#file-8-apiheadersrs---the-transparent-protocol)
+11. [File 9: api/error.rs - Actionable 503 Errors](#file-9-apierrorrs---actionable-503-errors)
+12. [File 10: api/completions.rs - Wiring It All Together](#file-10-apicompletionsrs---wiring-it-all-together)
+13. [Understanding the Tests](#understanding-the-tests)
+14. [Key Rust Concepts](#key-rust-concepts)
+15. [Common Patterns in This Codebase](#common-patterns-in-this-codebase)
+16. [Next Steps](#next-steps)
 
-Cloud backends plug into the existing NII (Normalized Inference Interface) architecture:
+---
 
-```
-Client Request (OpenAI format)
-       │
-       ▼
-  ┌─────────┐     ┌────────────┐     ┌─────────────────────┐
-  │ API Layer│────▶│   Router   │────▶│  InferenceAgent      │
-  │ (axum)   │     │ (scoring)  │     │  ┌─OllamaAgent      │
-  │          │     │            │     │  ├─OpenAIAgent       │
-  │ Injects  │     │ Capability │     │  ├─AnthropicAgent    │
-  │ X-Nexus  │     │ matching   │     │  ├─GoogleAIAgent     │
-  │ headers  │     │ + privacy  │     │  └─GenericAgent      │
-  └─────────┘     └────────────┘     └─────────────────────┘
-                                              │
-                                    ┌─────────┴──────────┐
-                                    ▼                    ▼
-                              Local backends       Cloud APIs
-                              (Ollama, vLLM)    (OpenAI, Anthropic, Google)
-```
+## The Big Picture
 
-All agents implement `InferenceAgent` (defined in `src/agent/mod.rs`). The factory (`src/agent/factory.rs`) instantiates the correct agent based on `BackendType`. The router selects backends by capability, load, and privacy zone — it never knows whether the target is local or cloud.
+Think of Nexus as a **universal remote control for AI backends**. Before this feature, that remote only worked with local devices — Ollama, vLLM, LM Studio servers running on your network. Cloud Backend Support adds the ability to also talk to cloud services like OpenAI, Anthropic, and Google, all through the same buttons.
 
-## 3. Key Files
+The trick is that each cloud provider speaks a **different language**:
 
-| File | Purpose |
-|------|---------|
-| `src/agent/mod.rs` | `InferenceAgent` trait definition, `AgentProfile`, `HealthStatus`, `TokenCount` |
-| `src/agent/factory.rs` | `create_agent()` — dispatches on `BackendType` to build the right agent |
-| `src/agent/openai.rs` | OpenAI agent — Bearer auth, tiktoken counting, passthrough API |
-| `src/agent/anthropic.rs` | Anthropic agent — `x-api-key` auth, request/response translation, SSE conversion |
-| `src/agent/google.rs` | Google AI agent — query-param auth, role mapping, `systemInstruction` extraction |
-| `src/agent/pricing.rs` | `PricingTable` — per-model cost estimation from token usage |
-| `src/agent/types.rs` | `PrivacyZone` enum (`Restricted`, `Open`) |
-| `src/api/headers.rs` | `NexusTransparentHeaders` — X-Nexus-* header injection |
-| `src/api/error.rs` | `ActionableErrorContext`, `ServiceUnavailableError` — contextual 503s |
-| `src/api/completions.rs` | Request handler — routes to agent, injects headers after response |
-| `src/registry/backend.rs` | `BackendType` enum — includes `Anthropic` and `Google` variants |
-| `src/config/backend.rs` | `BackendConfig` — `api_key_env`, `zone`, `tier` fields for cloud config |
+- OpenAI speaks... OpenAI format (easy — Nexus already speaks this)
+- Anthropic speaks the Messages API (different message structure, different streaming format)
+- Google speaks the Generative AI API (completely different JSON schema, different roles)
 
-## 4. Data Flow
+Each agent acts as a **translator**: your app sends OpenAI-format requests, and the agent converts them to whatever the cloud provider expects, then converts the response back.
 
-### Non-Streaming Request
+### What Problem Does This Solve?
+
+Without F12, if you wanted to use GPT-4 alongside your local Ollama models, you'd need two separate API endpoints in your app. With F12, you configure both in `nexus.example.toml` and your app talks to one URL — Nexus handles which backend gets each request.
+
+### How Cloud Backends Fit Into Nexus
 
 ```
-1. POST /v1/chat/completions  (OpenAI-format JSON body)
-2. Router selects backend (capability match + privacy zone filter)
-3. API layer calls agent.chat_completion(&request)
-4. Agent translates request → vendor format (Anthropic/Google only)
-5. Agent sends HTTP request to cloud API with auth
-6. Agent translates response → OpenAI format
-7. API layer builds axum::Response with JSON body
-8. NexusTransparentHeaders::inject_into_response() adds X-Nexus-* headers
-9. Response returned to client (JSON body untouched, metadata in headers)
+┌─────────────────────────────────────────────────────────────────────────┐
+│                               Nexus                                     │
+│                                                                         │
+│  ┌──────────┐     ┌──────────┐     ┌───────────────────────────────┐    │
+│  │   API    │────▶│  Router  │────▶│  Registry (Dual Storage)      │    │
+│  │ Gateway  │     │          │     │                               │    │
+│  └──────────┘     └──────────┘     │  backends: DashMap<Backend>   │    │
+│       │                            │  agents:   DashMap<Agent>     │    │
+│       │                            └──────────────┬────────────────┘    │
+│       │                                           │                     │
+│       │  ┌────────────────────────────────────────┘                     │
+│       │  │                                                              │
+│       ▼  ▼                                                              │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │              InferenceAgent Trait                                 │   │
+│  │                                                                  │   │
+│  │  LOCAL (Restricted)              CLOUD (Open) ← NEW!             │   │
+│  │  ┌──────────┐ ┌──────────┐      ┌──────────┐ ┌──────────┐       │   │
+│  │  │ Ollama   │ │ LM       │      │ OpenAI   │ │Anthropic │       │   │
+│  │  │ Agent    │ │ Studio   │      │ Agent    │ │ Agent    │       │   │
+│  │  └──────────┘ └──────────┘      └──────────┘ └──────────┘       │   │
+│  │  ┌──────────┐                   ┌──────────┐                     │   │
+│  │  │ Generic  │                   │ Google   │                     │   │
+│  │  │ (vLLM,   │                   │ Agent    │                     │   │
+│  │  │  exo...) │                   │          │                     │   │
+│  │  └──────────┘                   └──────────┘                     │   │
+│  └──────────────────────────────────────────────────────────────────┘   │
+│                                                                         │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │  NEW: Nexus-Transparent Protocol                                 │   │
+│  │                                                                  │   │
+│  │  Every response gets X-Nexus-* headers:                          │   │
+│  │  X-Nexus-Backend: openai-gpt4                                    │   │
+│  │  X-Nexus-Backend-Type: cloud                                     │   │
+│  │  X-Nexus-Route-Reason: capability-match                          │   │
+│  │  X-Nexus-Privacy-Zone: open                                      │   │
+│  │  X-Nexus-Cost-Estimated: 0.0042                                  │   │
+│  │                                                                  │   │
+│  │  Response JSON body is NEVER modified (Constitution Principle III)│   │
+│  └──────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Streaming Request
+### Key Design Decisions
+
+| Decision | Why |
+|----------|-----|
+| Translation embedded in agents, not standalone translators | Anti-Abstraction Principle — no extra layer of indirection |
+| Headers only, never modify JSON body | Constitution Principle III — strict OpenAI compatibility |
+| API keys from env vars, never in config | Security — config files may be committed to version control |
+| `PricingTable` with hardcoded rates | Simplicity — no runtime dependency on pricing APIs |
+| `PrivacyZone::Open` for cloud backends | Foundation for F13 (Privacy Zones) enforcement |
+| Heuristic token counting for non-OpenAI | Only OpenAI has a Rust tokenizer (tiktoken-rs); others use chars/4 |
+
+### Request Lifecycle With Cloud Backend
+
+Here's what happens when a chat request is routed to Anthropic:
 
 ```
-1. POST /v1/chat/completions  { "stream": true }
-2. Router selects backend
-3. API layer calls agent.chat_completion_stream(&request)
-4. Agent opens SSE connection to vendor API
-5. Agent translates each vendor SSE chunk → OpenAI SSE format
-6. API layer wraps stream in axum::Response (SSE content-type)
-7. X-Nexus-* headers injected on the response (before body streams)
-8. SSE chunks forwarded to client in OpenAI format
+┌──────────────────────────────────────────────────────────────────────────┐
+│                  Request Lifecycle (Cloud Backend)                        │
+│                                                                          │
+│  Client                                                                  │
+│    │                                                                     │
+│    │  POST /v1/chat/completions                                          │
+│    │  { "model": "claude-3-sonnet",                                      │
+│    │    "messages": [                                                     │
+│    │      {"role": "system", "content": "You are helpful"},              │
+│    │      {"role": "user", "content": "Hello"}                           │
+│    │    ] }                                                               │
+│    ▼                                                                     │
+│  ┌─────────────────────────────────────────────────────────────────────┐ │
+│  │  api/completions.rs :: handle()                                     │ │
+│  │                                                                     │ │
+│  │  ① Router selects backend "anthropic-cloud" for "claude-3-sonnet"   │ │
+│  │  │                                                                  │ │
+│  │  ② registry.get_agent("anthropic-cloud")                            │ │
+│  │  │  └─ Returns Arc<dyn InferenceAgent> (an AnthropicAgent)          │ │
+│  │  │                                                                  │ │
+│  │  ③ agent.chat_completion(request, headers)                          │ │
+│  │  │  ├─ translate_request() → Anthropic format                       │ │
+│  │  │  │  ├─ System messages extracted to `system` parameter           │ │
+│  │  │  │  └─ max_tokens added (required by Anthropic)                  │ │
+│  │  │  ├─ POST https://api.anthropic.com/v1/messages                   │ │
+│  │  │  │  Headers: x-api-key: sk-ant-..., anthropic-version: ...       │ │
+│  │  │  └─ translate_response() → OpenAI format                         │ │
+│  │  │     ├─ stop_reason "end_turn" → finish_reason "stop"             │ │
+│  │  │     └─ usage.input_tokens → usage.prompt_tokens                  │ │
+│  │  │                                                                  │ │
+│  │  ④ Estimate cost from response.usage + PricingTable                 │ │
+│  │  │                                                                  │ │
+│  │  ⑤ Inject X-Nexus-* headers into response                          │ │
+│  │  │  └─ Headers only — JSON body untouched                           │ │
+│  │  │                                                                  │ │
+│  │  ⑥ Return OpenAI-compatible response to client                      │ │
+│  └─────────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
-## 5. Cloud Agent Implementations
+---
 
-### OpenAI (`src/agent/openai.rs`)
+## File Structure
 
-**Auth**: Bearer token in `Authorization` header. API key resolved from env var specified in `api_key_env`.
+```
+src/
+├── agent/
+│   ├── openai.rs              # MODIFIED: added tiktoken token counting
+│   ├── anthropic.rs           # NEW: Anthropic Messages API agent (~807 lines)
+│   ├── google.rs              # NEW: Google Generative AI agent (~854 lines)
+│   ├── pricing.rs             # NEW: Cost estimation table (~218 lines)
+│   ├── translation.rs         # MODIFIED: cleaned up to shared error types only
+│   ├── factory.rs             # MODIFIED: added Anthropic + Google creation
+│   └── mod.rs                 # MODIFIED: registered new modules
+├── api/
+│   ├── headers.rs             # NEW: X-Nexus-* transparent headers (~209 lines)
+│   ├── error.rs               # NEW: Actionable 503 errors (~172 lines)
+│   ├── completions.rs         # MODIFIED: cost estimation + header injection + 503 handling
+│   └── mod.rs                 # MODIFIED: added PricingTable to AppState
+├── config/
+│   └── backend.rs             # MODIFIED: added zone + tier fields
+├── registry/
+│   └── backend.rs             # MODIFIED: added Anthropic + Google to BackendType
 
-**Translation**: None needed — OpenAI format is the native format. Requests and responses pass through directly.
+tests/
+├── transparent_protocol_test.rs       # NEW: 14 tests for X-Nexus-* headers
+├── openai_compatibility_contract.rs   # NEW: 3 contract tests for body preservation
+├── actionable_errors_unit.rs          # NEW: 10 unit tests for error types
+└── actionable_errors_integration.rs   # NEW: 5 integration tests for 503 responses
+```
 
-**Token counting**: Uses `tiktoken-rs` with `o200k_base` encoding for exact counts (`TokenCount::Exact`), replacing the default heuristic.
+---
 
-**Streaming**: `response.bytes_stream()` forwarded directly as SSE — no translation needed.
+## File 1: registry/backend.rs - New Backend Types
 
-**Health check**: `GET /v1/models` — counts returned models; 401 → `Unhealthy`.
+Two new variants were added to the `BackendType` enum:
 
-### Anthropic (`src/agent/anthropic.rs`)
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BackendType {
+    Ollama,
+    VLLM,
+    LlamaCpp,
+    Exo,
+    OpenAI,
+    LMStudio,
+    Generic,
+    Anthropic,    // ← NEW
+    Google,       // ← NEW
+}
+```
 
-**Auth**: Custom `x-api-key` header (not Bearer). Also sends `anthropic-version: 2023-06-01`.
+**What's happening here:**
 
-**Translation** (request):
-- System messages extracted from the messages array → top-level `system` parameter
-- `max_tokens` added if absent (defaults to 4096, required by Anthropic API)
-- Messages posted to `POST /v1/messages`
+- `Anthropic` and `Google` are new variants that the router, health checker, and factory now recognize.
+- `#[serde(rename_all = "lowercase")]` means they serialize as `"anthropic"` and `"google"` in JSON and TOML.
 
-**Translation** (response):
-- `content[].text` → OpenAI `choices[].message.content`
-- `stop_reason` → `finish_reason`
-- Usage mapped to OpenAI `usage` object
+### default_privacy_zone() — Local vs Cloud Classification
 
-**Streaming**: Anthropic SSE events (`message_start`, `content_block_delta`, `message_delta`, `message_stop`) parsed and translated to OpenAI `chat.completion.chunk` format.
+```rust
+impl BackendType {
+    pub fn default_privacy_zone(&self) -> PrivacyZone {
+        match self {
+            // Local backends — data stays on your network
+            BackendType::Ollama
+            | BackendType::VLLM
+            | BackendType::LlamaCpp
+            | BackendType::Exo
+            | BackendType::LMStudio
+            | BackendType::Generic => PrivacyZone::Restricted,
 
-**Models**: Hardcoded Claude 3 family (Opus, Sonnet, Haiku, 3.5-Sonnet) with capability metadata.
+            // Cloud backends — data leaves your network
+            BackendType::OpenAI
+            | BackendType::Anthropic
+            | BackendType::Google => PrivacyZone::Open,
+        }
+    }
+}
+```
 
-### Google AI (`src/agent/google.rs`)
+**Why this matters:** This is the foundation for F13 (Privacy Zones). When a user marks a request as "restricted", Nexus will filter out all cloud backends. But for now in F12, we just classify and report via headers.
 
-**Auth**: API key as URL query parameter (`?key={api_key}`).
+---
 
-**Translation** (request):
-- System messages extracted → `systemInstruction` field with `parts` array
-- Role mapping: `"assistant"` → `"model"` (Google's role name)
-- Posted to `POST /v1beta/models/{model}:generateContent?key=...`
+## File 2: config/backend.rs - Cloud Configuration
 
-**Translation** (response):
-- `candidates[0].content.parts[]` → OpenAI `choices[].message.content`
-- Finish reasons mapped: `STOP`, `MAX_TOKENS`, `SAFETY` → OpenAI equivalents
+Two new optional fields were added to `BackendConfig`:
 
-**Streaming**: `POST /v1beta/models/{model}:streamGenerateContent?alt=sse&key=...` — SSE chunks translated to OpenAI format.
+```rust
+pub struct BackendConfig {
+    pub name: String,
+    pub url: String,
+    pub backend_type: BackendType,
+    pub priority: i32,
+    pub api_key_env: Option<String>,   // Existed before (for OpenAI)
+    pub zone: Option<PrivacyZone>,     // ← NEW
+    pub tier: Option<u8>,              // ← NEW
+}
+```
 
-**Models**: Discovered via `GET /v1beta/models` — filtered to those supporting `generateContent`. Supports embeddings.
+**What each field does:**
 
-## 6. Nexus-Transparent Protocol
+| Field | Type | Default | Purpose |
+|-------|------|---------|---------|
+| `api_key_env` | `Option<String>` | `None` | Name of environment variable holding the API key |
+| `zone` | `Option<PrivacyZone>` | Backend's default | Override privacy zone (`"open"` or `"restricted"`) |
+| `tier` | `Option<u8>` | `3` | Capability tier 1-5 (for future F13 routing) |
 
-All responses include `X-Nexus-*` headers. Headers are injected AFTER the response body is built — the JSON body is never modified (OpenAI strict compatibility).
+### Validation
 
-Implementation in `src/api/headers.rs`:
+```rust
+impl BackendConfig {
+    pub fn validate(&self) -> Result<(), String> {
+        // Cloud backends MUST have api_key_env
+        if matches!(
+            self.backend_type,
+            BackendType::OpenAI | BackendType::Anthropic | BackendType::Google
+        ) && self.api_key_env.is_none()
+        {
+            return Err(format!(
+                "Backend '{}' of type {:?} requires 'api_key_env' field",
+                self.name, self.backend_type
+            ));
+        }
 
-| Header | Values | Description |
-|--------|--------|-------------|
-| `X-Nexus-Backend` | e.g. `"openai-gpt4"` | Name of the backend that served this request |
-| `X-Nexus-Backend-Type` | `"local"` or `"cloud"` | Classification based on `BackendType` |
-| `X-Nexus-Route-Reason` | `capability-match`, `capacity-overflow`, `privacy-requirement`, `failover` | Why this backend was selected |
-| `X-Nexus-Privacy-Zone` | `"restricted"` or `"open"` | Privacy zone of the serving backend |
-| `X-Nexus-Cost-Estimated` | e.g. `"0.0042"` | Estimated USD cost (cloud only, 4 decimal places) |
+        // Tier must be 1-5
+        if let Some(tier) = self.tier {
+            if !(1..=5).contains(&tier) {
+                return Err(format!(
+                    "Backend '{}' has invalid tier {}, must be 1-5",
+                    self.name, tier
+                ));
+            }
+        }
 
-Additionally, `x-nexus-fallback-model` is set when a fallback route was used (defined in `src/api/completions.rs`).
+        Ok(())
+    }
+}
+```
 
-Injection happens via `NexusTransparentHeaders::inject_into_response(&mut resp)` — a single method that writes all headers, ensuring consistency across streaming and non-streaming paths.
+**What `matches!(...)` does:** It's a macro that returns `true` if the value matches any of the listed patterns. It's cleaner than writing `if self.backend_type == A || self.backend_type == B || ...`.
 
-## 7. Cost Estimation
+### Example TOML Configuration
 
-`PricingTable` (`src/agent/pricing.rs`) holds hardcoded per-model pricing:
+```toml
+# Cloud backend with API key from environment
+[[backends]]
+name = "anthropic-cloud"
+url = "https://api.anthropic.com"
+type = "anthropic"
+priority = 101
+api_key_env = "ANTHROPIC_API_KEY"
+zone = "open"
+tier = 3
+```
+
+The key insight: `api_key_env = "ANTHROPIC_API_KEY"` says "read the API key from the `ANTHROPIC_API_KEY` environment variable". The actual key is **never** in the config file.
+
+---
+
+## File 3: agent/factory.rs - Creating Cloud Agents
+
+The factory gained two new match arms for Anthropic and Google:
+
+```rust
+pub fn create_agent(
+    id: String,
+    name: String,
+    url: String,
+    backend_type: BackendType,
+    client: Arc<Client>,
+    metadata: HashMap<String, String>,
+) -> Result<Arc<dyn InferenceAgent>, AgentError> {
+    match backend_type {
+        // ... existing: Ollama, OpenAI, LMStudio, Generic ...
+
+        BackendType::Anthropic => {
+            let api_key = extract_api_key(&metadata)?;   // From env var
+            Ok(Arc::new(AnthropicAgent::new(
+                id, name, url, api_key, client,
+            )))
+        }
+
+        BackendType::Google => {
+            let api_key = extract_api_key(&metadata)?;   // From env var
+            Ok(Arc::new(GoogleAIAgent::new(
+                id, name, url, api_key, client,
+            )))
+        }
+    }
+}
+```
+
+**What's happening here:**
+
+- `extract_api_key()` checks `metadata["api_key"]` first, then looks up `metadata["api_key_env"]` as an environment variable name with `std::env::var()`. Missing key → `AgentError::Configuration`.
+- Each agent gets a shared `Arc<Client>` — connection pooling across all agents.
+- The return type `Arc<dyn InferenceAgent>` is a **trait object** — the caller doesn't know (or care) if it's an `AnthropicAgent` or `OllamaAgent`. It just calls `.chat_completion()`.
+
+### BackendType → Agent Mapping (Updated)
+
+| BackendType | Agent | Privacy Zone | Auth Method |
+|-------------|-------|-------------|-------------|
+| `Ollama` | `OllamaAgent` | Restricted | None |
+| `OpenAI` | `OpenAIAgent` | Open | `Authorization: Bearer {key}` |
+| `Anthropic` | `AnthropicAgent` | Open | `x-api-key: {key}` |
+| `Google` | `GoogleAIAgent` | Open | `?key={key}` query parameter |
+| `LMStudio` | `LMStudioAgent` | Restricted | None |
+| `VLLM`, `LlamaCpp`, `Exo`, `Generic` | `GenericOpenAIAgent` | Restricted | None |
+
+---
+
+## File 4: agent/openai.rs - OpenAI Agent (Tiktoken)
+
+The OpenAI agent existed before F12, but gained **exact token counting** using tiktoken-rs:
+
+```rust
+async fn count_tokens(&self, _model_id: &str, text: &str) -> TokenCount {
+    use tiktoken_rs::o200k_base;
+
+    match o200k_base() {
+        Ok(bpe) => {
+            let tokens = bpe.encode_ordinary(text);
+            TokenCount::Exact(tokens.len() as u32)
+        }
+        Err(e) => {
+            // Fall back to heuristic if tiktoken fails
+            tracing::warn!("tiktoken encoding failed: {}, using heuristic", e);
+            TokenCount::Heuristic((text.len() / 4) as u32)
+        }
+    }
+}
+```
+
+**What's happening here:**
+
+- `o200k_base()` loads OpenAI's BPE (Byte Pair Encoding) tokenizer. This is the same tokenizer OpenAI uses internally.
+- `encode_ordinary(text)` splits the text into tokens. The length of the resulting vector is the exact token count.
+- `TokenCount::Exact(n)` tells the caller "this is a precise count" — distinct from `TokenCount::Heuristic(n)` which says "this is an estimate."
+- If the tokenizer fails to load (unlikely), we fall back to the chars/4 heuristic that all agents use by default.
+
+**Why only OpenAI gets exact counting:** tiktoken-rs implements OpenAI's specific tokenizer. Anthropic and Google use different tokenizers that don't have Rust implementations yet, so they use the inherited default `TokenCount::Heuristic((text.len() / 4) as u32)` from the `InferenceAgent` trait.
+
+---
+
+## File 5: agent/anthropic.rs - Anthropic Agent
+
+This is the most complex new file. It translates between OpenAI format and Anthropic's Messages API.
+
+### The Struct
+
+```rust
+pub struct AnthropicAgent {
+    id: String,
+    name: String,
+    base_url: String,           // "https://api.anthropic.com"
+    api_key: String,            // From ANTHROPIC_API_KEY env var
+    client: Arc<Client>,        // Shared connection pool
+    pricing: Arc<PricingTable>, // For cost estimation
+}
+```
+
+### Translation: The Core Challenge
+
+OpenAI and Anthropic handle system messages differently:
+
+```
+OpenAI format:                          Anthropic format:
+{                                       {
+  "model": "claude-3-sonnet",            "model": "claude-3-sonnet",
+  "messages": [                          "system": "You are helpful",  ← EXTRACTED
+    {"role": "system",                   "messages": [
+     "content": "You are helpful"},        {"role": "user",
+    {"role": "user",                        "content": "Hello"}
+     "content": "Hello"}                 ],
+  ]                                      "max_tokens": 4096  ← REQUIRED
+}                                       }
+```
+
+Here's how the translation works:
+
+```rust
+fn translate_request(&self, request: &ChatCompletionRequest) -> AnthropicRequest {
+    // Step 1: Extract system messages into a separate parameter
+    let system_messages: Vec<String> = request
+        .messages
+        .iter()
+        .filter_map(|msg| {
+            if msg.role == "system" {
+                // Pull out the text content
+                match &msg.content {
+                    MessageContent::Text { content } => Some(content.clone()),
+                    MessageContent::Parts { .. } => None,
+                }
+            } else {
+                None // Skip user/assistant messages here
+            }
+        })
+        .collect();
+
+    // Combine multiple system messages into one string
+    let system = if system_messages.is_empty() {
+        None
+    } else {
+        Some(system_messages.join("\n"))
+    };
+
+    // Step 2: Filter OUT system messages, keep user/assistant
+    let messages: Vec<AnthropicMessage> = request
+        .messages
+        .iter()
+        .filter_map(|msg| {
+            if msg.role == "system" {
+                None  // Already extracted above
+            } else {
+                Some(AnthropicMessage {
+                    role: msg.role.clone(),
+                    content: /* extract text */,
+                })
+            }
+        })
+        .collect();
+
+    AnthropicRequest {
+        model: request.model.clone(),
+        messages,
+        max_tokens: request.max_tokens.unwrap_or(4096), // Anthropic REQUIRES this
+        system,
+        temperature: request.temperature,
+        stream: Some(request.stream),
+    }
+}
+```
+
+**Key Rust concept — `filter_map`:** This iterator method combines `filter` and `map` in one step. If the closure returns `Some(value)`, the item is included. If it returns `None`, the item is skipped. It's more efficient and readable than `.filter(...).map(...)`.
+
+### Response Translation
+
+The response comes back in Anthropic's format and needs to be converted:
+
+```rust
+fn translate_response(&self, response: AnthropicResponse) -> ChatCompletionResponse {
+    // Anthropic returns content as an array of "blocks"
+    let text = response.content
+        .iter()
+        .filter_map(|block| {
+            if block.r#type == "text" { block.text.clone() }
+            else { None }
+        })
+        .collect::<Vec<String>>()
+        .join("");
+
+    // Map Anthropic's stop_reason to OpenAI's finish_reason
+    let finish_reason = match response.stop_reason.as_deref() {
+        Some("end_turn")      => "stop",     // Normal completion
+        Some("max_tokens")    => "length",   // Hit token limit
+        Some("stop_sequence") => "stop",     // Hit custom stop
+        _                     => "stop",     // Default
+    };
+
+    ChatCompletionResponse {
+        id: response.id,
+        object: "chat.completion".to_string(),
+        model: response.model,
+        choices: vec![Choice {
+            message: ChatMessage {
+                role: "assistant".to_string(),
+                content: MessageContent::Text { content: text },
+                /* ... */
+            },
+            finish_reason: Some(finish_reason.to_string()),
+            /* ... */
+        }],
+        // Note: different field names in usage!
+        usage: Some(Usage {
+            prompt_tokens: response.usage.input_tokens,       // ← different name
+            completion_tokens: response.usage.output_tokens,  // ← different name
+            total_tokens: response.usage.input_tokens + response.usage.output_tokens,
+        }),
+        /* ... */
+    }
+}
+```
+
+**What `as_deref()` does:** `response.stop_reason` is `Option<String>`. Calling `.as_deref()` converts `Option<String>` → `Option<&str>`, which lets us pattern-match against string literals like `"end_turn"`. Without it, we'd need to compare owned `String` values.
+
+### Streaming Translation
+
+Anthropic uses **Server-Sent Events (SSE)** but with different event types than OpenAI:
+
+```
+Anthropic SSE:                    OpenAI SSE (what Nexus returns):
+event: message_start             data: {"choices":[{"delta":{"role":"assistant"}}]}
+data: {"message":{"id":"..."}}
+
+event: content_block_delta       data: {"choices":[{"delta":{"content":"Hello"}}]}
+data: {"delta":{"text":"Hello"}}
+
+event: message_delta             data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
+data: {"delta":{"stop_reason":"end_turn"}}
+
+event: message_stop              data: [DONE]
+```
+
+The `translate_stream_chunk` method handles each event type:
+
+```rust
+fn translate_stream_chunk(&self, event: &str, data: &str) -> Option<String> {
+    match event {
+        "message_start" => {
+            // First chunk: role announcement
+            let chunk = json!({"choices": [{"delta": {"role": "assistant"}}]});
+            Some(format!("data: {}\n\n", chunk))
+        }
+        "content_block_delta" => {
+            // Content chunk: actual text
+            let delta: ContentBlockDelta = serde_json::from_str(data)?;
+            let chunk = json!({"choices": [{"delta": {"content": delta.delta.text}}]});
+            Some(format!("data: {}\n\n", chunk))
+        }
+        "message_delta" => {
+            // Final chunk: finish reason
+            let chunk = json!({"choices": [{"finish_reason": "stop"}]});
+            Some(format!("data: {}\n\n", chunk))
+        }
+        "message_stop" => {
+            // Done sentinel
+            Some("data: [DONE]\n\n".to_string())
+        }
+        _ => None, // Ignore unknown events
+    }
+}
+```
+
+### Authentication
+
+```rust
+// Anthropic uses a custom header, not Bearer token
+let response = self.client
+    .post(&url)
+    .header("x-api-key", &self.api_key)         // ← Custom header
+    .header("anthropic-version", "2023-06-01")   // ← API version pinning
+    .header("content-type", "application/json")
+    .json(&anthropic_request)
+    .send()
+    .await?;
+```
+
+---
+
+## File 6: agent/google.rs - Google AI Agent
+
+Similar structure to the Anthropic agent, but with Google's unique quirks.
+
+### Translation: Two Key Differences
+
+**1. Role Mapping: "assistant" ↔ "model"**
+
+Google uses `"model"` where OpenAI uses `"assistant"`:
+
+```rust
+// OpenAI → Google
+let role = if msg.role == "assistant" {
+    "model".to_string()     // Google calls it "model"
+} else {
+    msg.role.clone()        // "user" stays "user"
+};
+```
+
+**2. System Messages → `systemInstruction`**
+
+Google puts system messages in a completely different structure:
+
+```
+OpenAI format:                          Google format:
+{                                       {
+  "messages": [                           "systemInstruction": {
+    {"role": "system",                      "parts": [{"text": "Be helpful"}]
+     "content": "Be helpful"},            },
+    {"role": "user",                      "contents": [
+     "content": "Hi"}                      {"role": "user",
+  ]                                         "parts": [{"text": "Hi"}]}
+}                                         ],
+                                          "generationConfig": {
+                                            "temperature": 0.7
+                                          }
+                                        }
+```
+
+```rust
+fn translate_request(&self, request: &ChatCompletionRequest) -> GoogleRequest {
+    // System messages → systemInstruction.parts
+    let system_instruction = if system_messages.is_empty() {
+        None
+    } else {
+        Some(GoogleSystemInstruction {
+            parts: vec![GooglePart {
+                text: system_messages.join("\n"),
+            }],
+        })
+    };
+
+    // Non-system messages → contents
+    let contents: Vec<GoogleContent> = request.messages
+        .iter()
+        .filter_map(|msg| {
+            if msg.role == "system" { return None; } // Already handled
+
+            let role = if msg.role == "assistant" { "model" } else { &msg.role };
+            Some(GoogleContent {
+                role: role.to_string(),
+                parts: vec![GooglePart { text: /* ... */ }],
+            })
+        })
+        .collect();
+
+    GoogleRequest {
+        contents,
+        system_instruction,
+        generation_config: Some(/* temperature, max_output_tokens */),
+    }
+}
+```
+
+### Response Translation: finish_reason Mapping
+
+```rust
+let finish = match candidate.finish_reason.as_deref() {
+    Some("STOP")       => "stop",            // Normal completion
+    Some("MAX_TOKENS") => "length",          // Hit token limit
+    Some("SAFETY")     => "content_filter",  // Safety filter triggered
+    Some("RECITATION") => "content_filter",  // Copyright filter
+    _                  => "stop",            // Default
+};
+```
+
+### Authentication: Query Parameter
+
+Unlike OpenAI (Bearer token) and Anthropic (custom header), Google uses a **query parameter**:
+
+```rust
+// Health check
+let url = format!("{}/v1beta/models?key={}", self.base_url, self.api_key);
+
+// Chat completion
+let url = format!(
+    "{}/v1beta/models/{}:generateContent?key={}",
+    self.base_url, model, self.api_key
+);
+
+// Streaming
+let url = format!(
+    "{}/v1beta/models/{}:streamGenerateContent?alt=sse&key={}",
+    self.base_url, model, self.api_key
+);
+```
+
+### Comparison: Three Different Worlds
+
+| Aspect | OpenAI | Anthropic | Google |
+|--------|--------|-----------|--------|
+| Auth | `Authorization: Bearer sk-...` | `x-api-key: sk-ant-...` | `?key=AIza...` |
+| System messages | In messages array | Top-level `system` param | `systemInstruction.parts` |
+| Assistant role | `"assistant"` | `"assistant"` | `"model"` |
+| Streaming format | SSE with `data:` | SSE with `event:` + `data:` | Newline-delimited JSON |
+| Stop reason | `"stop"` | `"end_turn"` | `"STOP"` |
+| Token limit | `"length"` | `"max_tokens"` | `"MAX_TOKENS"` |
+| Content structure | `message.content` | `content[].text` | `content.parts[].text` |
+
+---
+
+## File 7: agent/pricing.rs - Cost Estimation
+
+This module provides per-request cost estimates for cloud backends.
+
+### The Data Model
 
 ```rust
 pub struct ModelPricing {
-    pub input_price_per_1k: f64,   // USD per 1K input tokens
-    pub output_price_per_1k: f64,  // USD per 1K output tokens
+    pub input_price_per_1k: f64,    // USD per 1,000 input tokens
+    pub output_price_per_1k: f64,   // USD per 1,000 output tokens
+}
+
+pub struct PricingTable {
+    prices: Arc<HashMap<String, ModelPricing>>,
 }
 ```
 
-**Cost formula**: `(input_tokens / 1000 × input_rate) + (output_tokens / 1000 × output_rate)`
-
-Cost is computed from the response's `usage` field (actual tokens consumed, not estimates). Returns `None` for unknown models — the header is omitted in that case.
-
-**Covered models**: GPT-4-turbo, GPT-3.5-turbo, Claude 3 family, Gemini 1.5 Pro/Flash.
-
-## 8. Actionable Errors
-
-When no backend can serve a request, Nexus returns a 503 with machine-readable context (defined in `src/api/error.rs`):
+### Estimating Cost
 
 ```rust
+pub fn estimate_cost(
+    &self,
+    model: &str,           // "gpt-4-turbo"
+    input_tokens: u32,     // 1000
+    output_tokens: u32,    // 500
+) -> Option<f64> {
+    self.prices.get(model).map(|pricing| {
+        let input_cost = (input_tokens as f64 / 1000.0) * pricing.input_price_per_1k;
+        let output_cost = (output_tokens as f64 / 1000.0) * pricing.output_price_per_1k;
+        input_cost + output_cost
+    })
+}
+```
+
+**What `.map()` does on `Option`:** If the model is in the pricing table, we compute and return `Some(cost)`. If not (e.g., a local Ollama model), we return `None`. No cost header gets added for local backends.
+
+### Sample Prices (Hardcoded)
+
+| Model | Input ($/1K) | Output ($/1K) |
+|-------|-------------|---------------|
+| `gpt-4-turbo` | 0.01 | 0.03 |
+| `gpt-3.5-turbo` | 0.0005 | 0.0015 |
+| `claude-3-opus-20240229` | 0.015 | 0.075 |
+| `claude-3-haiku-20240307` | 0.00025 | 0.00125 |
+| `gemini-1.5-pro` | 0.0035 | 0.0105 |
+| `gemini-1.5-flash` | 0.00035 | 0.00105 |
+
+**Maintenance note:** These are hardcoded and must be manually updated. A comment in the source links to each provider's pricing page.
+
+---
+
+## File 8: api/headers.rs - The Transparent Protocol
+
+This is the heart of the Nexus-Transparent Protocol — metadata about routing decisions exposed through HTTP headers without touching the response body.
+
+### RouteReason — Why This Backend?
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RouteReason {
+    CapabilityMatch,      // "capability-match"    — Backend has the model/features
+    CapacityOverflow,     // "capacity-overflow"   — Primary full, overflowed here
+    PrivacyRequirement,   // "privacy-requirement" — Privacy zone filtered options
+    Failover,             // "failover"            — Previous backend failed
+}
+```
+
+**What `#[serde(rename_all = "kebab-case")]` does:** When serialized, `CapabilityMatch` becomes `"capability-match"`. This is a Serde attribute that automatically applies kebab-case naming.
+
+### Header Constants
+
+```rust
+pub const HEADER_BACKEND: &str = "x-nexus-backend";
+pub const HEADER_BACKEND_TYPE: &str = "x-nexus-backend-type";
+pub const HEADER_ROUTE_REASON: &str = "x-nexus-route-reason";
+pub const HEADER_PRIVACY_ZONE: &str = "x-nexus-privacy-zone";
+pub const HEADER_COST_ESTIMATED: &str = "x-nexus-cost-estimated";
+```
+
+Lowercase `x-nexus-*` for HTTP/2 compatibility (HTTP/2 requires lowercase header names).
+
+### Injecting Headers Into a Response
+
+```rust
+pub fn inject_into_response<B>(&self, response: &mut Response<B>) {
+    let headers = response.headers_mut();
+
+    // X-Nexus-Backend: "openai-gpt4"
+    headers.insert(
+        HeaderName::from_static(HEADER_BACKEND),
+        HeaderValue::from_str(&self.backend)
+            .expect("backend name should be valid ASCII"),
+    );
+
+    // X-Nexus-Backend-Type: "local" or "cloud"
+    let backend_type_str = match self.backend_type {
+        BackendType::Ollama | BackendType::VLLM | BackendType::LlamaCpp
+        | BackendType::Exo | BackendType::LMStudio | BackendType::Generic => "local",
+        BackendType::OpenAI | BackendType::Anthropic | BackendType::Google => "cloud",
+    };
+    headers.insert(
+        HeaderName::from_static(HEADER_BACKEND_TYPE),
+        HeaderValue::from_static(backend_type_str),
+    );
+
+    // X-Nexus-Route-Reason: "capability-match"
+    headers.insert(
+        HeaderName::from_static(HEADER_ROUTE_REASON),
+        HeaderValue::from_static(self.route_reason.as_str()),
+    );
+
+    // X-Nexus-Privacy-Zone: "restricted" or "open"
+    let privacy_zone_str = match self.privacy_zone {
+        PrivacyZone::Restricted => "restricted",
+        PrivacyZone::Open => "open",
+    };
+    headers.insert(
+        HeaderName::from_static(HEADER_PRIVACY_ZONE),
+        HeaderValue::from_static(privacy_zone_str),
+    );
+
+    // X-Nexus-Cost-Estimated: "0.0042" (only for cloud backends)
+    if let Some(cost) = self.cost_estimated {
+        headers.insert(
+            HeaderName::from_static(HEADER_COST_ESTIMATED),
+            HeaderValue::from_str(&format!("{:.4}", cost))
+                .expect("cost should format to valid ASCII"),
+        );
+    }
+}
+```
+
+**What `<B>` means:** This is a **generic type parameter**. `Response<B>` is Axum's HTTP response type where `B` is the body type. By using a generic, this method works with any body type — JSON responses, streaming SSE responses, error responses, etc. The caller doesn't need to convert their response before adding headers.
+
+**What `from_static` vs `from_str` means:** `from_static` takes a `&'static str` (a compile-time string literal) — zero allocation. `from_str` takes a runtime string and may allocate. We use `from_static` for known constants and `from_str` for dynamic values like the backend name.
+
+---
+
+## File 9: api/error.rs - Actionable 503 Errors
+
+When Nexus can't find a healthy backend, it doesn't just say "503 Service Unavailable". It tells you **why** and **what you can do about it**.
+
+### The Context Object
+
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActionableErrorContext {
-    pub required_tier: Option<u8>,            // Tier the request needed
-    pub available_backends: Vec<String>,      // What backends exist in the fleet
-    pub eta_seconds: Option<u64>,             // Estimated recovery time
-    pub privacy_zone_required: Option<String>, // Privacy constraint that filtered out backends
-}
+    /// Tier required for the requested model (1-5)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required_tier: Option<u8>,
 
-pub struct ServiceUnavailableError {
-    pub error: ApiErrorBody,            // Standard OpenAI-format error body
-    pub context: ActionableErrorContext, // Nexus-specific retry intelligence
+    /// Names of backends currently available (may be empty)
+    pub available_backends: Vec<String>,
+
+    /// Estimated time to recovery in seconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eta_seconds: Option<u64>,
+
+    /// Privacy zone constraint that couldn't be met
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub privacy_zone_required: Option<String>,
 }
 ```
 
-Factory methods for common scenarios:
-- `ServiceUnavailableError::tier_unavailable(tier, backends)` — capability tier not available
-- `ServiceUnavailableError::privacy_unavailable(zone, backends)` — privacy zone constraint
-- `ServiceUnavailableError::all_backends_down()` — total fleet outage
+**What `#[serde(skip_serializing_if = "Option::is_none")]` does:** If the field is `None`, it's omitted entirely from the JSON output. So a response might look like:
 
-This enables clients to make informed retry decisions without guessing.
-
-## 9. Configuration
-
-Cloud backends are configured in TOML with `api_key_env`, `zone`, and `tier`:
-
-```toml
-[[backends]]
-name = "openai-gpt4"
-url = "https://api.openai.com"
-type = "openai"
-api_key_env = "OPENAI_API_KEY"    # Env var holding the API key (required for cloud)
-zone = "open"                      # Privacy zone (default: "open" for cloud types)
-tier = 5                           # Capability tier 1-5 (default: 3)
-
-[[backends]]
-name = "anthropic-claude"
-url = "https://api.anthropic.com"
-type = "anthropic"
-api_key_env = "ANTHROPIC_API_KEY"
-
-[[backends]]
-name = "google-gemini"
-url = "https://generativelanguage.googleapis.com"
-type = "google"
-api_key_env = "GOOGLE_API_KEY"
+```json
+{
+  "error": {
+    "message": "No healthy backend available for model 'gpt-4'",
+    "type": "service_unavailable",
+    "code": "service_unavailable"
+  },
+  "context": {
+    "available_backends": ["ollama-local"],
+    "required_tier": 5
+  }
+}
 ```
 
-**Validation**: Cloud backends (`openai`, `anthropic`, `google`) require `api_key_env`. Local backends ignore it.
+Notice `eta_seconds` and `privacy_zone_required` are absent (not `null`) — cleaner JSON.
 
-**Privacy zone defaults**: Local types (Ollama, vLLM, llama.cpp, Exo, LMStudio, Generic) → `Restricted`. Cloud types (OpenAI, Anthropic, Google) → `Open`. The `zone` field overrides the default.
+### Convenience Constructors
 
-## 10. Testing
+```rust
+impl ServiceUnavailableError {
+    // Generic 503
+    pub fn new(message: String, context: ActionableErrorContext) -> Self { /* ... */ }
 
-| File/Module | Scope | What It Tests |
-|-------------|-------|---------------|
-| `src/agent/openai.rs` (unit) | OpenAI agent | Health check, model listing with capability heuristics, Bearer auth, 401 handling, network errors |
-| `src/agent/anthropic.rs` (unit) | Anthropic agent | System message extraction, response translation, profile metadata, health check |
-| `src/agent/google.rs` (unit) | Google agent | `systemInstruction` mapping, role translation, model filtering, embeddings capability |
-| `src/agent/pricing.rs` (unit) | Cost estimation | Price lookup for each provider, unknown model returns `None` |
-| `src/agent/factory.rs` (unit) | Agent factory | All 9 `BackendType` variants instantiate correctly, env var override, missing API key errors |
-| `src/api/headers.rs` (unit) | Header protocol | Header injection, `RouteReason` serialization, cloud/local classification |
-| `tests/cloud_backends_test.rs` | Integration | Privacy zone defaults (cloud → Open, local → Restricted), backend type classification |
-| `tests/agent_integration.rs` | Integration | Dual storage (Backend + Agent), registry cleanup, agent profile mapping, cancellation safety |
-| `tests/pricing_test.rs` | Integration | End-to-end cost estimation |
-| `tests/transparent_protocol_test.rs` | Integration | X-Nexus-* header injection in responses |
+    // "No tier-5 backend available"
+    pub fn tier_unavailable(required_tier: u8, available: Vec<String>) -> Self { /* ... */ }
 
-All cloud agent unit tests use `mockito::Server` to simulate vendor APIs. Integration tests use `wiremock` for the HTTP layer. Tests marked `#[ignore]` require live API keys.
+    // "No backend in the 'restricted' zone"
+    pub fn privacy_unavailable(zone: &str, available: Vec<String>) -> Self { /* ... */ }
+
+    // "Everything is down"
+    pub fn all_backends_down() -> Self { /* ... */ }
+}
+```
+
+### IntoResponse — Making It an HTTP Response
+
+```rust
+impl axum::response::IntoResponse for ServiceUnavailableError {
+    fn into_response(self) -> axum::response::Response {
+        (StatusCode::SERVICE_UNAVAILABLE, Json(self)).into_response()
+    }
+}
+```
+
+**What `IntoResponse` is:** This is Axum's trait for "things that can become HTTP responses." By implementing it, we can `return Ok(error.into_response())` directly from a handler — Axum handles the HTTP 503 status code and JSON serialization for us.
+
+---
+
+## File 10: api/completions.rs - Wiring It All Together
+
+This is the main request handler. Three pieces were added for F12:
+
+### 1. Cost Estimation (after receiving response)
+
+```rust
+// After the agent returns a response with usage data...
+let cost_estimated = response.usage.as_ref().and_then(|u| {
+    state
+        .pricing
+        .estimate_cost(&actual_model, u.prompt_tokens, u.completion_tokens)
+});
+```
+
+**What `.and_then()` does:** It's like `.map()` but the inner function also returns an `Option`. Here: if `usage` exists AND the model has pricing data → `Some(cost)`. Otherwise → `None`.
+
+**Why compute cost here, not in the agent?** Because we need the response's actual token counts. The agent returns the response; the handler has the response + pricing table → computes cost → injects header. This avoids coupling agents to the pricing module.
+
+### 2. Header Injection (both streaming and non-streaming)
+
+```rust
+// Build the NexusTransparentHeaders struct
+let nexus_headers = NexusTransparentHeaders::new(
+    backend.id.clone(),       // "anthropic-cloud"
+    backend.backend_type,     // BackendType::Anthropic
+    route_reason,             // RouteReason::CapabilityMatch
+    privacy_zone,             // PrivacyZone::Open
+    cost_estimated,           // Some(0.0042) or None
+);
+
+// Inject into the already-built response (headers only, body untouched!)
+nexus_headers.inject_into_response(&mut resp);
+```
+
+This happens in **two places** — once for non-streaming responses (line ~330) and once for streaming responses (line ~600). Same `NexusTransparentHeaders` struct, same `inject_into_response` method. One code path, zero inconsistency.
+
+### 3. Actionable 503 Handling (no healthy backend)
+
+```rust
+crate::routing::RoutingError::NoHealthyBackend { model } => {
+    // Collect available backend names for the context
+    let available_backends = available_backend_names(&state);
+
+    // Build actionable context
+    let context = ActionableErrorContext {
+        required_tier: None,
+        available_backends,
+        eta_seconds: None,
+        privacy_zone_required: None,
+    };
+
+    // Log with structured fields for observability
+    warn!(
+        model = %model,
+        available_backends = ?context.available_backends,
+        "Routing failure: no healthy backend"
+    );
+
+    // Return 503 with context (not a generic error!)
+    let error = ServiceUnavailableError::new(
+        format!("No healthy backend available for model '{}'", model),
+        context,
+    );
+    return Ok(error.into_response());
+}
+```
+
+**Why `return Ok(error.into_response())` instead of `return Err(...)`?** The handler returns `Result<Response, ApiError>`. A 503 is a **valid response** (we're sending it on purpose), not an unexpected error. Returning `Ok(503_response)` gives us full control over the response shape. Returning `Err(...)` would go through the generic error handler, which might format it differently.
+
+---
+
+## Understanding the Tests
+
+### Test Distribution
+
+| Category | Count | Location |
+|----------|-------|----------|
+| Transparent protocol headers | 14 | `tests/transparent_protocol_test.rs` |
+| OpenAI compatibility contract | 3 | `tests/openai_compatibility_contract.rs` |
+| Actionable errors (unit) | 10 | `tests/actionable_errors_unit.rs` |
+| Actionable errors (integration) | 5 | `tests/actionable_errors_integration.rs` |
+| Agent unit tests | ~50 | `src/agent/{openai,anthropic,google,pricing}.rs` |
+| Headers unit tests | ~15 | `src/api/headers.rs` |
+| Error unit tests | ~10 | `src/api/error.rs` |
+| **Total F12-related** | **~107** | |
+
+### Contract Tests — The Most Important Tests
+
+The contract tests verify the **one thing that must never break**: the response JSON body is identical to what the backend sent.
+
+```rust
+#[tokio::test]
+async fn test_openai_response_body_unchanged() {
+    // Set up mock backend that returns a known JSON response
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "chatcmpl-123",
+            "object": "chat.completion",
+            "model": "gpt-4",
+            "choices": [{ "message": { "content": "Hello!" }, "finish_reason": "stop" }]
+        })))
+        .mount(&mock_server)
+        .await;
+
+    // Send request through Nexus
+    let response = app.call(request).await.unwrap();
+
+    // The body MUST be byte-identical to what the mock returned
+    let body: Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(body["id"], "chatcmpl-123");
+    assert_eq!(body["choices"][0]["message"]["content"], "Hello!");
+
+    // But X-Nexus-* headers ARE present
+    assert!(response.headers().contains_key("x-nexus-backend"));
+    assert!(response.headers().contains_key("x-nexus-backend-type"));
+}
+```
+
+**Why this test matters:** Constitution Principle III says "metadata in X-Nexus-* headers only, never modify response JSON body." If this test fails, we've broken API compatibility for every client.
+
+### Integration Tests — 503 With Context
+
+```rust
+#[tokio::test]
+async fn test_503_with_required_tier() {
+    // Mock returns 503 with service_unavailable code
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(503).set_body_json(json!({
+            "error": {
+                "message": "Service unavailable",
+                "type": "service_unavailable",
+                "code": "service_unavailable"
+            }
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let response = app.call(request).await.unwrap();
+
+    // Verify we get a 503 (not 500, not 502)
+    assert_eq!(response.status(), 503);
+
+    // Verify the context object is present
+    let body: Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert!(body["context"].is_object());
+    assert!(body["context"]["available_backends"].is_array());
+}
+```
+
+### Unit Tests — Serialization Round-Trip
+
+```rust
+#[test]
+fn test_actionable_error_serialization() {
+    let context = ActionableErrorContext {
+        required_tier: Some(5),
+        available_backends: vec!["ollama-local".to_string()],
+        eta_seconds: None,
+        privacy_zone_required: None,
+    };
+
+    let json = serde_json::to_string(&context).unwrap();
+    let deserialized: ActionableErrorContext = serde_json::from_str(&json).unwrap();
+
+    assert_eq!(deserialized.required_tier, Some(5));
+    assert_eq!(deserialized.available_backends, vec!["ollama-local"]);
+
+    // None fields should be absent (not null)
+    assert!(!json.contains("eta_seconds"));
+}
+```
+
+### Header Tests — Every Value Is Checked
+
+```rust
+#[tokio::test]
+async fn test_all_five_headers_present() {
+    // ... set up mock backend returning 200 ...
+
+    let response = app.call(request).await.unwrap();
+
+    // All 5 X-Nexus-* headers must be present
+    assert!(response.headers().contains_key("x-nexus-backend"));
+    assert!(response.headers().contains_key("x-nexus-backend-type"));
+    assert!(response.headers().contains_key("x-nexus-route-reason"));
+    assert!(response.headers().contains_key("x-nexus-privacy-zone"));
+    // cost-estimated is optional (only for cloud backends with pricing)
+}
+
+#[tokio::test]
+async fn test_backend_type_local_vs_cloud() {
+    // Local backend → "local"
+    // Cloud backend → "cloud"
+    let type_value = response.headers()
+        .get("x-nexus-backend-type")
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(type_value == "local" || type_value == "cloud");
+}
+```
+
+---
+
+## Key Rust Concepts
+
+| Concept | What It Means | Example in This Code |
+|---------|---------------|----------------------|
+| `filter_map` | Filter + map in one step (`None` = skip, `Some(x)` = keep) | System message extraction in `translate_request()` |
+| `as_deref()` | Convert `Option<String>` → `Option<&str>` for pattern matching | `response.stop_reason.as_deref()` in Anthropic/Google agents |
+| `format!("{:.4}", cost)` | Format float with 4 decimal places | Cost header value `"0.0042"` |
+| `and_then()` | Chain `Option`-returning operations (flatMap) | `usage.as_ref().and_then(\|u\| pricing.estimate_cost(...))` |
+| `<B>` generic parameter | Function works with any body type | `inject_into_response<B>(response: &mut Response<B>)` |
+| `from_static` vs `from_str` | Compile-time string (zero alloc) vs runtime string | Header constants vs backend name |
+| `skip_serializing_if` | Omit field from JSON if condition is true | `None` fields absent from error context |
+| `IntoResponse` trait | Make custom types directly returnable from Axum handlers | `ServiceUnavailableError::into_response()` |
+| `Arc<HashMap>` | Shared immutable data across threads | `PricingTable.prices` — read-only after init |
+| `#[serde(rename_all = "kebab-case")]` | Auto-rename variants for serialization | `CapabilityMatch` → `"capability-match"` |
+
+### Why `Ok(error.into_response())` Instead of `Err(...)`?
+
+This confused me at first. In Axum, handlers return `Result<Response, Error>`:
+
+```rust
+// This is an EXPECTED outcome (we chose to return 503):
+return Ok(error.into_response());  // ← We control the exact response
+
+// This is an UNEXPECTED error (something crashed):
+return Err(ApiError::internal());  // ← Goes through generic error handler
+```
+
+The difference: `Ok(503)` means "everything worked, but there's no backend available — here's a helpful response." `Err(...)` means "something went wrong internally."
+
+### Understanding `&mut Response<B>` (Header Injection)
+
+```rust
+// Step 1: Build the response body (JSON)
+let mut resp = Json(response).into_response();
+
+// Step 2: Modify the response in-place (add headers)
+nexus_headers.inject_into_response(&mut resp);
+
+// Step 3: Return the modified response
+Ok(resp)
+```
+
+This is the **builder pattern without a builder**. We create the response, then mutate it to add headers. The `&mut` means we're borrowing the response mutably — we can change it, but only one piece of code can do so at a time. This is Rust's way of preventing data races.
+
+---
+
+## Common Patterns in This Codebase
+
+### Pattern 1: Translate-In-Agent (Not Standalone Translators)
+
+```rust
+// Translation lives IN the agent, not in a separate translator module
+impl AnthropicAgent {
+    fn translate_request(&self, req: &ChatCompletionRequest) -> AnthropicRequest { ... }
+    fn translate_response(&self, resp: AnthropicResponse) -> ChatCompletionResponse { ... }
+    fn translate_stream_chunk(&self, event: &str, data: &str) -> Option<String> { ... }
+}
+```
+
+We considered having standalone `AnthropicTranslator` and `GoogleTranslator` structs, but that violates the Anti-Abstraction Principle. Translation is an implementation detail of the agent — no other code needs it.
+
+### Pattern 2: Compute-Then-Inject (Response Headers)
+
+```rust
+// Step 1: Get the response from the agent
+let response = agent.chat_completion(request, headers).await?;
+
+// Step 2: Compute cost from response data
+let cost = pricing.estimate_cost(&model, usage.prompt_tokens, usage.completion_tokens);
+
+// Step 3: Build the HTTP response (JSON body)
+let mut resp = Json(response).into_response();
+
+// Step 4: Inject headers AFTER body is built
+nexus_headers.inject_into_response(&mut resp);
+```
+
+This ordering is critical: the JSON body is built first (step 3), then headers are added on top (step 4). This guarantees we **never** modify the JSON body. If we mixed steps 3 and 4, we might accidentally include header data in the body.
+
+### Pattern 3: Option Chaining for Conditional Values
+
+```rust
+// Cost is only present when: usage exists AND model has pricing data
+let cost_estimated = response.usage
+    .as_ref()                              // Option<&Usage>
+    .and_then(|u| {                        // → Option<f64>
+        state.pricing.estimate_cost(
+            &actual_model,
+            u.prompt_tokens,
+            u.completion_tokens,
+        )
+    });
+// cost_estimated: Some(0.0042) for cloud, None for local
+```
+
+This is Rust's alternative to nested `if` statements:
+```rust
+// The imperative equivalent (less idiomatic):
+let cost_estimated = if let Some(usage) = &response.usage {
+    state.pricing.estimate_cost(&actual_model, usage.prompt_tokens, usage.completion_tokens)
+} else {
+    None
+};
+```
+
+### Pattern 4: Match-All Privacy/Type Classification
+
+```rust
+// Every BackendType MUST be handled (compiler enforces exhaustive match)
+let backend_type_str = match self.backend_type {
+    BackendType::Ollama | BackendType::VLLM | BackendType::LlamaCpp
+    | BackendType::Exo | BackendType::LMStudio | BackendType::Generic => "local",
+    BackendType::OpenAI | BackendType::Anthropic | BackendType::Google => "cloud",
+};
+```
+
+If someone adds a new `BackendType` variant in the future (say `BackendType::Azure`), the compiler will error on every `match` that doesn't handle it. This prevents bugs from forgotten cases.
+
+### Pattern 5: Convenience Constructors for Error Types
+
+```rust
+// Instead of building the error struct manually every time...
+let error = ServiceUnavailableError {
+    error: ApiErrorBody {
+        message: "...".to_string(),
+        r#type: "service_unavailable".to_string(),
+        code: Some("service_unavailable".to_string()),
+        param: None,
+    },
+    context: ActionableErrorContext {
+        required_tier: Some(5),
+        available_backends: vec!["ollama".into()],
+        eta_seconds: None,
+        privacy_zone_required: None,
+    },
+};
+
+// ...use a named constructor that encapsulates the details:
+let error = ServiceUnavailableError::tier_unavailable(5, vec!["ollama".into()]);
+```
+
+---
+
+## Next Steps
+
+Now that you understand Cloud Backend Support, explore:
+
+1. **NII Agent Abstraction** (`specs/012-nii-extraction/walkthrough.md`) — The InferenceAgent trait these cloud agents implement
+2. **Intelligent Router** (`src/routing/`) — How backends are scored and selected before an agent is invoked
+3. **Health Checker** (`src/health/mod.rs`) — Background loop that calls `agent.health_check()` for all backends including cloud
+
+### Try It Yourself
+
+1. Look at the agent factory to see how all backend types are created:
+   ```bash
+   cargo test agent::factory -- --nocapture
+   ```
+
+2. Run the transparent protocol tests:
+   ```bash
+   cargo test --test transparent_protocol_test -- --nocapture
+   ```
+
+3. Run the actionable error tests:
+   ```bash
+   cargo test --test actionable_errors_integration -- --nocapture
+   ```
+
+4. Read the Anthropic agent top to bottom — it's the best example of full API translation:
+   ```bash
+   cat src/agent/anthropic.rs
+   ```
+
+5. See the cost estimation in action:
+   ```bash
+   cargo test agent::pricing -- --nocapture
+   ```
+
+6. Search for all X-Nexus header injection points:
+   ```bash
+   grep -n "inject_into_response" src/api/completions.rs
+   ```
