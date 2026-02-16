@@ -3,6 +3,7 @@
 use super::{
     anthropic::AnthropicAgent, generic::GenericOpenAIAgent, google::GoogleAIAgent,
     lmstudio::LMStudioAgent, ollama::OllamaAgent, openai::OpenAIAgent, AgentError, InferenceAgent,
+    PrivacyZone,
 };
 use crate::registry::BackendType;
 use reqwest::Client;
@@ -19,6 +20,8 @@ use std::sync::Arc;
 /// * `backend_type` - Type of backend (determines agent implementation)
 /// * `client` - Shared HTTP client for connection pooling
 /// * `metadata` - Additional configuration (e.g., API keys)
+/// * `privacy_zone` - Privacy zone classification for routing
+/// * `capability_tier` - Capability tier (1-5) for quality routing
 ///
 /// # Returns
 ///
@@ -29,6 +32,7 @@ use std::sync::Arc;
 ///
 /// ```
 /// use nexus::agent::factory::create_agent;
+/// use nexus::agent::types::PrivacyZone;
 /// use nexus::registry::BackendType;
 /// use reqwest::Client;
 /// use std::collections::HashMap;
@@ -42,6 +46,8 @@ use std::sync::Arc;
 ///     BackendType::Ollama,
 ///     client,
 ///     HashMap::new(),
+///     PrivacyZone::Restricted,
+///     Some(2),
 /// ).unwrap();
 ///
 /// assert_eq!(agent.id(), "backend-1");
@@ -53,9 +59,13 @@ pub fn create_agent(
     backend_type: BackendType,
     client: Arc<Client>,
     metadata: HashMap<String, String>,
+    privacy_zone: PrivacyZone,
+    capability_tier: Option<u8>,
 ) -> Result<Arc<dyn InferenceAgent>, AgentError> {
     match backend_type {
-        BackendType::Ollama => Ok(Arc::new(OllamaAgent::new(id, name, url, client))),
+        BackendType::Ollama => Ok(Arc::new(OllamaAgent::new(
+            id, name, url, client, privacy_zone, capability_tier,
+        ))),
         BackendType::OpenAI => {
             // Extract API key from metadata
             // First check for direct "api_key" field, then "api_key_env" for env var lookup
@@ -74,12 +84,24 @@ pub fn create_agent(
                 ));
             };
 
-            Ok(Arc::new(OpenAIAgent::new(id, name, url, api_key, client)))
+            Ok(Arc::new(OpenAIAgent::new(
+                id, name, url, api_key, client, privacy_zone, capability_tier,
+            )))
         }
-        BackendType::LMStudio => Ok(Arc::new(LMStudioAgent::new(id, name, url, client))),
-        BackendType::VLLM | BackendType::LlamaCpp | BackendType::Exo | BackendType::Generic => Ok(
-            Arc::new(GenericOpenAIAgent::new(id, name, backend_type, url, client)),
-        ),
+        BackendType::LMStudio => Ok(Arc::new(LMStudioAgent::new(
+            id, name, url, client, privacy_zone, capability_tier,
+        ))),
+        BackendType::VLLM | BackendType::LlamaCpp | BackendType::Exo | BackendType::Generic => {
+            Ok(Arc::new(GenericOpenAIAgent::new(
+                id,
+                name,
+                backend_type,
+                url,
+                client,
+                privacy_zone,
+                capability_tier,
+            )))
+        }
         BackendType::Anthropic => {
             // Extract API key from metadata (T093)
             let api_key = if let Some(key) = metadata.get("api_key") {
@@ -98,7 +120,7 @@ pub fn create_agent(
             };
 
             Ok(Arc::new(AnthropicAgent::new(
-                id, name, url, api_key, client,
+                id, name, url, api_key, client, privacy_zone, capability_tier,
             )))
         }
         BackendType::Google => {
@@ -118,7 +140,9 @@ pub fn create_agent(
                 ));
             };
 
-            Ok(Arc::new(GoogleAIAgent::new(id, name, url, api_key, client)))
+            Ok(Arc::new(GoogleAIAgent::new(
+                id, name, url, api_key, client, privacy_zone, capability_tier,
+            )))
         }
     }
 }
@@ -140,6 +164,8 @@ mod tests {
             BackendType::Ollama,
             test_client(),
             HashMap::new(),
+            PrivacyZone::Restricted,
+            Some(1),
         )
         .unwrap();
 
@@ -160,6 +186,8 @@ mod tests {
             BackendType::OpenAI,
             test_client(),
             metadata,
+            PrivacyZone::Open,
+            Some(3),
         )
         .unwrap();
 
@@ -181,6 +209,8 @@ mod tests {
             BackendType::OpenAI,
             test_client(),
             metadata,
+            PrivacyZone::Open,
+            None,
         )
         .unwrap();
 
@@ -199,6 +229,8 @@ mod tests {
             BackendType::OpenAI,
             test_client(),
             HashMap::new(),
+            PrivacyZone::Open,
+            None,
         );
 
         assert!(
@@ -215,6 +247,8 @@ mod tests {
             BackendType::LMStudio,
             test_client(),
             HashMap::new(),
+            PrivacyZone::Restricted,
+            Some(1),
         )
         .unwrap();
 
@@ -231,6 +265,8 @@ mod tests {
             BackendType::VLLM,
             test_client(),
             HashMap::new(),
+            PrivacyZone::Restricted,
+            None,
         )
         .unwrap();
 
@@ -247,6 +283,8 @@ mod tests {
             BackendType::LlamaCpp,
             test_client(),
             HashMap::new(),
+            PrivacyZone::Restricted,
+            None,
         )
         .unwrap();
 
@@ -263,6 +301,8 @@ mod tests {
             BackendType::Exo,
             test_client(),
             HashMap::new(),
+            PrivacyZone::Restricted,
+            None,
         )
         .unwrap();
 
@@ -279,6 +319,8 @@ mod tests {
             BackendType::Generic,
             test_client(),
             HashMap::new(),
+            PrivacyZone::Restricted,
+            None,
         )
         .unwrap();
 
@@ -297,6 +339,8 @@ mod tests {
             BackendType::Ollama,
             client.clone(),
             HashMap::new(),
+            PrivacyZone::Restricted,
+            None,
         )
         .unwrap();
 
@@ -307,6 +351,8 @@ mod tests {
             BackendType::LMStudio,
             client.clone(),
             HashMap::new(),
+            PrivacyZone::Restricted,
+            None,
         )
         .unwrap();
 
@@ -327,6 +373,8 @@ mod tests {
             BackendType::Anthropic,
             test_client(),
             metadata,
+            PrivacyZone::Open,
+            Some(3),
         )
         .unwrap();
 
@@ -348,6 +396,8 @@ mod tests {
             BackendType::Anthropic,
             test_client(),
             metadata,
+            PrivacyZone::Open,
+            None,
         )
         .unwrap();
 
@@ -366,6 +416,8 @@ mod tests {
             BackendType::Anthropic,
             test_client(),
             HashMap::new(),
+            PrivacyZone::Open,
+            None,
         );
 
         assert!(
@@ -385,6 +437,8 @@ mod tests {
             BackendType::Google,
             test_client(),
             metadata,
+            PrivacyZone::Open,
+            Some(3),
         )
         .unwrap();
 
@@ -406,6 +460,8 @@ mod tests {
             BackendType::Google,
             test_client(),
             metadata,
+            PrivacyZone::Open,
+            None,
         )
         .unwrap();
 
@@ -424,6 +480,8 @@ mod tests {
             BackendType::Google,
             test_client(),
             HashMap::new(),
+            PrivacyZone::Open,
+            None,
         );
 
         assert!(

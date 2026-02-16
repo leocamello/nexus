@@ -122,6 +122,8 @@ pub fn load_backends_from_config(
             backend_config.backend_type,
             Arc::clone(&client),
             metadata,
+            backend_config.effective_privacy_zone(),
+            Some(backend_config.effective_tier()),
         )?;
 
         // Register both backend and agent

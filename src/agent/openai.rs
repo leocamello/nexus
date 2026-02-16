@@ -36,6 +36,10 @@ pub struct OpenAIAgent {
     /// TODO(T048): Use this for cost_estimated calculation
     #[allow(dead_code)]
     pricing: Arc<PricingTable>,
+    /// Privacy zone classification from config
+    privacy_zone: PrivacyZone,
+    /// Capability tier from config
+    capability_tier: Option<u8>,
 }
 
 impl OpenAIAgent {
@@ -45,6 +49,8 @@ impl OpenAIAgent {
         base_url: String,
         api_key: String,
         client: Arc<Client>,
+        privacy_zone: PrivacyZone,
+        capability_tier: Option<u8>,
     ) -> Self {
         Self {
             id,
@@ -53,6 +59,8 @@ impl OpenAIAgent {
             api_key,
             client,
             pricing: Arc::new(PricingTable::new()),
+            privacy_zone,
+            capability_tier,
         }
     }
 
@@ -110,14 +118,14 @@ impl InferenceAgent for OpenAIAgent {
         AgentProfile {
             backend_type: "openai".to_string(),
             version: None,
-            privacy_zone: PrivacyZone::Open, // Cloud service (T030)
+            privacy_zone: self.privacy_zone,
             capabilities: AgentCapabilities {
                 embeddings: false, // Phase 1: Not implemented
                 model_lifecycle: false,
                 token_counting: true, // F12: tiktoken-rs exact counting (T030)
                 resource_monitoring: false,
             },
-            capability_tier: None, // Will be set per-model in future
+            capability_tier: self.capability_tier,
         }
     }
 
@@ -391,6 +399,8 @@ mod tests {
             base_url,
             api_key,
             client,
+            PrivacyZone::Open,
+            None,
         )
     }
 

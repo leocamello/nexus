@@ -49,11 +49,11 @@
 
 ### Implementation for User Story 3
 
-- [ ] T009 [P] [US3] Verify BackendConfig deserialization handles zone field with default in src/config/backend.rs
-- [ ] T010 [P] [US3] Verify BackendConfig deserialization handles tier field with default in src/config/backend.rs
-- [ ] T011 [US3] Verify AgentProfile population from BackendConfig in Registry::register_backend() in src/registry/mod.rs
-- [ ] T012 [US3] Add validation for tier range (1-5) in BackendConfig::validate() in src/config/backend.rs
-- [ ] T013 [US3] Add validation for zone enum values in BackendConfig::validate() in src/config/backend.rs
+- [X] T009 [P] [US3] Verify BackendConfig deserialization handles zone field with default in src/config/backend.rs
+- [X] T010 [P] [US3] Verify BackendConfig deserialization handles tier field with default in src/config/backend.rs
+- [X] T011 [US3] Verify AgentProfile population from BackendConfig in Registry::register_backend() in src/registry/mod.rs
+- [X] T012 [US3] Add validation for tier range (1-5) in BackendConfig::validate() in src/config/backend.rs
+- [X] T013 [US3] Add validation for zone enum values in BackendConfig::validate() in src/config/backend.rs
 - [ ] T014 [US3] Test configuration parsing with explicit zone="restricted" and tier=3
 - [ ] T015 [US3] Test configuration parsing with missing zone field (defaults to backend type)
 - [ ] T016 [US3] Test configuration parsing with missing tier field (defaults to 1)

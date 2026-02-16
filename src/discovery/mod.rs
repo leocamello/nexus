@@ -337,6 +337,8 @@ impl MdnsDiscovery {
             backend.backend_type,
             Arc::clone(&self.client),
             backend.metadata.clone(),
+            backend.backend_type.default_privacy_zone(),
+            None,
         ) {
             Ok(agent) => agent,
             Err(e) => {
