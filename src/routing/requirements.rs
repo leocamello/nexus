@@ -30,19 +30,20 @@ impl RequestRequirements {
         let model = request.model.clone();
 
         // Estimate tokens: sum of message content lengths divided by 4
-        let mut estimated_tokens = 0;
+        let mut estimated_tokens: u32 = 0;
         let mut needs_vision = false;
 
         for message in &request.messages {
             match &message.content {
                 MessageContent::Text { content } => {
-                    estimated_tokens += content.len() as u32 / 4;
+                    estimated_tokens = estimated_tokens.saturating_add(content.len() as u32 / 4);
                 }
                 MessageContent::Parts { content } => {
                     for part in content {
                         if part.part_type == "text" {
                             if let Some(text) = &part.text {
-                                estimated_tokens += text.len() as u32 / 4;
+                                estimated_tokens =
+                                    estimated_tokens.saturating_add(text.len() as u32 / 4);
                             }
                         } else if part.part_type == "image_url" {
                             needs_vision = true;
@@ -245,5 +246,36 @@ mod tests {
         assert!(!requirements.needs_vision);
         assert!(!requirements.needs_tools);
         assert!(!requirements.needs_json_mode);
+    }
+
+    #[test]
+    fn empty_messages_produces_zero_tokens() {
+        let request = ChatCompletionRequest {
+            model: "llama3:8b".to_string(),
+            messages: vec![],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: HashMap::new(),
+        };
+        let requirements = RequestRequirements::from_request(&request);
+        assert_eq!(requirements.estimated_tokens, 0);
+        assert!(!requirements.needs_vision);
+        assert!(!requirements.needs_tools);
+        assert!(!requirements.needs_json_mode);
+        assert!(!requirements.prefers_streaming);
+    }
+
+    #[test]
+    fn detects_streaming_preference() {
+        let mut request = create_simple_request("llama3:8b", "Hello");
+        request.stream = true;
+        let requirements = RequestRequirements::from_request(&request);
+        assert!(requirements.prefers_streaming);
     }
 }

@@ -207,7 +207,8 @@ impl Reconciler for SchedulerReconciler {
                                 let budget_adj = self.apply_budget_adjustment(raw_score, b, intent);
                                 self.apply_ttft_penalty(budget_adj, &b.id)
                             })
-                            .unwrap();
+                            // SAFETY: candidates is non-empty (guarded by line 195)
+                            .expect("candidates verified non-empty");
                         let raw_score = score_backend(
                             best.priority as u32,
                             best.pending_requests.load(Ordering::Relaxed),
@@ -235,7 +236,11 @@ impl Reconciler for SchedulerReconciler {
                         (selected.id.clone(), reason)
                     }
                     RoutingStrategy::PriorityOnly => {
-                        let best = candidates.iter().min_by_key(|b| b.priority).unwrap();
+                        // SAFETY: candidates is non-empty (guarded by line 195)
+                        let best = candidates
+                            .iter()
+                            .min_by_key(|b| b.priority)
+                            .expect("candidates verified non-empty");
                         let reason = if candidates.len() == 1 {
                             "only_healthy_backend".to_string()
                         } else {

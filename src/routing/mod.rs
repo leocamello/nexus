@@ -589,7 +589,7 @@ impl Router {
     }
 
     /// Filter candidates by model, health, and capabilities
-    #[allow(dead_code)] // Will be used when select_backend is implemented
+    #[allow(dead_code)] // Legacy pre-pipeline impl; capability filtering now in SchedulerReconciler
     fn filter_candidates(&self, model: &str, requirements: &RequestRequirements) -> Vec<Backend> {
         // Get all backends that have this model
         let mut candidates = self.registry.get_backends_for_model(model);
