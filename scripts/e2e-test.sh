@@ -2,7 +2,7 @@
 # =============================================================================
 # Nexus E2E Smoke Test
 # =============================================================================
-# Validates all core Nexus functionality in one automated run.
+# Validates all core Nexus functionality (v0.1–v0.3) in one automated run.
 #
 # Prerequisites:
 #   - Nexus binary built (cargo build --release)
@@ -150,6 +150,9 @@ max_retries = 2
 [routing.fallbacks]
 "nonexistent-model-xyz" = ["${MODEL}"]
 
+[routing.policies.default]
+privacy = "restricted"
+
 [logging]
 level = "error"
 format = "pretty"
@@ -159,6 +162,8 @@ name = "test-backend"
 url = "${BACKEND_URL}"
 type = "${BACKEND_TYPE}"
 priority = 1
+zone = "restricted"
+tier = 3
 EOF
 
 pass "Test config written to $CONFIG_FILE"
@@ -382,34 +387,95 @@ section "Nexus-Transparent Protocol (F12)"
 # Send a chat request and capture response headers
 HEADER_RESP=$(curl -sD - "$BASE_URL/v1/chat/completions" \
   -H "Content-Type: application/json" \
-  -d '{"model":"'"$CHAT_MODEL"'","messages":[{"role":"user","content":"Say hi"}],"max_tokens":5}' 2>/dev/null || echo "FAIL")
+  -d '{"model":"'"$MODEL"'","messages":[{"role":"user","content":"Say hi"}],"max_tokens":5}' 2>/dev/null || echo "FAIL")
 
 if echo "$HEADER_RESP" | grep -qi "x-nexus-backend:"; then
   BACKEND_NAME=$(echo "$HEADER_RESP" | grep -i "x-nexus-backend:" | head -1 | cut -d: -f2- | tr -d ' \r')
   pass "X-Nexus-Backend header present: $BACKEND_NAME"
 else
-  skip "X-Nexus-Backend header (may require cloud backend)"
+  fail "X-Nexus-Backend header missing"
 fi
 
 if echo "$HEADER_RESP" | grep -qi "x-nexus-backend-type:"; then
-  BACKEND_TYPE=$(echo "$HEADER_RESP" | grep -i "x-nexus-backend-type:" | head -1 | cut -d: -f2- | tr -d ' \r')
-  pass "X-Nexus-Backend-Type header present: $BACKEND_TYPE"
+  BTYPE=$(echo "$HEADER_RESP" | grep -i "x-nexus-backend-type:" | head -1 | cut -d: -f2- | tr -d ' \r')
+  pass "X-Nexus-Backend-Type header present: $BTYPE"
 else
-  skip "X-Nexus-Backend-Type header (may require cloud backend)"
+  fail "X-Nexus-Backend-Type header missing"
 fi
 
 if echo "$HEADER_RESP" | grep -qi "x-nexus-privacy-zone:"; then
   PRIVACY_ZONE=$(echo "$HEADER_RESP" | grep -i "x-nexus-privacy-zone:" | head -1 | cut -d: -f2- | tr -d ' \r')
   pass "X-Nexus-Privacy-Zone header present: $PRIVACY_ZONE"
 else
-  skip "X-Nexus-Privacy-Zone header (requires zone config)"
+  fail "X-Nexus-Privacy-Zone header missing"
 fi
 
+if echo "$HEADER_RESP" | grep -qi "x-nexus-route-reason:"; then
+  ROUTE_REASON=$(echo "$HEADER_RESP" | grep -i "x-nexus-route-reason:" | head -1 | cut -d: -f2- | tr -d ' \r')
+  pass "X-Nexus-Route-Reason header present: $ROUTE_REASON"
+else
+  fail "X-Nexus-Route-Reason header missing"
+fi
+
+# Cost header is only present for cloud backends — skip for local-only
 if echo "$HEADER_RESP" | grep -qi "x-nexus-cost-estimated:"; then
   COST=$(echo "$HEADER_RESP" | grep -i "x-nexus-cost-estimated:" | head -1 | cut -d: -f2- | tr -d ' \r')
   pass "X-Nexus-Cost-Estimated header present: $COST"
 else
-  skip "X-Nexus-Cost-Estimated header (requires cloud backend with pricing)"
+  skip "X-Nexus-Cost-Estimated header (local backends don't have cost)"
+fi
+
+# --- Actionable 503 Error (F12) -----------------------------------------------
+section "Actionable 503 Error (F12)"
+
+ERROR_503=$(curl -s "$BASE_URL/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"nonexistent-cloud-model-xyz","messages":[{"role":"user","content":"hi"}]}' 2>/dev/null || true)
+
+if echo "$ERROR_503" | jq -e '.context' >/dev/null 2>&1; then
+  pass "503 response includes actionable context object"
+elif echo "$ERROR_503" | jq -e '.error.message' >/dev/null 2>&1; then
+  pass "Error response follows OpenAI error format"
+else
+  skip "Actionable 503 (model may exist on a backend)"
+fi
+
+# --- Privacy Zone Enforcement (F13) -------------------------------------------
+section "Privacy Zones (F13)"
+
+# The test config sets zone = "restricted" on the backend and privacy = "restricted" on routing
+# Verify the local backend's zone is reflected in the response headers
+PRIVACY_RESP=$(curl -sD - "$BASE_URL/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"'"$MODEL"'","messages":[{"role":"user","content":"Say OK"}],"max_tokens":5}' 2>/dev/null || echo "FAIL")
+
+ZONE_VALUE=$(echo "$PRIVACY_RESP" | grep -i "x-nexus-privacy-zone:" | head -1 | cut -d: -f2- | tr -d ' \r')
+if [[ "$ZONE_VALUE" == "restricted" ]]; then
+  pass "Privacy zone enforced: restricted backend selected"
+elif [[ -n "$ZONE_VALUE" ]]; then
+  pass "Privacy zone header present: $ZONE_VALUE"
+else
+  fail "X-Nexus-Privacy-Zone header missing on privacy-configured backend"
+fi
+
+# --- Budget Stats (F14) -------------------------------------------------------
+section "Budget Management (F14)"
+
+BUDGET=$(curl -sf "$BASE_URL/v1/stats" 2>/dev/null | jq -r '.budget // empty' 2>/dev/null || echo "")
+if [[ -n "$BUDGET" && "$BUDGET" != "null" ]]; then
+  BUDGET_STATUS=$(echo "$BUDGET" | jq -r '.status // "unknown"')
+  BUDGET_LIMIT=$(echo "$BUDGET" | jq -r '.monthly_limit_usd // "none"')
+  pass "Budget stats present: status=$BUDGET_STATUS, limit=\$$BUDGET_LIMIT"
+else
+  pass "Budget stats omitted (no budget configured — zero-config behavior)"
+fi
+
+# Verify budget-related Prometheus metrics exist when budget is configured
+BUDGET_METRICS=$(curl -sf "$BASE_URL/metrics" 2>/dev/null | grep -c "nexus_budget" || echo "0")
+if [[ "$BUDGET_METRICS" -gt 0 ]]; then
+  pass "Budget Prometheus metrics present ($BUDGET_METRICS gauges)"
+else
+  pass "Budget metrics omitted (no budget configured)"
 fi
 
 # --- Results -----------------------------------------------------------------

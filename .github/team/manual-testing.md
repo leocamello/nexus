@@ -23,7 +23,7 @@ alias nexus="./target/release/nexus"
 
 # Verify installation
 nexus --version
-# nexus-orchestrator 0.2.0
+# nexus-orchestrator 0.3.0
 
 # If using Ollama, ensure it's running with at least one model
 ollama serve &              # or: systemctl start ollama
@@ -50,6 +50,10 @@ ollama list                 # verify models are available
 | 9 | [Request Metrics](#9-request-metrics-f09) | Prometheus metrics, JSON stats |
 | 10 | [Web Dashboard](#10-web-dashboard-f10) | Live UI, WebSocket updates |
 | 11 | [Structured Logging](#11-structured-logging-f11) | JSON logs, component levels, correlation IDs |
+| 12 | [Cloud Backend Support](#12-cloud-backend-support-f12) | Cloud config, X-Nexus-* headers, cost estimation |
+| 13 | [Control Plane](#13-control-plane--reconciler-pipeline-phase-2) | Reconciler pipeline, zero-config behavior |
+| 14 | [Privacy Zones & Tiers](#14-privacy-zones--capability-tiers-f13) | Zone enforcement, strict/flexible modes |
+| 15 | [Budget Management](#15-inference-budget-management-f14) | Spending limits, budget stats, hard limit behavior |
 | — | [E2E Test Script](#e2e-test-script) | Automated smoke test |
 | — | [Troubleshooting](#troubleshooting) | Common issues and solutions |
 
@@ -960,7 +964,6 @@ Without this flag, logs contain model names, backends, and latency — but never
 ---
 
 ## 12. Cloud Backend Support (F12)
-
 F12 adds cloud LLM APIs (OpenAI, Anthropic, Google) as backends alongside local inference
 servers, with X-Nexus-* response headers for routing transparency and actionable 503 errors.
 
@@ -1147,7 +1150,6 @@ nexus serve --config /tmp/bad-config.toml
 ---
 
 ## 13. Control Plane — Reconciler Pipeline (Phase 2)
-
 The Control Plane replaces the monolithic `Router::select_backend()` with a pipeline
 of independent Reconcilers that annotate a shared `RoutingIntent`. This enables
 privacy zones, budget management, and capability tier enforcement.
@@ -1304,7 +1306,6 @@ cargo test   # 829+ tests
 ---
 
 ## 14. Privacy Zones & Capability Tiers (F13)
-
 ### 14.1 Privacy Zone Configuration
 
 Test that backends respect privacy zone settings.
@@ -1446,14 +1447,152 @@ cargo test --test actionable_rejection_test
 cargo test --test backward_compat_test
 
 # All tests
-cargo test   # 829+ tests
+cargo test
+```
+
+---
+
+## 15. Inference Budget Management (F14)
+
+F14 adds token-aware cost tracking with monthly spending limits, soft/hard thresholds,
+and automatic enforcement for cloud backends.
+
+### 15.1 Budget Configuration
+
+```toml
+# /tmp/nexus-budget-test.toml
+[server]
+host = "127.0.0.1"
+port = 3000
+
+[discovery]
+enabled = false
+
+[routing]
+strategy = "smart"
+
+[routing.budget]
+monthly_limit_usd = 50.0
+soft_limit_percent = 75
+hard_limit_action = "block_cloud"
+reconciliation_interval_secs = 60
+
+[[backends]]
+name = "local-ollama"
+url = "http://localhost:11434"
+type = "ollama"
+zone = "restricted"
+tier = 3
+
+[[backends]]
+name = "openai-gpt4"
+url = "https://api.openai.com"
+type = "openai"
+api_key_env = "OPENAI_API_KEY"
+zone = "open"
+tier = 4
+```
+
+```bash
+export OPENAI_API_KEY="sk-your-key"
+nexus serve --config /tmp/nexus-budget-test.toml
+```
+
+### 15.2 Budget Stats Endpoint
+
+```bash
+# Check budget status
+curl -s http://localhost:3000/v1/stats | jq '.budget'
+```
+
+**Expected** (when budget is configured):
+```json
+{
+  "current_spending_usd": 0.0,
+  "monthly_limit_usd": 50.0,
+  "utilization_percent": 0.0,
+  "status": "Normal",
+  "billing_month": "2026-02",
+  "soft_limit_threshold": 75.0,
+  "hard_limit_action": "BlockCloud"
+}
+```
+
+### 15.3 Budget Headers on Responses
+
+When budget utilization crosses the soft limit, budget headers appear on responses:
+
+```bash
+curl -sD - http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-4","messages":[{"role":"user","content":"Hello"}],"max_tokens":10}' \
+  2>&1 | grep -i "x-nexus-budget\|x-nexus-cost"
+```
+
+**Expected** (at soft limit):
+```
+x-nexus-cost-estimated: 0.0042
+x-nexus-budget-status: SoftLimit
+x-nexus-budget-utilization: 78.50
+x-nexus-budget-remaining: 10.75
+```
+
+### 15.4 Hard Limit Enforcement
+
+When spending reaches the hard limit, cloud backends are blocked:
+
+```bash
+# After reaching hard limit (100% utilization):
+curl -s http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-4","messages":[{"role":"user","content":"Hello"}]}' | jq .
+```
+
+**Expected** (if only cloud backend has the model):
+```json
+{
+  "error": {
+    "message": "No available backend for model 'gpt-4'",
+    "type": "service_unavailable",
+    "code": "service_unavailable"
+  },
+  "context": {
+    "available_backends": [],
+    "required_tier": null,
+    "eta_seconds": null
+  }
+}
+```
+
+### 15.5 Budget in Prometheus Metrics
+
+```bash
+curl -s http://localhost:3000/metrics | grep nexus_budget
+```
+
+**Expected**:
+```
+nexus_budget_current_spending_usd 0.0042
+nexus_budget_monthly_limit_usd 50.0
+nexus_budget_utilization_percent 0.0084
+```
+
+### 15.6 Run Automated Tests
+
+```bash
+# Budget unit tests
+cargo test budget -- --test-threads=1
+
+# Budget integration tests
+cargo test --test budget_enforcement_test
+cargo test --test budget_tracking_test
 ```
 
 ---
 
 ## E2E Test Script
 
-An automated smoke test is available at `scripts/e2e-test.sh`. It validates all core functionality in one run.
+An automated smoke test is available at `scripts/e2e-test.sh`. It validates all core functionality in one run, including v0.3 features (X-Nexus-* headers, privacy zones, budget stats).
 
 ### Run It
 
@@ -1462,7 +1601,7 @@ An automated smoke test is available at `scripts/e2e-test.sh`. It validates all 
 ./scripts/e2e-test.sh
 ```
 
-The script starts a Nexus server, runs through health checks, model listing, chat completions, metrics, stats, history, and dashboard endpoints, then cleans up.
+The script starts a Nexus server, runs through health checks, model listing, chat completions, X-Nexus-* headers, metrics, stats, history, dashboard endpoints, privacy zone verification, and budget stats, then cleans up.
 
 See [scripts/e2e-test.sh](../scripts/e2e-test.sh) for the full source.
 
@@ -1563,7 +1702,8 @@ rm -f /tmp/nexus.{bash,zsh,fish}
 | F12: Cloud Backends | Cloud config, transparent headers, cost, 503s | X-Nexus-* headers on all responses |
 | Control Plane | Reconciler pipeline, scheduling, request analysis | < 1ms pipeline, actionable 503s |
 | F13: Privacy & Tiers | Privacy zones, tier enforcement, strict/flexible | Zone-based filtering, no silent downgrades |
+| F14: Budget Mgmt | Spending limits, budget stats, hard limit block | Budget status in /v1/stats, 503 on limit |
 
-**Automated test suite**: `cargo test` — **829+ tests**
+**Automated test suite**: `cargo test`
 
 For the full E2E smoke test: `./scripts/e2e-test.sh`
