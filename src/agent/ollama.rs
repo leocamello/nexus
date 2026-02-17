@@ -357,8 +357,10 @@ impl OllamaAgent {
             model.supports_tools = true;
         }
 
-        // Context length heuristics by size
-        if name.contains("32k") {
+        // Context length heuristics by size (check larger values first)
+        if name.contains("128k") {
+            model.context_length = 131072;
+        } else if name.contains("32k") {
             model.context_length = 32768;
         } else if name.contains("16k") {
             model.context_length = 16384;
@@ -366,8 +368,6 @@ impl OllamaAgent {
             model.context_length = 8192;
         } else if name.contains("4k") {
             model.context_length = 4096;
-        } else if name.contains("128k") {
-            model.context_length = 131072;
         }
     }
 }
@@ -652,9 +652,7 @@ mod tests {
             capability_tier: None,
         };
         OllamaAgent::apply_name_heuristics(&mut model);
-        // Note: 128k is checked AFTER 8k in the code, so it matches 8k first
-        // This is a known quirk — the ordering in the heuristic matters
-        assert!(model.context_length >= 8192);
+        assert_eq!(model.context_length, 131072);
     }
 
     #[test]
@@ -726,8 +724,6 @@ mod tests {
 
     #[test]
     fn test_name_heuristics_phi3_128k_context() {
-        // "128k" contains "8k" as a substring, so the 8k branch matches first
-        // due to the if-else chain ordering — context_length becomes 8192
         let mut model = ModelCapability {
             id: "phi3:128k".to_string(),
             name: "phi3:128k".to_string(),
@@ -739,7 +735,7 @@ mod tests {
             capability_tier: None,
         };
         OllamaAgent::apply_name_heuristics(&mut model);
-        assert_eq!(model.context_length, 8192);
+        assert_eq!(model.context_length, 131072);
     }
 
     #[test]
