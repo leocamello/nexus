@@ -297,7 +297,7 @@ grep -c "\- \[ \]" specs/XXX-feature/tasks.md         # Should be 0
 
 ### Commit Message Format
 
-Use conventional commits with issue references. Always include the Co-authored-by trailer when commits are created with Copilot assistance:
+Use conventional commits with issue references:
 ```
 feat: implement Feature Name (FXX)
 
@@ -306,11 +306,9 @@ Description of changes...
 Closes #123
 Closes #124
 Closes #125
-
-Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 ```
 
-**Note**: Use separate `Closes #X` lines for each issue.
+**Note**: Use separate `Closes #X` lines for each issue. Do **not** add `Co-authored-by` trailers to commit messages.
 
 ```bash
 # 1. Create feature branch BEFORE implementing
@@ -318,9 +316,7 @@ git checkout -b feature/f09-request-metrics
 
 # 2. Implement the feature (commits go to feature branch)
 git add .
-git commit -m "feat: implement Request Metrics (F09)
-
-Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+git commit -m "feat: implement Request Metrics (F09)"
 
 # 3. Push feature branch and create PR
 git push -u origin feature/f09-request-metrics
