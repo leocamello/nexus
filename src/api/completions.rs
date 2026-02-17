@@ -891,13 +891,22 @@ async fn handle_streaming(
     let mut request = request;
     request.model = actual_model.clone();
 
+    // Track start time for quality metrics
+    let start_time = std::time::Instant::now();
+
     // Increment pending requests
     let _ = state.registry.increment_pending(&backend_id);
 
     info!(backend_id = %backend_id, "Starting streaming request");
 
     // Create SSE stream - pass cloned backend data
-    let stream = create_sse_stream(state.clone(), Arc::clone(backend), headers, request);
+    let stream = create_sse_stream(
+        state.clone(),
+        Arc::clone(backend),
+        headers,
+        request,
+        start_time,
+    );
 
     // Create SSE response and add headers
     let mut resp = Sse::new(stream).into_response();
@@ -950,6 +959,7 @@ fn create_sse_stream(
     backend: Arc<Backend>,
     headers: HeaderMap,
     request: ChatCompletionRequest,
+    start_time: std::time::Instant,
 ) -> impl futures::Stream<Item = Result<Event, std::convert::Infallible>> {
     async_stream::stream! {
         let backend_id = backend.id.clone();
@@ -959,6 +969,7 @@ fn create_sse_stream(
             // Use agent-based streaming (T037)
             match agent.chat_completion_stream(request.clone(), Some(&headers)).await {
                 Ok(mut stream) => {
+                    let mut succeeded = true;
                     // Stream chunks from agent
                     use futures::StreamExt;
                     while let Some(result) = stream.next().await {
@@ -974,6 +985,7 @@ fn create_sse_stream(
                                 }
                             }
                             Err(e) => {
+                                succeeded = false;
                                 warn!(backend_id = %backend_id, error = %e, "Stream error from agent");
                                 let error_chunk = create_error_chunk(&format!("Stream error: {}", e));
                                 yield Ok(Event::default().data(serde_json::to_string(&error_chunk).unwrap_or_default()));
@@ -982,12 +994,18 @@ fn create_sse_stream(
                             }
                         }
                     }
+                    // Record quality outcome for streaming
+                    let ttft_ms = start_time.elapsed().as_millis() as u32;
+                    state.router.quality_store().record_outcome(&backend_id, succeeded, ttft_ms);
                 }
                 Err(e) => {
                     warn!(backend_id = %backend_id, error = %e, "Failed to start streaming from agent");
                     let error_chunk = create_error_chunk(&format!("Failed to start streaming: {}", e));
                     yield Ok(Event::default().data(serde_json::to_string(&error_chunk).unwrap_or_default()));
                     yield Ok(Event::default().data("[DONE]"));
+                    // Record quality outcome: failure
+                    let ttft_ms = start_time.elapsed().as_millis() as u32;
+                    state.router.quality_store().record_outcome(&backend_id, false, ttft_ms);
                 }
             }
         } else {
@@ -1007,6 +1025,9 @@ fn create_sse_stream(
                 Err(e) => {
                     warn!(backend_id = %backend_id, error = %e, "Backend connection failed");
                     let _ = state.registry.decrement_pending(&backend_id);
+                    // Record quality outcome: connection failure
+                    let ttft_ms = start_time.elapsed().as_millis() as u32;
+                    state.router.quality_store().record_outcome(&backend_id, false, ttft_ms);
                     // Yield error as SSE event before closing
                     let error_chunk = create_error_chunk(&format!("Backend connection failed: {}", e));
                     yield Ok(Event::default().data(serde_json::to_string(&error_chunk).unwrap_or_default()));
@@ -1021,6 +1042,9 @@ fn create_sse_stream(
                 let body = response.text().await.unwrap_or_default();
                 warn!(backend_id = %backend_id, status = %status, "Backend returned error");
                 let _ = state.registry.decrement_pending(&backend_id);
+                // Record quality outcome: backend error
+                let ttft_ms = start_time.elapsed().as_millis() as u32;
+                state.router.quality_store().record_outcome(&backend_id, false, ttft_ms);
                 let error_chunk = create_error_chunk(&format!("Backend returned {}: {}", status, body));
                 yield Ok(Event::default().data(serde_json::to_string(&error_chunk).unwrap_or_default()));
                 yield Ok(Event::default().data("[DONE]"));
@@ -1065,6 +1089,10 @@ fn create_sse_stream(
                 }
             }
         }
+
+        // Record quality outcome for legacy streaming: success
+        let ttft_ms = start_time.elapsed().as_millis() as u32;
+        state.router.quality_store().record_outcome(&backend_id, true, ttft_ms);
 
         // Decrement pending requests
         let _ = state.registry.decrement_pending(&backend_id);

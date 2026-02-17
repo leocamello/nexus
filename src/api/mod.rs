@@ -136,6 +136,7 @@ impl AppState {
             config.routing.aliases.clone(),
             config.routing.fallbacks.clone(),
             policy_matcher,
+            config.quality.clone(),
         ));
 
         // Initialize metrics (safe to call multiple times - will reuse existing if already set)

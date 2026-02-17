@@ -166,10 +166,10 @@ impl Router {
         aliases: HashMap<String, String>,
         fallbacks: HashMap<String, Vec<String>>,
         policy_matcher: PolicyMatcher,
+        quality_config: QualityConfig,
     ) -> Self {
         let tokenizer_registry =
             Arc::new(TokenizerRegistry::new().expect("Failed to initialize tokenizer registry"));
-        let quality_config = QualityConfig::default();
         let quality_store = Arc::new(QualityMetricsStore::new(quality_config.clone()));
         Self {
             registry,
