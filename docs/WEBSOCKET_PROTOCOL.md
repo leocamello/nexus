@@ -56,6 +56,9 @@ Sent when backend health status changes or metrics update.
 - `pending_requests` (number): Current queue depth
 - `total_requests` (number): Total requests sent to this backend
 - `avg_latency_ms` (number): Average response latency in milliseconds
+- `backend_type` (string): "ollama", "vllm", "openai", etc. (v0.3)
+- `privacy_zone` (string|null): "restricted" or "open" if configured (v0.3)
+- `tier` (number|null): Capability tier 1–5 if configured (v0.3)
 
 ### ModelChange
 
@@ -230,6 +233,32 @@ ws.onclose = (event) => {
   // Implement reconnection logic here
 };
 ```
+
+## v0.3 Additions
+
+### Budget Status in RequestComplete
+
+When budget management is enabled, `RequestComplete` messages may include cost information:
+
+```json
+{
+  "update_type": "RequestComplete",
+  "data": {
+    "timestamp": 1704067200,
+    "model": "gpt-4",
+    "backend_id": "openai-cloud",
+    "duration_ms": 1523,
+    "status": "Success",
+    "error_message": null
+  }
+}
+```
+
+Cost tracking for individual requests is available via the `X-Nexus-Cost-Estimated` response header on the HTTP API rather than the WebSocket stream.
+
+### Privacy and Tier Context
+
+`BackendStatus` updates now include privacy zone and capability tier metadata when configured. This enables the dashboard to display zone badges and tier indicators on backend cards.
 
 ## Testing
 

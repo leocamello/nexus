@@ -591,4 +591,52 @@ mod tests {
         let count = agent.count_tokens("");
         assert_eq!(count, 0);
     }
+
+    #[test]
+    fn test_count_tokens_single_word() {
+        let agent = test_agent("https://api.openai.com".to_string(), "sk-test".to_string());
+        let count = agent.count_tokens("hello");
+        assert_eq!(count, 1, "Single common word should be 1 token");
+    }
+
+    #[test]
+    fn test_count_tokens_long_text() {
+        let agent = test_agent("https://api.openai.com".to_string(), "sk-test".to_string());
+        let text = "The quick brown fox jumps over the lazy dog. ".repeat(10);
+        let count = agent.count_tokens(&text);
+        // ~100 tokens for 10 repetitions of a 10-word sentence
+        assert!(
+            count > 50,
+            "Long text should produce many tokens, got {count}"
+        );
+        assert!(count < 200, "Should not over-count, got {count}");
+    }
+
+    #[test]
+    fn test_count_tokens_special_characters() {
+        let agent = test_agent("https://api.openai.com".to_string(), "sk-test".to_string());
+        let count = agent.count_tokens("Hello! @#$%^&*() 你好世界");
+        assert!(count > 0, "Special chars should produce tokens");
+        // CJK characters typically produce more tokens per character
+        assert!(count > 3, "Mixed content should be > 3 tokens, got {count}");
+    }
+
+    #[test]
+    fn test_count_tokens_code_snippet() {
+        let agent = test_agent("https://api.openai.com".to_string(), "sk-test".to_string());
+        let code = "fn main() { println!(\"Hello, world!\"); }";
+        let count = agent.count_tokens(code);
+        assert!(count > 5, "Code snippet should be > 5 tokens, got {count}");
+        assert!(
+            count < 30,
+            "Code snippet should be < 30 tokens, got {count}"
+        );
+    }
+
+    #[test]
+    fn test_count_tokens_whitespace_only() {
+        let agent = test_agent("https://api.openai.com".to_string(), "sk-test".to_string());
+        let count = agent.count_tokens("   \n\t  ");
+        assert!(count > 0, "Whitespace should still produce tokens");
+    }
 }

@@ -115,7 +115,9 @@ pub fn load_backends_from_config(
         );
 
         // Create agent for this backend (T027)
-        let agent = crate::agent::factory::create_agent(
+        // Gracefully skip backends whose agent cannot be created (e.g. missing API key)
+        // to preserve zero-config startup.
+        let agent = match crate::agent::factory::create_agent(
             id.clone(),
             backend_config.name.clone(),
             backend_config.url.clone(),
@@ -124,7 +126,18 @@ pub fn load_backends_from_config(
             metadata,
             backend_config.effective_privacy_zone(),
             Some(backend_config.effective_tier()),
-        )?;
+        ) {
+            Ok(agent) => agent,
+            Err(e) => {
+                tracing::warn!(
+                    name = %backend_config.name,
+                    backend_type = ?backend_config.backend_type,
+                    error = %e,
+                    "Skipping backend: agent creation failed"
+                );
+                continue;
+            }
+        };
 
         // Register both backend and agent
         registry.add_backend_with_agent(backend, agent)?;
@@ -463,6 +476,33 @@ mod tests {
 
         // Clean up
         std::env::remove_var("NEXUS_TEST_OPENAI_KEY");
+    }
+
+    #[tokio::test]
+    async fn test_missing_api_key_env_skips_backend_instead_of_crashing() {
+        // Ensure the env var does NOT exist
+        std::env::remove_var("NEXUS_NONEXISTENT_KEY_FOR_TEST");
+
+        let mut config = NexusConfig::default();
+        config.backends.push(BackendConfig {
+            name: "should-skip".to_string(),
+            url: "https://api.openai.com".to_string(),
+            backend_type: BackendType::OpenAI,
+            priority: 1,
+            api_key_env: Some("NEXUS_NONEXISTENT_KEY_FOR_TEST".to_string()),
+            zone: None,
+            tier: None,
+        });
+
+        let registry = Arc::new(Registry::new());
+        // Should NOT return an error — should skip the backend gracefully
+        let result = load_backends_from_config(&config, &registry);
+        assert!(result.is_ok(), "Missing API key should not crash startup");
+        assert_eq!(
+            registry.backend_count(),
+            0,
+            "Backend with missing API key should be skipped"
+        );
     }
 
     #[tokio::test]

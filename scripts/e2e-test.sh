@@ -376,6 +376,42 @@ else
   skip "WebSocket upgrade (curl cannot complete WS handshake, use wscat to verify)"
 fi
 
+# --- Nexus-Transparent Protocol Headers (F12) --------------------------------
+section "Nexus-Transparent Protocol (F12)"
+
+# Send a chat request and capture response headers
+HEADER_RESP=$(curl -sD - "$BASE_URL/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"'"$CHAT_MODEL"'","messages":[{"role":"user","content":"Say hi"}],"max_tokens":5}' 2>/dev/null || echo "FAIL")
+
+if echo "$HEADER_RESP" | grep -qi "x-nexus-backend:"; then
+  BACKEND_NAME=$(echo "$HEADER_RESP" | grep -i "x-nexus-backend:" | head -1 | cut -d: -f2- | tr -d ' \r')
+  pass "X-Nexus-Backend header present: $BACKEND_NAME"
+else
+  skip "X-Nexus-Backend header (may require cloud backend)"
+fi
+
+if echo "$HEADER_RESP" | grep -qi "x-nexus-backend-type:"; then
+  BACKEND_TYPE=$(echo "$HEADER_RESP" | grep -i "x-nexus-backend-type:" | head -1 | cut -d: -f2- | tr -d ' \r')
+  pass "X-Nexus-Backend-Type header present: $BACKEND_TYPE"
+else
+  skip "X-Nexus-Backend-Type header (may require cloud backend)"
+fi
+
+if echo "$HEADER_RESP" | grep -qi "x-nexus-privacy-zone:"; then
+  PRIVACY_ZONE=$(echo "$HEADER_RESP" | grep -i "x-nexus-privacy-zone:" | head -1 | cut -d: -f2- | tr -d ' \r')
+  pass "X-Nexus-Privacy-Zone header present: $PRIVACY_ZONE"
+else
+  skip "X-Nexus-Privacy-Zone header (requires zone config)"
+fi
+
+if echo "$HEADER_RESP" | grep -qi "x-nexus-cost-estimated:"; then
+  COST=$(echo "$HEADER_RESP" | grep -i "x-nexus-cost-estimated:" | head -1 | cut -d: -f2- | tr -d ' \r')
+  pass "X-Nexus-Cost-Estimated header present: $COST"
+else
+  skip "X-Nexus-Cost-Estimated header (requires cloud backend with pricing)"
+fi
+
 # --- Results -----------------------------------------------------------------
 section "Results"
 

@@ -358,3 +358,101 @@ fn test_rejection_reasons_include_suggested_actions() {
         other => panic!("Expected Reject, got {:?}", other),
     }
 }
+
+/// Budget hard limit (BlockAll) rejects with BudgetReconciler reason
+#[test]
+fn test_budget_hard_limit_block_all_produces_rejection() {
+    use dashmap::DashMap;
+    use nexus::agent::tokenizer::TokenizerRegistry;
+    use nexus::config::{BudgetConfig, HardLimitAction};
+    use nexus::routing::reconciler::budget::{BudgetMetrics, BudgetReconciler, GLOBAL_BUDGET_KEY};
+
+    let registry = Arc::new(Registry::new());
+
+    // Single local backend
+    let (backend, agent) = create_backend(
+        "local-1",
+        "Local Backend",
+        3,
+        PrivacyZone::Restricted,
+        BackendStatus::Healthy,
+    );
+    registry.add_backend_with_agent(backend, agent).unwrap();
+
+    // Budget config: $10 limit, hard limit = block all
+    let budget_config = BudgetConfig {
+        monthly_limit_usd: Some(10.0),
+        soft_limit_percent: 75.0,
+        hard_limit_action: HardLimitAction::BlockAll,
+        reconciliation_interval_secs: 60,
+    };
+
+    let tokenizer_registry = Arc::new(TokenizerRegistry::new().unwrap());
+    let budget_state = Arc::new(DashMap::new());
+
+    // Pre-load spending that exceeds hard limit
+    budget_state.insert(
+        GLOBAL_BUDGET_KEY.to_string(),
+        BudgetMetrics {
+            current_month_spending: 15.0, // Over the $10 limit
+            last_reconciliation_time: chrono::Utc::now(),
+            month_key: chrono::Utc::now().format("%Y-%m").to_string(),
+        },
+    );
+
+    let budget = BudgetReconciler::new(
+        Arc::clone(&registry),
+        budget_config,
+        tokenizer_registry,
+        budget_state,
+    );
+    let scheduler = SchedulerReconciler::new(
+        Arc::clone(&registry),
+        RoutingStrategy::PriorityOnly,
+        ScoringWeights::default(),
+        Arc::new(std::sync::atomic::AtomicU64::new(0)),
+    );
+
+    let mut pipeline = ReconcilerPipeline::new(vec![Box::new(budget), Box::new(scheduler)]);
+
+    let reqs = RequestRequirements {
+        model: "test-model".to_string(),
+        estimated_tokens: 100,
+        needs_vision: false,
+        needs_tools: false,
+        needs_json_mode: false,
+    };
+
+    let mut intent = RoutingIntent::new(
+        "req-budget-1".to_string(),
+        "test-model".to_string(),
+        "test-model".to_string(),
+        reqs,
+        vec!["local-1".to_string()],
+    );
+
+    let decision = pipeline.execute(&mut intent).unwrap();
+
+    match decision {
+        RoutingDecision::Reject { rejection_reasons } => {
+            assert!(
+                !rejection_reasons.is_empty(),
+                "Should have rejection reasons"
+            );
+            assert!(
+                rejection_reasons
+                    .iter()
+                    .any(|r| r.reconciler == "BudgetReconciler"),
+                "Should be rejected by BudgetReconciler, got: {:?}",
+                rejection_reasons,
+            );
+            assert!(
+                rejection_reasons
+                    .iter()
+                    .any(|r| r.reason.contains("budget")),
+                "Reason should mention budget"
+            );
+        }
+        other => panic!("Expected Reject for budget exceeded, got {:?}", other),
+    }
+}

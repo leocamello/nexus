@@ -219,6 +219,20 @@ name = "gpu-server"
 url = "http://192.168.1.100:8000"
 type = "vllm"
 priority = 2
+
+# Cloud backend with privacy zone and budget (v0.3)
+# [[backends]]
+# name = "openai-gpt4"
+# url = "https://api.openai.com"
+# type = "openai"
+# api_key_env = "OPENAI_API_KEY"
+# zone = "open"
+# tier = 4
+
+# [routing.budget]
+# monthly_limit_usd = 50.0
+# soft_limit_percent = 75
+# hard_limit_action = "block_cloud"
 ```
 
 ## Architecture
