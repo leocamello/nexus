@@ -36,15 +36,14 @@ impl RequestRequirements {
         for message in &request.messages {
             match &message.content {
                 MessageContent::Text { content } => {
-                    estimated_tokens =
-                        estimated_tokens.saturating_add(content.len() as u32 / 4);
+                    estimated_tokens = estimated_tokens.saturating_add(content.len() as u32 / 4);
                 }
                 MessageContent::Parts { content } => {
                     for part in content {
                         if part.part_type == "text" {
                             if let Some(text) = &part.text {
                                 estimated_tokens =
-                                estimated_tokens.saturating_add(text.len() as u32 / 4);
+                                    estimated_tokens.saturating_add(text.len() as u32 / 4);
                             }
                         } else if part.part_type == "image_url" {
                             needs_vision = true;
