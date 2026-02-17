@@ -249,6 +249,7 @@ fn bench_full_pipeline(c: &mut Criterion) {
         let registry = create_pipeline_registry(count, 3);
         let budget_state = Arc::new(dashmap::DashMap::new());
         budget_state.insert("global".to_string(), BudgetMetrics::new());
+        let tokenizer_registry = Arc::new(TokenizerRegistry::new().expect("tokenizer registry"));
 
         group.bench_with_input(BenchmarkId::new("backends", count), &count, |b, _| {
             b.iter(|| {
@@ -261,7 +262,7 @@ fn bench_full_pipeline(c: &mut Criterion) {
                     Box::new(BudgetReconciler::new(
                         Arc::clone(&registry),
                         BudgetConfig::default(),
-                        Arc::new(TokenizerRegistry::new().expect("tokenizer registry")),
+                        Arc::clone(&tokenizer_registry),
                         Arc::clone(&budget_state),
                     )),
                     Box::new(TierReconciler::new(
