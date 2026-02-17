@@ -2113,11 +2113,29 @@ configuration editing, and routing controls — all embedded in the single binar
 | Configuration | View/edit TOML config, aliases, fallback chains, routing strategy |
 | Routing | Visual strategy selector, alias editor, fallback chain builder |
 | Observability | Metrics charts, log viewer with filtering, Prometheus status |
+| Cloud & Privacy (from v0.3) | Backend cards with local/cloud badge, privacy zone indicator (🔒/🌐), capability tier display |
+| Budget (from v0.3) | Budget widget with spend vs limit, utilization bar, status (Normal/SoftLimit/HardLimit) |
+| Request Insights (from v0.3) | Cost column for cloud requests, route reason column, visual cloud/local differentiation |
+
+## v0.3 Data Already Available (Backend Ready)
+The following data is computed server-side and available via `/v1/stats` and
+X-Nexus-* response headers, but NOT rendered by the F10 dashboard:
+- `StatsResponse.budget` — spending, limit, utilization%, status, billing month
+- Backend `zone` (restricted/open) and `tier` (1-5) from registry
+- Backend type (local vs cloud) — visual differentiation needed
+- Per-request `x-nexus-cost-estimated`, `x-nexus-route-reason` headers
+- Budget headers: `x-nexus-budget-status`, `x-nexus-budget-utilization`, `x-nexus-budget-remaining`
+
+F23 must surface all of this data that F10 currently ignores.
 
 ## Acceptance Criteria
 - [ ] All CLI capabilities accessible through the UI
 - [ ] Existing F10 dashboard migrated into monitoring tab
 - [ ] Backend CRUD operations (add, remove, edit, drain)
+- [ ] Backend cards show local/cloud badge, privacy zone, and capability tier
+- [ ] Cloud backends visually differentiated (color/icon) from local backends
+- [ ] Budget widget: current spend vs limit, utilization bar, status indicator
+- [ ] Request history includes cost column (cloud) and route reason column
 - [ ] Model alias and fallback chain management
 - [ ] Routing strategy configuration
 - [ ] Real-time updates via WebSocket (existing F10 infrastructure)
