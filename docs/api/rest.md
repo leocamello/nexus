@@ -40,7 +40,7 @@ OpenAI-compatible chat completion endpoint. Supports both streaming and non-stre
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `model` | string | Yes | Model identifier (supports [aliases](../FEATURES.md)) |
+| `model` | string | Yes | Model identifier (supports [aliases](../roadmap.md)) |
 | `messages` | array | Yes | Conversation messages (`system`, `user`, `assistant`) |
 | `stream` | boolean | No | Enable Server-Sent Events streaming (default: `false`) |
 | `temperature` | number | No | Sampling temperature (0.0–2.0) |
@@ -159,7 +159,7 @@ http://<nexus-host>:8000/metrics
 
 ### GET `/`
 
-Embedded web dashboard (HTML/JS/CSS) with real-time monitoring via WebSocket. See the [WebSocket Protocol](../WEBSOCKET_PROTOCOL.md) documentation for details on the real-time update format.
+Embedded web dashboard (HTML/JS/CSS) with real-time monitoring via WebSocket. See the [WebSocket Protocol](websocket.md) documentation for details on the real-time update format.
 
 ---
 

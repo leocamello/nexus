@@ -319,5 +319,5 @@ Configure your Prometheus scraper to target `http://<nexus-host>:8000/metrics` f
 
 - **[API Reference](api/)** — Full endpoint documentation
 - **[Architecture](architecture.md)** — System internals, module structure, and data flows
-- **[Features](FEATURES.md)** — Detailed feature specifications (F01–F23)
+- **[Roadmap](roadmap.md)** — Feature index (F01–F23) and version history
 - **[Example Config](../nexus.example.toml)** — Full annotated configuration file
