@@ -99,28 +99,28 @@
 
 ### Tests for US3
 
-- [ ] T021 [P] [US3] Unit tests for `RequestQueue` — enqueue/dequeue ordering, capacity limits, priority ordering, depth reporting. Location: `src/queue/mod.rs` (mod tests)
+- [X] T021 [P] [US3] Unit tests for `RequestQueue` — enqueue/dequeue ordering, capacity limits, priority ordering, depth reporting. Location: `src/queue/mod.rs` (mod tests)
   - **AC**: Tests cover: FIFO ordering, max_size rejection, high-priority drains first, depth() accurate, max_size=0 rejects immediately
-- [ ] T022 [P] [US3] Unit tests for queue timeout — enqueued request times out, receives 503 with retry_after. Location: `src/queue/mod.rs` (mod tests)
+- [X] T022 [P] [US3] Unit tests for queue timeout — enqueued request times out, receives 503 with retry_after. Location: `src/queue/mod.rs` (mod tests)
   - **AC**: Timeout test completes within 2x the configured max_wait
-- [ ] T023 [P] [US3] Integration test for queue behavior — concurrent requests exceeding capacity, verify queuing and draining. Location: `tests/` directory
+- [X] T023 [P] [US3] Integration test for queue behavior — concurrent requests exceeding capacity, verify queuing and draining. Location: `tests/` directory
   - **AC**: Test sends N+1 requests to N-capacity backend, all complete successfully
 
 ### Implementation for US3
 
-- [ ] T024 [US3] Create `src/queue/mod.rs` — `RequestQueue` struct with bounded dual-channel (high/normal priority) using `tokio::sync::mpsc`. Methods: `enqueue(QueuedRequest)`, `try_dequeue() -> Option<QueuedRequest>`, `depth() -> usize`. `QueuedRequest` contains: RoutingIntent, original request, oneshot::Sender for response, enqueued_at (Instant), priority (High/Normal).
+- [X] T024 [US3] Create `src/queue/mod.rs` — `RequestQueue` struct with bounded dual-channel (high/normal priority) using `tokio::sync::mpsc`. Methods: `enqueue(QueuedRequest)`, `try_dequeue() -> Option<QueuedRequest>`, `depth() -> usize`. `QueuedRequest` contains: RoutingIntent, original request, oneshot::Sender for response, enqueued_at (Instant), priority (High/Normal).
   - **AC**: Queue compiles, respects max_size, priority ordering works
-- [ ] T025 [US3] Implement drain task — background tokio task that watches for available backend capacity, dequeues requests, re-runs reconciler pipeline, sends response via oneshot channel. Handles timeout: if request exceeds max_wait_seconds, send 503 with `retry_after`.
+- [X] T025 [US3] Implement drain task — background tokio task that watches for available backend capacity, dequeues requests, re-runs reconciler pipeline, sends response via oneshot channel. Handles timeout: if request exceeds max_wait_seconds, send 503 with `retry_after`.
   - **AC**: Drain task processes queued requests, timeout produces actionable 503
-- [ ] T026 [US3] Update `SchedulerReconciler` to produce `RoutingDecision::Queue` — when no candidate has capacity and queue is enabled, return Queue with estimated_wait_ms. When queue disabled (max_size=0), return Reject.
+- [X] T026 [US3] Update `SchedulerReconciler` to produce `RoutingDecision::Queue` — when no candidate has capacity and queue is enabled, return Queue with estimated_wait_ms. When queue disabled (max_size=0), return Reject.
   - **AC**: Scheduler returns Queue when saturated and queue enabled, Reject when disabled
-- [ ] T027 [US3] Update completions handler (`src/api/completions.rs`) — handle `RoutingDecision::Queue`: enqueue request, await response from oneshot channel with timeout.
+- [X] T027 [US3] Update completions handler (`src/api/completions.rs`) — handle `RoutingDecision::Queue`: enqueue request, await response from oneshot channel with timeout.
   - **AC**: Completions handler supports all three routing decisions (Route, Queue, Reject)
-- [ ] T028 [US3] Parse `X-Nexus-Priority` header — extract priority level (high/normal, default normal) from incoming request headers. Pass to RoutingIntent.
+- [X] T028 [US3] Parse `X-Nexus-Priority` header — extract priority level (high/normal, default normal) from incoming request headers. Pass to RoutingIntent.
   - **AC**: Priority header parsed, invalid values default to "normal"
-- [ ] T029 [P] [US3] Add Prometheus gauge `nexus_queue_depth` in `src/metrics/mod.rs` — updated by RequestQueue on enqueue/dequeue.
+- [X] T029 [P] [US3] Add Prometheus gauge `nexus_queue_depth` in `src/metrics/mod.rs` — updated by RequestQueue on enqueue/dequeue.
   - **AC**: Gauge visible in `/metrics`, reflects actual queue depth
-- [ ] T030 [US3] Wire RequestQueue startup in server initialization — create queue, pass to completions handler and drain task. Start drain task with CancellationToken.
+- [X] T030 [US3] Wire RequestQueue startup in server initialization — create queue, pass to completions handler and drain task. Start drain task with CancellationToken.
   - **AC**: Queue available to handler, drain task runs, stops on shutdown
 
 **Checkpoint**: Burst traffic queued and drained. Priority requests served first.

@@ -96,6 +96,9 @@ pub struct Router {
 
     /// Quality configuration for thresholds
     quality_config: QualityConfig,
+
+    /// Whether request queuing is enabled (T026)
+    queue_enabled: bool,
 }
 
 impl Router {
@@ -122,6 +125,7 @@ impl Router {
             tokenizer_registry,
             quality_store,
             quality_config,
+            queue_enabled: false,
         }
     }
 
@@ -150,6 +154,7 @@ impl Router {
             tokenizer_registry,
             quality_store,
             quality_config,
+            queue_enabled: false,
         }
     }
 
@@ -179,6 +184,7 @@ impl Router {
             tokenizer_registry,
             quality_store,
             quality_config,
+            queue_enabled: false,
         }
     }
 
@@ -211,6 +217,7 @@ impl Router {
             tokenizer_registry,
             quality_store,
             quality_config,
+            queue_enabled: false,
         }
     }
 
@@ -277,14 +284,17 @@ impl Router {
             Arc::clone(&self.quality_store),
             self.quality_config.clone(),
         );
-        ReconcilerPipeline::new(vec![
-            Box::new(analyzer),
-            Box::new(privacy),
-            Box::new(budget),
-            Box::new(tier),
-            Box::new(quality),
-            Box::new(scheduler),
-        ])
+        ReconcilerPipeline::with_queue(
+            vec![
+                Box::new(analyzer),
+                Box::new(privacy),
+                Box::new(budget),
+                Box::new(tier),
+                Box::new(quality),
+                Box::new(scheduler),
+            ],
+            self.queue_enabled,
+        )
     }
 
     /// Run the pipeline for a specific model (primary or fallback) and return the decision
@@ -380,6 +390,19 @@ impl Router {
                 budget_status,
                 budget_utilization,
                 budget_remaining,
+            });
+        }
+
+        // T026: Handle Queue decision — propagate as RoutingError::Queue
+        if let RoutingDecision::Queue {
+            reason,
+            estimated_wait_ms,
+            ..
+        } = &decision
+        {
+            return Err(RoutingError::Queue {
+                reason: reason.clone(),
+                estimated_wait_ms: *estimated_wait_ms,
             });
         }
 
@@ -621,6 +644,11 @@ impl Router {
     /// Get reference to the quality metrics store.
     pub fn quality_store(&self) -> &Arc<QualityMetricsStore> {
         &self.quality_store
+    }
+
+    /// Set whether request queuing is enabled (T026).
+    pub fn set_queue_enabled(&mut self, enabled: bool) {
+        self.queue_enabled = enabled;
     }
 
     /// Get current budget status and utilization percentage (F14).

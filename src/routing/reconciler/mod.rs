@@ -43,13 +43,26 @@ pub trait Reconciler: Send + Sync {
 /// Order is fixed: RequestAnalyzer → Privacy → Budget → Tier → Quality → Scheduler
 pub struct ReconcilerPipeline {
     reconcilers: Vec<Box<dyn Reconciler>>,
+    /// Whether request queuing is enabled (from QueueConfig)
+    queue_enabled: bool,
 }
 
 impl ReconcilerPipeline {
     /// Create a new pipeline with the given reconcilers.
     /// Reconcilers will execute in the order provided.
     pub fn new(reconcilers: Vec<Box<dyn Reconciler>>) -> Self {
-        Self { reconcilers }
+        Self {
+            reconcilers,
+            queue_enabled: false,
+        }
+    }
+
+    /// Create a new pipeline with queue awareness.
+    pub fn with_queue(reconcilers: Vec<Box<dyn Reconciler>>, queue_enabled: bool) -> Self {
+        Self {
+            reconcilers,
+            queue_enabled,
+        }
     }
 
     /// Returns the number of reconcilers in the pipeline.
@@ -123,8 +136,17 @@ impl ReconcilerPipeline {
 
         // Convert intent to decision based on final state
         let decision = if intent.candidate_agents.is_empty() {
-            RoutingDecision::Reject {
-                rejection_reasons: intent.rejection_reasons.clone(),
+            if self.queue_enabled {
+                // T026: Queue when no capacity but queue is enabled
+                RoutingDecision::Queue {
+                    reason: "All backends at capacity".to_string(),
+                    estimated_wait_ms: estimate_wait_ms(intent),
+                    fallback_agent: None,
+                }
+            } else {
+                RoutingDecision::Reject {
+                    rejection_reasons: intent.rejection_reasons.clone(),
+                }
             }
         } else {
             RoutingDecision::Route {
@@ -147,6 +169,17 @@ impl ReconcilerPipeline {
 
         Ok(decision)
     }
+}
+
+/// Estimate wait time based on average latency from rejection reasons.
+fn estimate_wait_ms(intent: &RoutingIntent) -> u64 {
+    // Default estimate: 5 seconds
+    if intent.rejection_reasons.is_empty() {
+        return 5000;
+    }
+    // Use a simple heuristic: 5s per rejected agent, capped at 30s
+    let estimate = (intent.rejection_reasons.len() as u64) * 5000;
+    estimate.min(30_000)
 }
 
 #[cfg(test)]

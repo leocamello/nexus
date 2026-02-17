@@ -12,5 +12,6 @@ pub mod discovery;
 pub mod health;
 pub mod logging;
 pub mod metrics;
+pub mod queue;
 pub mod registry;
 pub mod routing;

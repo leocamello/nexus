@@ -105,6 +105,8 @@ pub struct AppState {
     pub ws_broadcast: broadcast::Sender<WebSocketUpdate>,
     /// Pricing table for cloud cost estimation
     pub pricing: Arc<crate::agent::pricing::PricingTable>,
+    /// Optional request queue for burst traffic (T030)
+    pub queue: Option<Arc<crate::queue::RequestQueue>>,
 }
 
 impl AppState {
@@ -171,6 +173,7 @@ impl AppState {
             request_history,
             ws_broadcast,
             pricing,
+            queue: None,
         }
     }
 }

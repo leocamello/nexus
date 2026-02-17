@@ -34,6 +34,9 @@ const STRICT_HEADER: &str = "x-nexus-strict";
 /// Header name for flexible tier enforcement (lowercase for HTTP/2 compatibility)
 const FLEXIBLE_HEADER: &str = "x-nexus-flexible";
 
+/// Header name for request priority (T028)
+const PRIORITY_HEADER: &str = "x-nexus-priority";
+
 /// Extract tier enforcement mode from request headers (FR-007, FR-008, FR-009).
 ///
 /// # Header Priority
@@ -63,6 +66,18 @@ fn extract_tier_enforcement_mode(headers: &HeaderMap) -> TierEnforcementMode {
 
     // Default to strict (FR-009)
     TierEnforcementMode::Strict
+}
+
+/// Extract priority from X-Nexus-Priority header (T028).
+///
+/// Valid values: "high", "normal". Default: "normal".
+/// Invalid values default to "normal".
+fn extract_priority(headers: &HeaderMap) -> crate::queue::Priority {
+    headers
+        .get(PRIORITY_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .map(crate::queue::Priority::from_header)
+        .unwrap_or(crate::queue::Priority::Normal)
 }
 
 /// Inject budget-related response headers (F14: T037-T040).
@@ -277,6 +292,7 @@ pub async fn handle(
                 crate::routing::RoutingError::NoHealthyBackend { .. } => "no_healthy_backend",
                 crate::routing::RoutingError::CapabilityMismatch { .. } => "capability_mismatch",
                 crate::routing::RoutingError::Reject { .. } => "routing_rejected",
+                crate::routing::RoutingError::Queue { .. } => "queued",
             };
 
             let sanitized_model = state.metrics_collector.sanitize_label(&requested_model);
@@ -306,6 +322,9 @@ pub async fn handle(
                 crate::routing::RoutingError::Reject { rejection_reasons } => {
                     format!("Request rejected: {} reasons", rejection_reasons.len())
                 }
+                crate::routing::RoutingError::Queue { reason, .. } => {
+                    format!("Request queued: {}", reason)
+                }
             };
 
             record_request_completion(
@@ -329,6 +348,7 @@ pub async fn handle(
                 crate::routing::RoutingError::NoHealthyBackend { .. } => 503u16,
                 crate::routing::RoutingError::CapabilityMismatch { .. } => 400u16,
                 crate::routing::RoutingError::Reject { .. } => 503u16,
+                crate::routing::RoutingError::Queue { .. } => 503u16,
             };
             Span::current().record("status_code", status_code);
 
@@ -385,6 +405,87 @@ pub async fn handle(
                 crate::routing::RoutingError::Reject { rejection_reasons } => {
                     let backends = available_backend_names(&state);
                     return Ok(rejection_response(rejection_reasons, backends));
+                }
+                crate::routing::RoutingError::Queue {
+                    reason,
+                    estimated_wait_ms,
+                } => {
+                    // T027: Enqueue if queue available
+                    if let Some(ref queue) = state.queue {
+                        let priority = extract_priority(&headers);
+                        let (tx, rx) = tokio::sync::oneshot::channel();
+                        let intent =
+                            crate::routing::reconciler::intent::RoutingIntent::new(
+                                request_id.clone(),
+                                requested_model.clone(),
+                                requested_model.clone(),
+                                requirements.clone(),
+                                vec![],
+                            );
+                        let queued = crate::queue::QueuedRequest {
+                            intent,
+                            request: request.clone(),
+                            response_tx: tx,
+                            enqueued_at: std::time::Instant::now(),
+                            priority,
+                        };
+
+                        match queue.enqueue(queued) {
+                            Ok(()) => {
+                                info!(
+                                    reason = %reason,
+                                    estimated_wait_ms,
+                                    priority = ?priority,
+                                    "Request enqueued"
+                                );
+
+                                let max_wait = std::time::Duration::from_secs(
+                                    queue.config().max_wait_seconds,
+                                );
+                                match tokio::time::timeout(max_wait, rx).await
+                                {
+                                    Ok(Ok(resp)) => {
+                                        return resp;
+                                    }
+                                    _ => {
+                                        return Ok(
+                                            crate::queue::build_timeout_response(
+                                                &queue
+                                                    .config()
+                                                    .max_wait_seconds
+                                                    .to_string(),
+                                            ),
+                                        );
+                                    }
+                                }
+                            }
+                            Err(crate::queue::QueueError::Full { .. }) => {
+                                warn!("Queue full, rejecting request");
+                                return Ok(
+                                    ApiError::service_unavailable(
+                                        "All backends at capacity \
+                                         and queue is full",
+                                    )
+                                    .into_response(),
+                                );
+                            }
+                            Err(crate::queue::QueueError::Disabled) => {
+                                return Ok(
+                                    ApiError::service_unavailable(
+                                        "All backends at capacity",
+                                    )
+                                    .into_response(),
+                                );
+                            }
+                        }
+                    } else {
+                        return Ok(
+                            ApiError::service_unavailable(
+                                "All backends at capacity",
+                            )
+                            .into_response(),
+                        );
+                    }
                 }
             }
         }
@@ -786,6 +887,15 @@ async fn handle_streaming(
                 crate::routing::RoutingError::Reject { rejection_reasons } => {
                     let backends = available_backend_names(&state);
                     return Ok(rejection_response(rejection_reasons, backends));
+                }
+                crate::routing::RoutingError::Queue { .. } => {
+                    // Streaming requests don't support queuing
+                    return Ok(
+                        ApiError::service_unavailable(
+                            "All backends at capacity",
+                        )
+                        .into_response(),
+                    );
                 }
             }
         }

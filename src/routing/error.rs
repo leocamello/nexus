@@ -27,4 +27,11 @@ pub enum RoutingError {
     Reject {
         rejection_reasons: Vec<RejectionReason>,
     },
+
+    /// Request should be queued (all backends at capacity, queue enabled)
+    #[error("All backends at capacity, request queued")]
+    Queue {
+        reason: String,
+        estimated_wait_ms: u64,
+    },
 }
