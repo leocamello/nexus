@@ -604,4 +604,73 @@ mod tests {
 
         assert_eq!(app_state.registry.backend_count(), 1);
     }
+
+    #[tokio::test]
+    async fn test_cli_all_overrides_applied_together() {
+        let temp = NamedTempFile::new().unwrap();
+        std::fs::write(
+            temp.path(),
+            "[server]\nhost = \"0.0.0.0\"\nport = 8000\n\n[discovery]\nenabled = true",
+        )
+        .unwrap();
+
+        let args = ServeArgs {
+            config: temp.path().to_path_buf(),
+            port: Some(3000),
+            host: Some("10.0.0.1".to_string()),
+            log_level: Some("warn".to_string()),
+            no_discovery: true,
+            no_health_check: true,
+        };
+
+        let config = load_config_with_overrides(&args).unwrap();
+        assert_eq!(config.server.port, 3000);
+        assert_eq!(config.server.host, "10.0.0.1");
+        assert_eq!(config.logging.level, "warn");
+        assert!(!config.discovery.enabled);
+        assert!(!config.health_check.enabled);
+    }
+
+    #[tokio::test]
+    async fn test_multiple_backends_different_types_loaded() {
+        let mut config = NexusConfig::default();
+        let types = [
+            ("ollama-1", "http://localhost:11434", BackendType::Ollama),
+            ("vllm-1", "http://localhost:8001", BackendType::VLLM),
+            ("lmstudio-1", "http://localhost:1234", BackendType::LMStudio),
+        ];
+        for (name, url, bt) in &types {
+            config.backends.push(BackendConfig {
+                name: name.to_string(),
+                url: url.to_string(),
+                backend_type: *bt,
+                priority: 1,
+                api_key_env: None,
+                zone: None,
+                tier: None,
+            });
+        }
+
+        let registry = Arc::new(Registry::new());
+        load_backends_from_config(&config, &registry).unwrap();
+        assert_eq!(registry.backend_count(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_invalid_toml_config_returns_error() {
+        let temp = NamedTempFile::new().unwrap();
+        std::fs::write(temp.path(), "this is not valid toml {{{{").unwrap();
+
+        let args = ServeArgs {
+            config: temp.path().to_path_buf(),
+            port: None,
+            host: None,
+            log_level: None,
+            no_discovery: false,
+            no_health_check: false,
+        };
+
+        let result = load_config_with_overrides(&args);
+        assert!(result.is_err(), "Invalid TOML should produce an error");
+    }
 }

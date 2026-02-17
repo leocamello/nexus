@@ -548,4 +548,90 @@ mod tests {
         assert!(!model.supports_tools);
         assert_eq!(model.context_length, 4096);
     }
+
+    #[test]
+    fn test_name_heuristics_llama_vision() {
+        let mut model = ModelCapability {
+            id: "llama-3.2-90b-vision".to_string(),
+            name: "llama-3.2-90b-vision".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        GenericOpenAIAgent::apply_name_heuristics(&mut model);
+        assert!(model.supports_vision);
+    }
+
+    #[test]
+    fn test_name_heuristics_gpt4_turbo_no_special() {
+        let mut model = ModelCapability {
+            id: "gpt-4-turbo".to_string(),
+            name: "gpt-4-turbo".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        GenericOpenAIAgent::apply_name_heuristics(&mut model);
+        // Generic agent doesn't have gpt-4 in its vision or tools patterns
+        assert!(!model.supports_vision);
+        assert!(!model.supports_tools);
+    }
+
+    #[test]
+    fn test_name_heuristics_claude_opus_no_tools() {
+        let mut model = ModelCapability {
+            id: "claude-3-opus".to_string(),
+            name: "claude-3-opus".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        GenericOpenAIAgent::apply_name_heuristics(&mut model);
+        assert!(!model.supports_tools);
+    }
+
+    #[test]
+    fn test_name_heuristics_unknown_model_defaults() {
+        let mut model = ModelCapability {
+            id: "unknown-model".to_string(),
+            name: "unknown-model".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        GenericOpenAIAgent::apply_name_heuristics(&mut model);
+        assert!(!model.supports_vision);
+        assert!(!model.supports_tools);
+        assert_eq!(model.context_length, 4096);
+    }
+
+    #[test]
+    fn test_name_heuristics_empty_name_defaults() {
+        let mut model = ModelCapability {
+            id: String::new(),
+            name: String::new(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        GenericOpenAIAgent::apply_name_heuristics(&mut model);
+        assert!(!model.supports_vision);
+        assert!(!model.supports_tools);
+        assert_eq!(model.context_length, 4096);
+    }
 }

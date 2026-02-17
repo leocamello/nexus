@@ -17,6 +17,15 @@ mod tests {
     use super::*;
     use clap_complete::Shell;
 
+    /// Generate completions into a buffer instead of stdout
+    fn generate_completions_to_string(shell: Shell) -> String {
+        let mut cmd = Cli::command();
+        let bin_name = cmd.get_name().to_string();
+        let mut buf = Vec::new();
+        generate(shell, &mut cmd, bin_name, &mut buf);
+        String::from_utf8(buf).unwrap()
+    }
+
     #[test]
     fn test_completions_bash() {
         let _args = CompletionsArgs { shell: Shell::Bash };
@@ -29,5 +38,32 @@ mod tests {
     fn test_completions_zsh() {
         let _args = CompletionsArgs { shell: Shell::Zsh };
         // Just verify it doesn't panic
+    }
+
+    #[test]
+    fn test_bash_completions_contain_command_name() {
+        let output = generate_completions_to_string(Shell::Bash);
+        assert!(
+            output.contains("nexus"),
+            "Bash completions should reference the 'nexus' command name"
+        );
+    }
+
+    #[test]
+    fn test_zsh_completions_contain_command_name() {
+        let output = generate_completions_to_string(Shell::Zsh);
+        assert!(
+            output.contains("nexus"),
+            "Zsh completions should reference the 'nexus' command name"
+        );
+    }
+
+    #[test]
+    fn test_fish_completions_contain_command_name() {
+        let output = generate_completions_to_string(Shell::Fish);
+        assert!(
+            output.contains("nexus"),
+            "Fish completions should reference the 'nexus' command name"
+        );
     }
 }

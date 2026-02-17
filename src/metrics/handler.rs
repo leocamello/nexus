@@ -227,4 +227,158 @@ mod tests {
         let stats = compute_model_stats(&registry);
         assert_eq!(stats.len(), 0);
     }
+
+    fn make_model(name: &str) -> crate::registry::Model {
+        crate::registry::Model {
+            id: name.to_string(),
+            name: name.to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+        }
+    }
+
+    fn make_backend(
+        id: &str,
+        name: &str,
+        models: Vec<crate::registry::Model>,
+    ) -> crate::registry::Backend {
+        let mut backend = crate::registry::Backend::new(
+            id.to_string(),
+            name.to_string(),
+            "http://localhost:11434".to_string(),
+            crate::registry::BackendType::Ollama,
+            models,
+            crate::registry::DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        backend.status = crate::registry::BackendStatus::Healthy;
+        backend
+    }
+
+    #[test]
+    fn test_compute_model_stats_single_backend() {
+        let registry = crate::registry::Registry::new();
+        let backend = make_backend(
+            "b1",
+            "backend-1",
+            vec![make_model("llama3"), make_model("mistral")],
+        );
+        registry.add_backend(backend).unwrap();
+
+        let stats = compute_model_stats(&registry);
+        assert_eq!(stats.len(), 2);
+        let mut names: Vec<_> = stats.iter().map(|s| s.name.clone()).collect();
+        names.sort();
+        assert_eq!(names, vec!["llama3", "mistral"]);
+    }
+
+    #[test]
+    fn test_compute_model_stats_deduplicates_across_backends() {
+        let registry = crate::registry::Registry::new();
+        let b1 = make_backend(
+            "b1",
+            "backend-1",
+            vec![make_model("llama3"), make_model("mistral")],
+        );
+        let b2 = make_backend(
+            "b2",
+            "backend-2",
+            vec![make_model("llama3"), make_model("phi3")],
+        );
+        registry.add_backend(b1).unwrap();
+        registry.add_backend(b2).unwrap();
+
+        let stats = compute_model_stats(&registry);
+        assert_eq!(stats.len(), 3);
+        let mut names: Vec<_> = stats.iter().map(|s| s.name.clone()).collect();
+        names.sort();
+        assert_eq!(names, vec!["llama3", "mistral", "phi3"]);
+    }
+
+    #[test]
+    fn test_compute_model_stats_excludes_unhealthy_backends() {
+        let registry = crate::registry::Registry::new();
+        let healthy = make_backend("b1", "healthy", vec![make_model("llama3")]);
+        let mut unhealthy = make_backend("b2", "unhealthy", vec![make_model("mistral")]);
+        unhealthy.status = crate::registry::BackendStatus::Unhealthy;
+        registry.add_backend(healthy).unwrap();
+        registry.add_backend(unhealthy).unwrap();
+
+        let stats = compute_model_stats(&registry);
+        assert_eq!(stats.len(), 1);
+        assert_eq!(stats[0].name, "llama3");
+    }
+
+    #[test]
+    fn test_compute_backend_stats_single_backend() {
+        let registry = crate::registry::Registry::new();
+        let backend = make_backend("b1", "backend-1", vec![make_model("llama3")]);
+        backend
+            .total_requests
+            .store(42, std::sync::atomic::Ordering::SeqCst);
+        backend
+            .avg_latency_ms
+            .store(15, std::sync::atomic::Ordering::SeqCst);
+        backend
+            .pending_requests
+            .store(3, std::sync::atomic::Ordering::SeqCst);
+        registry.add_backend(backend).unwrap();
+
+        let stats = compute_backend_stats(&registry);
+        assert_eq!(stats.len(), 1);
+        assert_eq!(stats[0].id, "b1");
+        assert_eq!(stats[0].name, "backend-1");
+        assert_eq!(stats[0].requests, 42);
+        assert_eq!(stats[0].average_latency_ms, 15.0);
+        assert_eq!(stats[0].pending, 3);
+    }
+
+    #[test]
+    fn test_compute_request_stats_single_backend_100() {
+        let backends = vec![BackendStats {
+            id: "b1".to_string(),
+            name: "backend-1".to_string(),
+            requests: 100,
+            average_latency_ms: 10.0,
+            pending: 0,
+        }];
+        let stats = compute_request_stats(&backends);
+        assert_eq!(stats.total, 100);
+        assert_eq!(stats.success, 100);
+        assert_eq!(stats.errors, 0);
+    }
+
+    #[test]
+    fn test_compute_request_stats_three_backends() {
+        let backends = vec![
+            BackendStats {
+                id: "b1".to_string(),
+                name: "backend-1".to_string(),
+                requests: 50,
+                average_latency_ms: 5.0,
+                pending: 0,
+            },
+            BackendStats {
+                id: "b2".to_string(),
+                name: "backend-2".to_string(),
+                requests: 120,
+                average_latency_ms: 8.0,
+                pending: 2,
+            },
+            BackendStats {
+                id: "b3".to_string(),
+                name: "backend-3".to_string(),
+                requests: 30,
+                average_latency_ms: 3.0,
+                pending: 1,
+            },
+        ];
+        let stats = compute_request_stats(&backends);
+        assert_eq!(stats.total, 200);
+        assert_eq!(stats.success, 200);
+        assert_eq!(stats.errors, 0);
+    }
 }

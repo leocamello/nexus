@@ -186,3 +186,103 @@ pub trait InferenceAgent: Send + Sync + 'static {
         ResourceUsage::default()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::types::{ChatCompletionRequest, ChatCompletionResponse};
+    use futures_util::stream::BoxStream;
+
+    struct MockAgent;
+
+    #[async_trait]
+    impl InferenceAgent for MockAgent {
+        fn id(&self) -> &str {
+            "mock"
+        }
+        fn name(&self) -> &str {
+            "Mock Agent"
+        }
+        fn profile(&self) -> AgentProfile {
+            AgentProfile {
+                backend_type: "mock".to_string(),
+                version: None,
+                privacy_zone: PrivacyZone::Open,
+                capabilities: AgentCapabilities::default(),
+                capability_tier: None,
+            }
+        }
+        async fn health_check(&self) -> Result<HealthStatus, AgentError> {
+            Ok(HealthStatus::Healthy { model_count: 0 })
+        }
+        async fn list_models(&self) -> Result<Vec<ModelCapability>, AgentError> {
+            Ok(vec![])
+        }
+        async fn chat_completion(
+            &self,
+            _request: ChatCompletionRequest,
+            _headers: Option<&HeaderMap>,
+        ) -> Result<ChatCompletionResponse, AgentError> {
+            Err(AgentError::Unsupported("chat_completion"))
+        }
+        async fn chat_completion_stream(
+            &self,
+            _request: ChatCompletionRequest,
+            _headers: Option<&HeaderMap>,
+        ) -> Result<BoxStream<'static, Result<StreamChunk, AgentError>>, AgentError> {
+            Err(AgentError::Unsupported("chat_completion_stream"))
+        }
+    }
+
+    #[tokio::test]
+    async fn count_tokens_empty_string() {
+        let agent = MockAgent;
+        assert_eq!(agent.count_tokens("m", "").await, TokenCount::Heuristic(0));
+    }
+
+    #[tokio::test]
+    async fn count_tokens_short_string() {
+        let agent = MockAgent;
+        assert_eq!(
+            agent.count_tokens("m", "hello").await,
+            TokenCount::Heuristic(1)
+        );
+    }
+
+    #[tokio::test]
+    async fn count_tokens_100_chars() {
+        let agent = MockAgent;
+        let text = "a".repeat(100);
+        assert_eq!(
+            agent.count_tokens("m", &text).await,
+            TokenCount::Heuristic(25)
+        );
+    }
+
+    #[tokio::test]
+    async fn embeddings_returns_unsupported() {
+        let agent = MockAgent;
+        let err = agent.embeddings(vec![]).await.unwrap_err();
+        assert!(matches!(err, AgentError::Unsupported("embeddings")));
+    }
+
+    #[tokio::test]
+    async fn load_model_returns_unsupported() {
+        let agent = MockAgent;
+        let err = agent.load_model("m").await.unwrap_err();
+        assert!(matches!(err, AgentError::Unsupported("load_model")));
+    }
+
+    #[tokio::test]
+    async fn unload_model_returns_unsupported() {
+        let agent = MockAgent;
+        let err = agent.unload_model("m").await.unwrap_err();
+        assert!(matches!(err, AgentError::Unsupported("unload_model")));
+    }
+
+    #[tokio::test]
+    async fn resource_usage_returns_default() {
+        let agent = MockAgent;
+        assert_eq!(agent.resource_usage().await, ResourceUsage::default());
+    }
+}

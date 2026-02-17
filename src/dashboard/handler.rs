@@ -197,4 +197,22 @@ mod tests {
         assert_eq!(value["uptime_seconds"], 7200);
         assert_eq!(value["total_requests"], 5678);
     }
+
+    #[test]
+    fn test_calculate_uptime_known_elapsed() {
+        let start_time = Instant::now() - Duration::from_secs(60);
+        let uptime = calculate_uptime(start_time);
+        assert!(
+            uptime.as_secs() >= 59 && uptime.as_secs() <= 61,
+            "Expected ~60s uptime, got {}s",
+            uptime.as_secs()
+        );
+    }
+
+    #[test]
+    fn test_calculate_uptime_non_negative() {
+        let start_time = Instant::now();
+        let uptime = calculate_uptime(start_time);
+        assert!(uptime >= Duration::ZERO, "Uptime should never be negative");
+    }
 }
