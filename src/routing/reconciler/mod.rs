@@ -208,6 +208,7 @@ mod tests {
                 needs_vision: false,
                 needs_tools: false,
                 needs_json_mode: false,
+            prefers_streaming: false,
             },
             candidates.into_iter().map(|s| s.to_string()).collect(),
         )

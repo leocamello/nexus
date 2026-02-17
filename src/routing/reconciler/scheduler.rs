@@ -291,6 +291,7 @@ mod tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         }
     }
 
@@ -441,6 +442,7 @@ mod tests {
                 needs_vision: true, // requires vision, but backend doesn't support it
                 needs_tools: false,
                 needs_json_mode: false,
+            prefers_streaming: false,
             },
             vec!["b1".into()],
         );
@@ -530,6 +532,7 @@ mod tests {
                 needs_vision: true,
                 needs_tools: false,
                 needs_json_mode: false,
+            prefers_streaming: false,
             },
             vec!["b1".into()],
         );
@@ -553,6 +556,7 @@ mod tests {
                 needs_vision: false,
                 needs_tools: false,
                 needs_json_mode: false,
+            prefers_streaming: false,
             },
             vec!["b1".into()],
         );

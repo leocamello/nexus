@@ -783,6 +783,7 @@ mod filter_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -814,6 +815,7 @@ mod filter_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -845,6 +847,7 @@ mod filter_tests {
             needs_vision: true,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -876,6 +879,7 @@ mod filter_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -899,6 +903,7 @@ mod filter_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let candidates = router.filter_candidates("nonexistent", &requirements);
@@ -929,6 +934,7 @@ mod filter_tests {
             needs_vision: false,
             needs_tools: true,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -979,6 +985,7 @@ mod filter_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: true,
+            prefers_streaming: false,
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -1020,6 +1027,7 @@ mod filter_tests {
             needs_vision: true,
             needs_tools: true,
             needs_json_mode: true,
+            prefers_streaming: false,
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -1094,6 +1102,7 @@ mod smart_strategy_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let result = router.select_backend(&requirements, None).unwrap();
@@ -1115,6 +1124,7 @@ mod smart_strategy_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let result = router.select_backend(&requirements, None).unwrap();
@@ -1136,6 +1146,7 @@ mod smart_strategy_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let result = router.select_backend(&requirements, None).unwrap();
@@ -1159,6 +1170,7 @@ mod smart_strategy_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let result = router.select_backend(&requirements, None);
@@ -1228,6 +1240,7 @@ mod other_strategies_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         // Should cycle through: A, B, C, A, B, C
@@ -1266,6 +1279,7 @@ mod other_strategies_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         // Should always select Backend B (priority 1)
@@ -1290,6 +1304,7 @@ mod other_strategies_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         // Should select from all three backends over many iterations
@@ -1371,6 +1386,7 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let result = router.select_backend(&requirements, None).unwrap();
@@ -1410,6 +1426,7 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let result = router.select_backend(&requirements, None).unwrap();
@@ -1449,6 +1466,7 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let result = router.select_backend(&requirements, None);
@@ -1491,6 +1509,7 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let result = router.select_backend(&requirements, None).unwrap();
@@ -1530,6 +1549,7 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         // When resolving "gpt-4"
@@ -1571,6 +1591,7 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         // When resolving "a"
@@ -1613,6 +1634,7 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         // When resolving "a" (4-level chain)
@@ -1652,6 +1674,7 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let result = router.select_backend(&requirements, None).unwrap();
@@ -1691,6 +1714,7 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         // When select_backend("primary")
@@ -1735,6 +1759,7 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         // When select_backend("primary")

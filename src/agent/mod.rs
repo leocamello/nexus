@@ -28,6 +28,69 @@ pub use types::{
 };
 
 use crate::api::types::{ChatCompletionRequest, ChatCompletionResponse};
+use std::time::Instant;
+
+/// Quality metrics for an agent tracked over rolling time windows.
+///
+/// Used by QualityReconciler to filter out unreliable backends and by
+/// SchedulerReconciler to penalize slow backends in scoring.
+///
+/// # Thread Safety
+///
+/// Wrapped in `Arc<parking_lot::RwLock<AgentQualityMetrics>>` to allow
+/// concurrent reads (request path) and periodic writes (quality loop).
+///
+/// # Rolling Windows
+///
+/// - error_rate_1h: Computed from requests in the last hour
+/// - success_rate_24h: Computed from requests in the last 24 hours
+/// - avg_ttft_ms: Average time to first token over the last hour
+#[derive(Debug, Clone)]
+pub struct AgentQualityMetrics {
+    /// Error rate over the last 1 hour (0.0 = no errors, 1.0 = all errors)
+    pub error_rate_1h: f32,
+
+    /// Average time to first token in milliseconds (last 1 hour)
+    pub avg_ttft_ms: u32,
+
+    /// Success rate over the last 24 hours (0.0 = all failures, 1.0 = all success)
+    pub success_rate_24h: f32,
+
+    /// Timestamp of the last request failure (None if no failures yet)
+    pub last_failure_ts: Option<Instant>,
+
+    /// Number of requests in the last 1 hour
+    pub request_count_1h: u32,
+}
+
+impl Default for AgentQualityMetrics {
+    /// Default metrics assume a healthy agent with no history.
+    fn default() -> Self {
+        Self {
+            error_rate_1h: 0.0,
+            avg_ttft_ms: 0,
+            success_rate_24h: 1.0,
+            last_failure_ts: None,
+            request_count_1h: 0,
+        }
+    }
+}
+
+impl AgentQualityMetrics {
+    /// Create new metrics with all-healthy default values.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Check if the agent is considered healthy based on current metrics.
+    ///
+    /// An agent is healthy if:
+    /// - Error rate is below 50% (or no requests yet)
+    /// - Has processed at least 1 request OR has no failure history
+    pub fn is_healthy(&self) -> bool {
+        self.error_rate_1h < 0.5 && (self.request_count_1h > 0 || self.last_failure_ts.is_none())
+    }
+}
 
 /// Unified interface for all LLM inference backends.
 ///
