@@ -90,8 +90,8 @@ impl InferenceAgent for OllamaAgent {
             version: None, // TODO: Extract from backend in future
             privacy_zone: self.privacy_zone,
             capabilities: AgentCapabilities {
-                embeddings: false,
-                model_lifecycle: false, // Phase 1: Not implemented
+                embeddings: true,
+                model_lifecycle: false,
                 token_counting: false,
                 resource_monitoring: false,
             },
@@ -286,6 +286,70 @@ impl InferenceAgent for OllamaAgent {
         });
 
         Ok(Box::pin(stream))
+    }
+
+    /// Generate embeddings via Ollama's POST /api/embed endpoint.
+    async fn embeddings(&self, input: Vec<String>) -> Result<Vec<Vec<f32>>, AgentError> {
+        let mut results = Vec::with_capacity(input.len());
+
+        for text in &input {
+            let url = format!("{}/api/embed", self.base_url);
+            let body = serde_json::json!({
+                "model": "all-minilm",
+                "input": text,
+            });
+
+            let response = self
+                .client
+                .post(&url)
+                .json(&body)
+                .timeout(Duration::from_secs(60))
+                .send()
+                .await
+                .map_err(|e| {
+                    if e.is_timeout() {
+                        AgentError::Timeout(60000)
+                    } else {
+                        AgentError::Network(e.to_string())
+                    }
+                })?;
+
+            if !response.status().is_success() {
+                let status = response.status().as_u16();
+                let error_body = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string());
+                return Err(AgentError::Upstream {
+                    status,
+                    message: error_body,
+                });
+            }
+
+            let body: serde_json::Value = response.json().await.map_err(|e| {
+                AgentError::InvalidResponse(format!("Failed to parse Ollama embed response: {}", e))
+            })?;
+
+            // Ollama returns { "embeddings": [[...]] }
+            let embeddings = body["embeddings"]
+                .as_array()
+                .and_then(|arr| arr.first())
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| {
+                    AgentError::InvalidResponse(
+                        "Missing embeddings array in Ollama response".to_string(),
+                    )
+                })?;
+
+            let vector: Vec<f32> = embeddings
+                .iter()
+                .filter_map(|v| v.as_f64().map(|f| f as f32))
+                .collect();
+
+            results.push(vector);
+        }
+
+        Ok(results)
     }
 }
 
@@ -509,7 +573,7 @@ mod tests {
 
         assert_eq!(profile.backend_type, "ollama");
         assert_eq!(profile.privacy_zone, PrivacyZone::Restricted);
-        assert!(!profile.capabilities.embeddings);
+        assert!(profile.capabilities.embeddings);
         assert!(!profile.capabilities.model_lifecycle);
     }
 

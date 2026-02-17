@@ -9,7 +9,9 @@
 //! - T051: Structured error follows OpenAI envelope format
 
 use nexus::agent::factory::create_agent;
+use nexus::agent::quality::QualityMetricsStore;
 use nexus::agent::PrivacyZone;
+use nexus::config::QualityConfig;
 use nexus::config::{PolicyMatcher, PrivacyConstraint, TrafficPolicy};
 use nexus::registry::{Backend, BackendStatus, BackendType, DiscoverySource, Registry};
 use nexus::routing::reconciler::decision::RoutingDecision;
@@ -95,12 +97,18 @@ fn test_privacy_rejection_produces_reasons() {
     let policy_matcher = PolicyMatcher::compile(vec![policy]).unwrap();
 
     let privacy = PrivacyReconciler::new(Arc::clone(&registry), policy_matcher);
-    let scheduler = SchedulerReconciler::new(
-        Arc::clone(&registry),
-        RoutingStrategy::PriorityOnly,
-        ScoringWeights::default(),
-        Arc::new(std::sync::atomic::AtomicU64::new(0)),
-    );
+    let scheduler = {
+        let qcfg = QualityConfig::default();
+        let qstore = std::sync::Arc::new(QualityMetricsStore::new(qcfg.clone()));
+        SchedulerReconciler::new(
+            Arc::clone(&registry),
+            RoutingStrategy::PriorityOnly,
+            ScoringWeights::default(),
+            Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            qstore,
+            qcfg,
+        )
+    };
 
     let mut pipeline = ReconcilerPipeline::new(vec![Box::new(privacy), Box::new(scheduler)]);
 
@@ -110,6 +118,7 @@ fn test_privacy_rejection_produces_reasons() {
         needs_vision: false,
         needs_tools: false,
         needs_json_mode: false,
+        prefers_streaming: false,
     };
 
     let mut intent = RoutingIntent::new(
@@ -173,12 +182,18 @@ fn test_tier_rejection_produces_reasons_with_tier_info() {
     let policy_matcher = PolicyMatcher::compile(vec![policy]).unwrap();
 
     let tier = TierReconciler::new(Arc::clone(&registry), policy_matcher);
-    let scheduler = SchedulerReconciler::new(
-        Arc::clone(&registry),
-        RoutingStrategy::PriorityOnly,
-        ScoringWeights::default(),
-        Arc::new(std::sync::atomic::AtomicU64::new(0)),
-    );
+    let scheduler = {
+        let qcfg = QualityConfig::default();
+        let qstore = std::sync::Arc::new(QualityMetricsStore::new(qcfg.clone()));
+        SchedulerReconciler::new(
+            Arc::clone(&registry),
+            RoutingStrategy::PriorityOnly,
+            ScoringWeights::default(),
+            Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            qstore,
+            qcfg,
+        )
+    };
 
     let mut pipeline = ReconcilerPipeline::new(vec![Box::new(tier), Box::new(scheduler)]);
 
@@ -188,6 +203,7 @@ fn test_tier_rejection_produces_reasons_with_tier_info() {
         needs_vision: false,
         needs_tools: false,
         needs_json_mode: false,
+        prefers_streaming: false,
     };
 
     let mut intent = RoutingIntent::new(
@@ -245,12 +261,18 @@ fn test_combined_privacy_and_tier_rejection() {
 
     let privacy = PrivacyReconciler::new(Arc::clone(&registry), policy_matcher.clone());
     let tier = TierReconciler::new(Arc::clone(&registry), policy_matcher);
-    let scheduler = SchedulerReconciler::new(
-        Arc::clone(&registry),
-        RoutingStrategy::PriorityOnly,
-        ScoringWeights::default(),
-        Arc::new(std::sync::atomic::AtomicU64::new(0)),
-    );
+    let scheduler = {
+        let qcfg = QualityConfig::default();
+        let qstore = std::sync::Arc::new(QualityMetricsStore::new(qcfg.clone()));
+        SchedulerReconciler::new(
+            Arc::clone(&registry),
+            RoutingStrategy::PriorityOnly,
+            ScoringWeights::default(),
+            Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            qstore,
+            qcfg,
+        )
+    };
 
     let mut pipeline =
         ReconcilerPipeline::new(vec![Box::new(privacy), Box::new(tier), Box::new(scheduler)]);
@@ -261,6 +283,7 @@ fn test_combined_privacy_and_tier_rejection() {
         needs_vision: false,
         needs_tools: false,
         needs_json_mode: false,
+        prefers_streaming: false,
     };
 
     let mut intent = RoutingIntent::new(
@@ -318,12 +341,18 @@ fn test_rejection_reasons_include_suggested_actions() {
     let policy_matcher = PolicyMatcher::compile(vec![policy]).unwrap();
 
     let privacy = PrivacyReconciler::new(Arc::clone(&registry), policy_matcher);
-    let scheduler = SchedulerReconciler::new(
-        Arc::clone(&registry),
-        RoutingStrategy::PriorityOnly,
-        ScoringWeights::default(),
-        Arc::new(std::sync::atomic::AtomicU64::new(0)),
-    );
+    let scheduler = {
+        let qcfg = QualityConfig::default();
+        let qstore = std::sync::Arc::new(QualityMetricsStore::new(qcfg.clone()));
+        SchedulerReconciler::new(
+            Arc::clone(&registry),
+            RoutingStrategy::PriorityOnly,
+            ScoringWeights::default(),
+            Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            qstore,
+            qcfg,
+        )
+    };
 
     let mut pipeline = ReconcilerPipeline::new(vec![Box::new(privacy), Box::new(scheduler)]);
 
@@ -333,6 +362,7 @@ fn test_rejection_reasons_include_suggested_actions() {
         needs_vision: false,
         needs_tools: false,
         needs_json_mode: false,
+        prefers_streaming: false,
     };
 
     let mut intent = RoutingIntent::new(
@@ -406,12 +436,18 @@ fn test_budget_hard_limit_block_all_produces_rejection() {
         tokenizer_registry,
         budget_state,
     );
-    let scheduler = SchedulerReconciler::new(
-        Arc::clone(&registry),
-        RoutingStrategy::PriorityOnly,
-        ScoringWeights::default(),
-        Arc::new(std::sync::atomic::AtomicU64::new(0)),
-    );
+    let scheduler = {
+        let qcfg = QualityConfig::default();
+        let qstore = std::sync::Arc::new(QualityMetricsStore::new(qcfg.clone()));
+        SchedulerReconciler::new(
+            Arc::clone(&registry),
+            RoutingStrategy::PriorityOnly,
+            ScoringWeights::default(),
+            Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            qstore,
+            qcfg,
+        )
+    };
 
     let mut pipeline = ReconcilerPipeline::new(vec![Box::new(budget), Box::new(scheduler)]);
 
@@ -421,6 +457,7 @@ fn test_budget_hard_limit_block_all_produces_rejection() {
         needs_vision: false,
         needs_tools: false,
         needs_json_mode: false,
+        prefers_streaming: false,
     };
 
     let mut intent = RoutingIntent::new(

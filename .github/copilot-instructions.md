@@ -308,7 +308,7 @@ Closes #124
 Closes #125
 ```
 
-**Note**: Use separate `Closes #X` lines for each issue.
+**Note**: Use separate `Closes #X` lines for each issue. Do **not** add `Co-authored-by` trailers to commit messages.
 
 ```bash
 # 1. Create feature branch BEFORE implementing
@@ -325,6 +325,22 @@ gh pr create --title "feat: Request Metrics (F09)" --body "..." --label "enhance
 # 4. Merge PR (closes linked issues automatically)
 gh pr merge --squash
 ```
+
+### Issue Naming & Labeling
+
+When creating GitHub issues, follow these conventions (full guide in `.github/team/spec-kit-guide.md`):
+
+**Title format**: `[FXX] type: Description (TXXX-TXXX)`
+- `[FXX]` = Feature number (e.g., `[F12]`, `[NII]`, `[Control Plane]`)
+- `type` = Conventional commit type: `feat`, `test`, `docs`, `chore`
+- `(TXXX)` = Task reference from tasks.md
+
+**Labels** (always include all three categories):
+- **Version**: `v0.1`–`v0.5`
+- **Feature**: `F04`–`F18`, `NII`, `control-plane`
+- **Type**: `enhancement`, `bug`, `documentation`, `testing`
+
+**Example**: `[F16] feat: Quality Tracking — QualityReconciler (T004-T013)` with labels `v0.4`, `F16`, `enhancement`
 
 ### Task Completion Checklist
 
@@ -350,6 +366,7 @@ grep -c "\- \[ \]" specs/XXX-feature/verification.md  # Should be 0
 - No `println!` — use `tracing` macros for all output
 - No panics on backend errors — always return proper HTTP response
 - Comment the "why", not the "what"; no commented-out code in main branch
+- Do **not** create `.github/agents/copilot-instructions.md` — all Copilot instructions live in this file only
 
 ## Testing Strategy
 

@@ -9,6 +9,7 @@ Nexus exposes an [OpenAI-compatible](https://platform.openai.com/docs/api-refere
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | [`/v1/chat/completions`](#post-v1chatcompletions) | Chat completion (streaming and non-streaming) |
+| `POST` | [`/v1/embeddings`](#post-v1embeddings) | Generate text embeddings |
 | `GET` | [`/v1/models`](#get-v1models) | List available models from healthy backends |
 | `GET` | [`/health`](#get-health) | System health with backend/model counts |
 | `GET` | [`/v1/stats`](#get-v1stats) | JSON stats: uptime, request counts, per-backend metrics |
@@ -83,6 +84,76 @@ data: {"id":"chatcmpl-abc123","object":"chat.completion.chunk","choices":[{"delt
 
 data: [DONE]
 ```
+
+---
+
+### POST `/v1/embeddings`
+
+OpenAI-compatible embeddings endpoint. Generates vector representations of text input. Works with Ollama and OpenAI backends that support embedding models.
+
+**Request:**
+
+```json
+{
+  "model": "nomic-embed-text",
+  "input": "The quick brown fox jumps over the lazy dog"
+}
+```
+
+The `input` field accepts a single string or an array of strings for batch embedding:
+
+```json
+{
+  "model": "nomic-embed-text",
+  "input": ["First document", "Second document", "Third document"]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `model` | string | Yes | Embedding model identifier |
+| `input` | string \| string[] | Yes | Text to embed — single string or array of strings |
+| `encoding_format` | string | No | Encoding format (e.g., `"float"`) |
+
+**Response:**
+
+```json
+{
+  "object": "list",
+  "data": [
+    {
+      "object": "embedding",
+      "embedding": [0.0023, -0.0091, 0.0152, ...],
+      "index": 0
+    }
+  ],
+  "model": "nomic-embed-text",
+  "usage": {
+    "prompt_tokens": 10,
+    "total_tokens": 10
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `object` | string | Always `"list"` |
+| `data` | array | Array of embedding objects |
+| `data[].object` | string | Always `"embedding"` |
+| `data[].embedding` | float[] | Vector representation of the input |
+| `data[].index` | integer | Index corresponding to the input position |
+| `model` | string | Model used to generate the embeddings |
+| `usage.prompt_tokens` | integer | Number of tokens in the input |
+| `usage.total_tokens` | integer | Total tokens processed |
+
+**Supported backends:** Ollama (e.g., `nomic-embed-text`, `all-minilm`), OpenAI (e.g., `text-embedding-3-small`, `text-embedding-ada-002`).
+
+**Error responses:**
+
+- `400` — Empty input or invalid request format
+- `404` — Model not found on any backend
+- `502` — Backend agent not registered or agent error
+- `503` — No healthy backend with embeddings support available
 
 ---
 
@@ -186,6 +257,7 @@ Nexus adds `X-Nexus-*` response headers to expose routing decisions **without mo
 |--------|-------------|
 | `X-Nexus-Strict` | Enforce same-or-higher capability tier (default behavior) |
 | `X-Nexus-Flexible` | Allow higher-tier substitution when the exact tier is unavailable |
+| `X-Nexus-Priority` | Queue priority: `high` or `normal` (default: `normal`). When all capable backends are at capacity and request queuing is enabled, high-priority requests are dequeued before normal-priority requests. Invalid values default to `normal`. |
 
 ---
 

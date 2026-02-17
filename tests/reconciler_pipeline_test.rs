@@ -6,8 +6,10 @@
 mod common;
 
 use dashmap::DashMap;
+use nexus::agent::quality::QualityMetricsStore;
 use nexus::agent::tokenizer::TokenizerRegistry;
 use nexus::config::routing::{BudgetConfig, PolicyMatcher, PrivacyConstraint, TrafficPolicy};
+use nexus::config::QualityConfig;
 use nexus::registry::{Backend, BackendStatus, BackendType, DiscoverySource, Model, Registry};
 use nexus::routing::reconciler::budget::BudgetReconciler;
 use nexus::routing::reconciler::decision::RoutingDecision;
@@ -70,6 +72,7 @@ fn create_intent(model: &str, candidates: Vec<&str>) -> RoutingIntent {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         },
         candidates.into_iter().map(|s| s.to_string()).collect(),
     )
@@ -112,12 +115,18 @@ fn privacy_excludes_cloud_agents_with_restricted_constraint() {
     let matcher = PolicyMatcher::compile(policies).unwrap();
 
     let privacy = PrivacyReconciler::new(Arc::clone(&registry), matcher);
-    let scheduler = SchedulerReconciler::new(
-        Arc::clone(&registry),
-        RoutingStrategy::Smart,
-        ScoringWeights::default(),
-        Arc::new(AtomicU64::new(0)),
-    );
+    let scheduler = {
+        let qcfg = QualityConfig::default();
+        let qstore = std::sync::Arc::new(QualityMetricsStore::new(qcfg.clone()));
+        SchedulerReconciler::new(
+            Arc::clone(&registry),
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            qstore,
+            qcfg,
+        )
+    };
 
     let mut pipeline = ReconcilerPipeline::new(vec![Box::new(privacy), Box::new(scheduler)]);
 
@@ -169,13 +178,23 @@ fn full_pipeline_no_policies_routes_normally() {
         Arc::clone(&registry),
         PolicyMatcher::compile(vec![]).unwrap(),
     );
-    let quality = QualityReconciler::new();
-    let scheduler = SchedulerReconciler::new(
-        Arc::clone(&registry),
-        RoutingStrategy::Smart,
-        ScoringWeights::default(),
-        Arc::new(AtomicU64::new(0)),
-    );
+    let quality = {
+        let qcfg = QualityConfig::default();
+        let qstore = std::sync::Arc::new(QualityMetricsStore::new(qcfg.clone()));
+        QualityReconciler::new(qstore, qcfg)
+    };
+    let scheduler = {
+        let qcfg = QualityConfig::default();
+        let qstore = std::sync::Arc::new(QualityMetricsStore::new(qcfg.clone()));
+        SchedulerReconciler::new(
+            Arc::clone(&registry),
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            qstore,
+            qcfg,
+        )
+    };
 
     let mut pipeline = ReconcilerPipeline::new(vec![
         Box::new(privacy),
@@ -213,12 +232,18 @@ fn pipeline_produces_reject_with_reasons() {
         ))
         .unwrap();
 
-    let scheduler = SchedulerReconciler::new(
-        Arc::clone(&registry),
-        RoutingStrategy::Smart,
-        ScoringWeights::default(),
-        Arc::new(AtomicU64::new(0)),
-    );
+    let scheduler = {
+        let qcfg = QualityConfig::default();
+        let qstore = std::sync::Arc::new(QualityMetricsStore::new(qcfg.clone()));
+        SchedulerReconciler::new(
+            Arc::clone(&registry),
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            qstore,
+            qcfg,
+        )
+    };
 
     let mut pipeline = ReconcilerPipeline::new(vec![Box::new(scheduler)]);
 
@@ -268,12 +293,18 @@ fn tier_reconciler_no_policy_passes_through() {
         Arc::clone(&registry),
         PolicyMatcher::compile(vec![]).unwrap(),
     );
-    let scheduler = SchedulerReconciler::new(
-        Arc::clone(&registry),
-        RoutingStrategy::Smart,
-        ScoringWeights::default(),
-        Arc::new(AtomicU64::new(0)),
-    );
+    let scheduler = {
+        let qcfg = QualityConfig::default();
+        let qstore = std::sync::Arc::new(QualityMetricsStore::new(qcfg.clone()));
+        SchedulerReconciler::new(
+            Arc::clone(&registry),
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            qstore,
+            qcfg,
+        )
+    };
 
     let mut pipeline = ReconcilerPipeline::new(vec![Box::new(tier), Box::new(scheduler)]);
 
@@ -294,8 +325,16 @@ fn pipeline_metadata() {
     assert_eq!(empty_pipeline.len(), 0);
 
     let pipeline = ReconcilerPipeline::new(vec![
-        Box::new(QualityReconciler::new()),
-        Box::new(QualityReconciler::new()),
+        Box::new({
+            let qcfg = QualityConfig::default();
+            let qstore = std::sync::Arc::new(QualityMetricsStore::new(qcfg.clone()));
+            QualityReconciler::new(qstore, qcfg)
+        }),
+        Box::new({
+            let qcfg = QualityConfig::default();
+            let qstore = std::sync::Arc::new(QualityMetricsStore::new(qcfg.clone()));
+            QualityReconciler::new(qstore, qcfg)
+        }),
     ]);
     assert!(!pipeline.is_empty());
     assert_eq!(pipeline.len(), 2);

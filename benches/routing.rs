@@ -85,6 +85,7 @@ fn bench_smart_routing_by_backend_count(c: &mut Criterion) {
             needs_tools: false,
             needs_json_mode: false,
             estimated_tokens: 100,
+            prefers_streaming: false,
         };
 
         group.bench_with_input(BenchmarkId::new("backends", count), &count, |b, _| {
@@ -109,6 +110,7 @@ fn bench_round_robin_routing(c: &mut Criterion) {
             needs_tools: false,
             needs_json_mode: false,
             estimated_tokens: 100,
+            prefers_streaming: false,
         };
 
         group.bench_with_input(BenchmarkId::new("backends", count), &count, |b, _| {
@@ -131,6 +133,7 @@ fn bench_capability_filtered_routing(c: &mut Criterion) {
         needs_tools: false,
         needs_json_mode: false,
         estimated_tokens: 100,
+        prefers_streaming: false,
     };
 
     c.bench_function("capability_filtered_25_backends", |b| {
@@ -172,6 +175,7 @@ fn bench_routing_with_fallback(c: &mut Criterion) {
         needs_tools: false,
         needs_json_mode: false,
         estimated_tokens: 100,
+        prefers_streaming: false,
     };
 
     c.bench_function("routing_with_fallback_10_backends", |b| {
@@ -209,6 +213,7 @@ fn bench_routing_with_alias(c: &mut Criterion) {
         needs_tools: false,
         needs_json_mode: false,
         estimated_tokens: 100,
+        prefers_streaming: false,
     };
 
     c.bench_function("routing_with_alias_10_backends", |b| {
@@ -269,17 +274,31 @@ fn bench_full_pipeline(c: &mut Criterion) {
                         Arc::clone(&registry),
                         PolicyMatcher::default(),
                     )),
-                    Box::new(QualityReconciler::new()),
-                    Box::new(SchedulerReconciler::new(
-                        Arc::clone(&registry),
-                        RoutingStrategy::Smart,
-                        ScoringWeights {
-                            priority: 50,
-                            load: 30,
-                            latency: 20,
-                        },
-                        Arc::new(std::sync::atomic::AtomicU64::new(0)),
-                    )),
+                    Box::new({
+                        let qcfg = nexus::config::QualityConfig::default();
+                        let qstore = std::sync::Arc::new(
+                            nexus::agent::quality::QualityMetricsStore::new(qcfg.clone()),
+                        );
+                        QualityReconciler::new(qstore, qcfg)
+                    }),
+                    Box::new({
+                        let qcfg = nexus::config::QualityConfig::default();
+                        let qstore = std::sync::Arc::new(
+                            nexus::agent::quality::QualityMetricsStore::new(qcfg.clone()),
+                        );
+                        SchedulerReconciler::new(
+                            Arc::clone(&registry),
+                            RoutingStrategy::Smart,
+                            ScoringWeights {
+                                priority: 50,
+                                load: 30,
+                                latency: 20,
+                            },
+                            Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                            qstore,
+                            qcfg,
+                        )
+                    }),
                 ]);
 
                 let mut intent = RoutingIntent::new(
@@ -292,6 +311,7 @@ fn bench_full_pipeline(c: &mut Criterion) {
                         needs_tools: false,
                         needs_json_mode: false,
                         estimated_tokens: 100,
+                        prefers_streaming: false,
                     },
                     vec![],
                 );
@@ -328,6 +348,7 @@ fn bench_request_analyzer(c: &mut Criterion) {
                         needs_tools: false,
                         needs_json_mode: false,
                         estimated_tokens: 100,
+                        prefers_streaming: false,
                     },
                     vec![],
                 );

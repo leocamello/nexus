@@ -9,8 +9,10 @@
 //! - T057: select_backend with None tier_enforcement_mode works
 
 use nexus::agent::factory::create_agent;
+use nexus::agent::quality::QualityMetricsStore;
 use nexus::agent::PrivacyZone;
 use nexus::config::PolicyMatcher;
+use nexus::config::QualityConfig;
 use nexus::registry::{Backend, BackendStatus, BackendType, DiscoverySource, Model, Registry};
 use nexus::routing::reconciler::decision::RoutingDecision;
 use nexus::routing::reconciler::intent::RoutingIntent;
@@ -82,12 +84,18 @@ fn test_no_policies_no_filtering() {
 
     let privacy = PrivacyReconciler::new(Arc::clone(&registry), policy_matcher.clone());
     let tier = TierReconciler::new(Arc::clone(&registry), policy_matcher);
-    let scheduler = SchedulerReconciler::new(
-        Arc::clone(&registry),
-        RoutingStrategy::PriorityOnly,
-        ScoringWeights::default(),
-        Arc::new(std::sync::atomic::AtomicU64::new(0)),
-    );
+    let scheduler = {
+        let qcfg = QualityConfig::default();
+        let qstore = std::sync::Arc::new(QualityMetricsStore::new(qcfg.clone()));
+        SchedulerReconciler::new(
+            Arc::clone(&registry),
+            RoutingStrategy::PriorityOnly,
+            ScoringWeights::default(),
+            Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            qstore,
+            qcfg,
+        )
+    };
 
     let mut pipeline =
         ReconcilerPipeline::new(vec![Box::new(privacy), Box::new(tier), Box::new(scheduler)]);
@@ -98,6 +106,7 @@ fn test_no_policies_no_filtering() {
         needs_vision: false,
         needs_tools: false,
         needs_json_mode: false,
+        prefers_streaming: false,
     };
 
     let mut intent = RoutingIntent::new(
@@ -139,6 +148,7 @@ fn test_empty_policy_matcher_passes_all() {
         needs_vision: false,
         needs_tools: false,
         needs_json_mode: false,
+        prefers_streaming: false,
     };
 
     let mut intent = RoutingIntent::new(
@@ -205,6 +215,7 @@ fn test_routing_without_f13_headers() {
         needs_vision: false,
         needs_tools: false,
         needs_json_mode: false,
+        prefers_streaming: false,
     };
 
     // None = no tier enforcement header (backward compatible)
@@ -238,6 +249,7 @@ fn test_mixed_zone_configuration() {
         needs_vision: false,
         needs_tools: false,
         needs_json_mode: false,
+        prefers_streaming: false,
     };
 
     let mut intent = RoutingIntent::new(
@@ -277,6 +289,7 @@ fn test_select_backend_none_tier_mode() {
         needs_vision: false,
         needs_tools: false,
         needs_json_mode: false,
+        prefers_streaming: false,
     };
 
     // Passing None should work exactly like before F13

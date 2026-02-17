@@ -31,6 +31,8 @@ pub mod backend;
 pub mod discovery;
 pub mod error;
 pub mod logging;
+pub mod quality;
+pub mod queue;
 pub mod routing;
 pub mod server;
 
@@ -38,6 +40,8 @@ pub use backend::{BackendConfig, BackendType};
 pub use discovery::DiscoveryConfig;
 pub use error::ConfigError;
 pub use logging::{LogFormat, LoggingConfig};
+pub use quality::QualityConfig;
+pub use queue::QueueConfig;
 pub use routing::{
     BudgetConfig, HardLimitAction, PolicyMatcher, PrivacyConstraint, RoutingConfig,
     RoutingStrategy, RoutingWeights, TrafficPolicy,
@@ -79,6 +83,10 @@ pub struct NexusConfig {
     pub backends: Vec<BackendConfig>,
     /// Logging configuration
     pub logging: LoggingConfig,
+    /// Quality tracking configuration
+    pub quality: QualityConfig,
+    /// Request queue configuration
+    pub queue: QueueConfig,
 }
 
 impl NexusConfig {
