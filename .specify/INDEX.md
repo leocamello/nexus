@@ -171,7 +171,12 @@ Choose your learning path:
 └────────┬─────────┘
          ↓
 ┌──────────────────┐
-│  Create PR       │ ← Include verification summary
+│  Red Team Review │ ← Adversarial review (quality gate)
+│  (4 risk areas)  │   Must be [PASS] or [CONDITIONAL PASS]
+└────────┬─────────┘
+         ↓
+┌──────────────────┐
+│  Create PR       │ ← Include verification + red team summary
 └────────┬─────────┘
          ↓
 ┌──────────────────┐

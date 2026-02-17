@@ -148,10 +148,11 @@ nexus/
 
 ## Development Phases
 
-> **Note**: These 10 spec-kit phases map to our 4-phase Feature Development Lifecycle:
+> **Note**: These 10 spec-kit phases map to our 5-phase Feature Development Lifecycle:
 > - **Spec Phase**: Phases 1-6 (Constitution, Specify, Plan, Tasks, Validate, Issues)
 > - **Implementation Phase**: Phases 7-8 (Analyze, Implement)
 > - **Verification Phase**: Phases 9-10 (Verify, Walkthrough)
+> - **Red Team Phase**: Adversarial review protocol (not a spec-kit phase)
 > - **Merge Phase**: Push, PR, merge (not a spec-kit phase)
 
 ### Phase 1: Constitution

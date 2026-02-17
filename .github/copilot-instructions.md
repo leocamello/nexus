@@ -256,12 +256,68 @@ The v0.3+ architecture follows the **Kubernetes Controller pattern** adapted for
 |     c) Create walkthrough.md for code documentation                     |
 |     d) Ensure 0 unchecked items in tasks.md and verification.md         |
 +-------------------------------------------------------------------------+
-|  4. MERGE PHASE                                                         |
+|  4. RED TEAM PHASE (Quality Gate)                                       |
+|     a) Run Red Team Review Protocol (see below)                         |
+|     b) Verdict must be [PASS] or [CONDITIONAL PASS] to proceed          |
+|     c) [CONDITIONAL PASS]: apply fixes, then proceed                    |
+|     d) [FAIL]: return to Implementation or Spec phase                   |
++-------------------------------------------------------------------------+
+|  5. MERGE PHASE                                                         |
 |     a) Push feature branch                                              |
-|     b) Create PR with verification summary                              |
+|     b) Create PR with verification + red team summary                   |
 |     c) Merge (closes issues automatically)                              |
 +-------------------------------------------------------------------------+
 ```
+
+### Red Team Review Protocol
+
+After the Verification Phase, run an adversarial review to catch flaws that the
+developer (and previous AI context) missed. Use this prompt to initiate:
+
+````
+# Red Team & Critical Review Protocol
+
+**Context:** Verification Phase complete for the current feature.
+**Role:** Nexus Lead Architect and Security Auditor. Find flaws, performance
+bottlenecks, and architectural violations. Be ruthless but constructive.
+
+**Instructions:**
+Review the implementation against `copilot-instructions.md`, the project
+`constitution`, and the feature `spec.md`.
+
+## 1. Architectural & Pattern Compliance
+- **State Management:** `Mutex` where `Atomic` or `DashMap` was required?
+- **Latency Budget:** Any logic risking the < 1ms routing / < 5ms total limit?
+- **Error Handling:** Any `unwrap()`, `expect()`, or panics in production paths?
+  Errors mapped to `thiserror` and actionable 503 responses?
+- **Logging:** Any `println!` instead of `tracing`?
+
+## 2. Adversarial Attack Vectors
+- **Concurrency:** Race conditions in shared state (`Registry`, `Reconciler`)?
+- **Resource Exhaustion:** Unbounded memory from malicious requests?
+- **Edge Cases:** Backend hangs? mDNS floods? Empty inputs?
+
+## 3. Spec Integrity Check
+- Compare `specs/[feature]/spec.md` against code in `src/`.
+- Scope creep: implemented behaviors not in the spec?
+- Missing: specified behaviors absent from the implementation?
+
+## 4. Test Coverage Audit
+- Tests verify logic, not just the happy path?
+- Property-based tests (`proptest`) for complex scoring/estimation logic?
+- Edge case coverage: empty inputs, boundary values, error paths?
+
+---
+
+### Verdict (exactly one)
+
+**A. [PASS]** — Robust. Proceed to Merge Phase.
+**B. [CONDITIONAL PASS]** — Minor issues. Apply fixes, then Merge.
+**C. [FAIL - IMPLEMENTATION]** — Serious logic/performance/safety issues.
+   Return to Implementation Phase. List files and functions to rewrite.
+**D. [FAIL - SPECIFICATION]** — Design is flawed or misaligned with principles.
+   Return to Spec Phase. Explain what must change in spec.md.
+````
 
 ### Quality Checklists
 
@@ -291,6 +347,9 @@ cp .specify/templates/implementation-verification.md specs/XXX-feature/verificat
 # 3. VERIFICATION PHASE: Complete both checklists
 grep -c "\- \[ \]" specs/XXX-feature/verification.md  # Should be 0
 grep -c "\- \[ \]" specs/XXX-feature/tasks.md         # Should be 0
+
+# 4. RED TEAM PHASE: Run adversarial review using the protocol above
+# Verdict must be [PASS] or [CONDITIONAL PASS] before merging
 ```
 
 **Quick Reference**: See `.specify/QUICK-REFERENCE.md` for top critical items.

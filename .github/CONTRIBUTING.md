@@ -65,7 +65,8 @@ We follow a strict **Feature Development Lifecycle**:
 1. **Spec Phase**: Write spec.md, plan.md, tasks.md → validate → create issues
 2. **Implementation Phase**: Feature branch → TDD (tests first) → check off criteria
 3. **Verification Phase**: Run analyze → complete checklists → write walkthrough
-4. **Merge Phase**: Push → PR → merge (closes issues)
+4. **Red Team Phase**: Adversarial review (architecture, security, spec integrity, test coverage) → verdict must be [PASS] or [CONDITIONAL PASS]
+5. **Merge Phase**: Push → PR → merge (closes issues)
 
 ### Branching
 
