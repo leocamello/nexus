@@ -12,228 +12,54 @@
 
 **One API endpoint. Any backend. Zero configuration.**
 
-Nexus is a distributed LLM model serving orchestrator that unifies heterogeneous inference backends behind a single, intelligent API gateway.
+Nexus is a distributed LLM orchestrator that unifies heterogeneous inference backends behind a single, intelligent API gateway. Local first, cloud when needed.
 
 ## Features
 
-- 🔍 **Auto-Discovery**: Automatically finds LLM backends on your network via mDNS
-- 🎯 **Intelligent Routing**: Routes requests based on model capabilities and load
-- 🔄 **Transparent Failover**: Automatically retries with fallback backends
-- 🔌 **OpenAI-Compatible**: Works with any OpenAI API client
-- ⚡ **Zero Config**: Just run it - works out of the box with Ollama
-- 📊 **Structured Logging**: Queryable JSON logs for every request with correlation IDs ([quickstart](specs/011-structured-logging/quickstart.md))
-- 🔒 **Privacy Zones**: Structural enforcement prevents sensitive data from reaching cloud backends
-- 🏷️ **Capability Tiers**: Prevent silent quality downgrades with strict/flexible routing modes
+- 🔍 **Auto-Discovery** — Finds LLM backends on your network via mDNS
+- 🎯 **Intelligent Routing** — Routes by model capabilities, load, and latency
+- 🔄 **Transparent Failover** — Retries with fallback backends automatically
+- 🔌 **OpenAI-Compatible** — Works with any OpenAI API client
+- ⚡ **Zero Config** — Just run it — works out of the box with Ollama
+- 🔒 **Privacy Zones** — Structural enforcement prevents data from reaching cloud backends
+- 💰 **Budget Management** — Token-aware cost tracking with automatic spend limits
+- 📊 **Real-time Dashboard** — Monitor backends, models, and requests in your browser
 
 ## Supported Backends
 
-| Backend | Status | Notes |
-|---------|--------|-------|
-| Ollama | ✅ Supported | Auto-discovery via mDNS |
-| LM Studio | ✅ Supported | OpenAI-compatible API |
-| vLLM | ✅ Supported | Static configuration |
-| llama.cpp server | ✅ Supported | Static configuration |
-| exo | ✅ Supported | Auto-discovery via mDNS |
-| OpenAI | ✅ Supported | Cloud fallback |
-| LocalAI | 🔜 Planned | |
+| Backend | Status | Discovery |
+|---------|--------|-----------|
+| [Ollama](https://ollama.ai) | ✅ Supported | mDNS (auto) |
+| [LM Studio](https://lmstudio.ai) | ✅ Supported | Static config |
+| [vLLM](https://github.com/vllm-project/vllm) | ✅ Supported | Static config |
+| [llama.cpp](https://github.com/ggerganov/llama.cpp) | ✅ Supported | Static config |
+| [exo](https://github.com/exo-explore/exo) | ✅ Supported | mDNS (auto) |
+| [OpenAI](https://openai.com) | ✅ Supported | Static config |
 
 ## Quick Start
 
-### From Source
 ```bash
-# Install
+# Install from source
 cargo install --path .
 
-# Generate a configuration file
-nexus config init
-
-# Run with auto-discovery
+# Start with auto-discovery (zero config)
 nexus serve
 
-# Or with a custom config file
-nexus serve --config nexus.toml
-```
-
-### Docker
-```bash
-# Run with default settings
+# Or with Docker
 docker run -d -p 8000:8000 leocamello/nexus
-
-# Run with custom config
-docker run -d -p 8000:8000 \
-  -v $(pwd)/nexus.toml:/home/nexus/nexus.toml \
-  leocamello/nexus serve --config nexus.toml
-
-# Run with host network (for mDNS discovery)
-docker run -d --network host leocamello/nexus
 ```
 
-### From GitHub Releases
-Download pre-built binaries from [Releases](https://github.com/leocamello/nexus/releases).
-
-## CLI Commands
+Once running, send your first request:
 
 ```bash
-# Start the server
-nexus serve [--config FILE] [--port PORT] [--host HOST]
-
-# List backends
-nexus backends list [--json] [--status healthy|unhealthy|unknown]
-
-# Add a backend manually (auto-detects type)
-nexus backends add http://localhost:11434 [--name NAME] [--type ollama|vllm|llamacpp]
-
-# Remove a backend
-nexus backends remove <ID>
-
-# List available models
-nexus models [--json] [--backend ID]
-
-# Show system health
-nexus health [--json]
-
-# Generate config file
-nexus config init [--output FILE] [--force] [--minimal]
-
-# Generate shell completions
-nexus completions bash > ~/.bash_completion.d/nexus
-nexus completions zsh > ~/.zsh/completions/_nexus
-nexus completions fish > ~/.config/fish/completions/nexus.fish
-```
-
-## Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `NEXUS_CONFIG` | Config file path | `nexus.toml` |
-| `NEXUS_PORT` | Listen port | `8000` |
-| `NEXUS_HOST` | Listen address | `0.0.0.0` |
-| `NEXUS_LOG_LEVEL` | Log level (trace/debug/info/warn/error) | `info` |
-| `NEXUS_LOG_FORMAT` | Log format (pretty/json) | `pretty` |
-| `NEXUS_DISCOVERY` | Enable mDNS discovery | `true` |
-| `NEXUS_HEALTH_CHECK` | Enable health checking | `true` |
-
-**Precedence**: CLI args > Environment variables > Config file > Defaults
-
-## API Usage
-
-Once running, Nexus exposes an OpenAI-compatible API:
-
-```bash
-# Health check
-curl http://localhost:8000/health
-
-# List available models
-curl http://localhost:8000/v1/models
-
-# Chat completion (non-streaming)
 curl http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{
-    "model": "llama3:70b",
-    "messages": [{"role": "user", "content": "Hello!"}]
-  }'
-
-# Chat completion (streaming)
-curl http://localhost:8000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "llama3:70b",
-    "messages": [{"role": "user", "content": "Hello!"}],
-    "stream": true
-  }'
+  -d '{"model": "llama3:70b", "messages": [{"role": "user", "content": "Hello!"}]}'
 ```
 
-### Web Dashboard
+Point any OpenAI-compatible client to `http://localhost:8000/v1` — Claude Code, Continue.dev, OpenAI SDK, or plain curl.
 
-Nexus includes a web dashboard for real-time monitoring and observability. Access it at `http://localhost:8000/` in your browser.
-
-**Features:**
-- 📊 Real-time backend health monitoring with status indicators
-- 🗺️ Model availability matrix showing which models are available on which backends
-- 📝 Request history with last 100 requests, durations, and error details
-- 🔄 WebSocket-based live updates (with HTTP polling fallback)
-- 📱 Fully responsive - works on desktop, tablet, and mobile
-- 🌙 Dark mode support (system preference)
-- 🚀 Works without JavaScript (graceful degradation with auto-refresh)
-
-The dashboard provides a visual overview of your Nexus cluster, making it easy to monitor backend health, track model availability, and debug request issues in real-time.
-
-### With Claude Code / Continue.dev
-
-Point your AI coding assistant to `http://localhost:8000` as the API endpoint.
-
-### With OpenAI SDK
-
-```python
-from openai import OpenAI
-
-client = OpenAI(
-    base_url="http://localhost:8000/v1",
-    api_key="not-needed"
-)
-
-response = client.chat.completions.create(
-    model="llama3:70b",
-    messages=[{"role": "user", "content": "Hello!"}]
-)
-print(response.choices[0].message.content)
-```
-
-### Observability
-
-Nexus exposes metrics for monitoring and debugging:
-
-```bash
-# Prometheus metrics (for Grafana, Prometheus, etc.)
-curl http://localhost:8000/metrics
-
-# JSON stats (for dashboards and debugging)
-curl http://localhost:8000/v1/stats | jq
-```
-
-**Prometheus metrics** include request counters, duration histograms, error rates, backend latency, token usage, and fleet state gauges. Configure your Prometheus scraper to target `http://<nexus-host>:8000/metrics`.
-
-**JSON stats** provide an at-a-glance view with uptime, per-backend request counts, latency, and pending request depth.
-
-## Configuration
-
-```toml
-# nexus.toml
-
-[server]
-host = "0.0.0.0"
-port = 8000
-
-[discovery]
-enabled = true
-
-[[backends]]
-name = "local-ollama"
-url = "http://localhost:11434"
-type = "ollama"
-priority = 1
-
-[[backends]]
-name = "gpu-server"
-url = "http://192.168.1.100:8000"
-type = "vllm"
-priority = 2
-
-# Cloud backend with privacy zone and budget (v0.3)
-# [[backends]]
-# name = "openai-gpt4"
-# url = "https://api.openai.com"
-# type = "openai"
-# api_key_env = "OPENAI_API_KEY"
-# zone = "open"
-# tier = 4
-
-# [routing.budget]
-# monthly_limit_usd = 50.0
-# soft_limit_percent = 75
-# hard_limit_action = "block_cloud"
-```
+→ **[Full setup guide](docs/getting-started.md)** — installation, configuration, CLI reference, and more.
 
 ## Architecture
 
@@ -253,45 +79,29 @@ priority = 2
    └────────┘  └────────┘  └────────┘
 ```
 
-## Development
-
-```bash
-# Build
-cargo build
-
-# Run tests
-cargo test
-
-# Run with logging
-RUST_LOG=debug cargo run -- serve
-
-# Check formatting
-cargo fmt --check
-
-# Lint
-cargo clippy
-```
-
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [Architecture](docs/ARCHITECTURE.md) | System architecture, module structure, data flows |
-| [Features](docs/FEATURES.md) | Detailed feature specifications (F01–F23) |
-| [RFC-001](docs/RFC-001.md) | Platform architecture RFC: NII, Control Plane, Reconcilers |
-| [Contributing](CONTRIBUTING.md) | Development workflow, coding standards, PR guidelines |
-| [Changelog](CHANGELOG.md) | Release history and version notes |
-| [Manual Testing Guide](docs/MANUAL_TESTING_GUIDE.md) | How to test Nexus manually |
-| [WebSocket Protocol](docs/WEBSOCKET_PROTOCOL.md) | Dashboard WebSocket API reference |
+| | Document | What you'll find |
+|---|---------|-----------------|
+| 🚀 | [Getting Started](docs/getting-started.md) | Installation, configuration, CLI, environment variables |
+| 📖 | [REST API](docs/api/rest.md) | HTTP endpoints, X-Nexus-* headers, error responses |
+| 🔌 | [WebSocket API](docs/api/websocket.md) | Real-time dashboard protocol |
+| 🏗️ | [Architecture](docs/architecture.md) | System design, module structure, data flows |
+| 🗺️ | [Roadmap](docs/roadmap.md) | Feature index (F01–F23), version history, future plans |
+| 🔧 | [Troubleshooting](docs/troubleshooting.md) | Common errors, debugging tips |
+| ❓ | [FAQ](docs/faq.md) | What Nexus is (and isn't), common questions |
+| 🤝 | [Contributing](.github/CONTRIBUTING.md) | Dev workflow, coding standards, PR guidelines |
+| 📋 | [Changelog](CHANGELOG.md) | Release history |
+| 🔒 | [Security](.github/SECURITY.md) | Vulnerability reporting |
 
 ## License
 
-Apache License 2.0 - see [LICENSE](LICENSE) for details.
+Apache License 2.0 — see [LICENSE](LICENSE) for details.
 
 ## Related Projects
 
-- [exo](https://github.com/exo-explore/exo) - Distributed AI inference
-- [LM Studio](https://lmstudio.ai) - Desktop app for local LLMs
-- [Ollama](https://ollama.ai) - Easy local LLM serving
-- [vLLM](https://github.com/vllm-project/vllm) - High-throughput LLM serving
-- [LiteLLM](https://github.com/BerriAI/litellm) - Cloud LLM API router
+- [exo](https://github.com/exo-explore/exo) — Distributed AI inference
+- [LM Studio](https://lmstudio.ai) — Desktop app for local LLMs
+- [Ollama](https://ollama.ai) — Easy local LLM serving
+- [vLLM](https://github.com/vllm-project/vllm) — High-throughput LLM serving
+- [LiteLLM](https://github.com/BerriAI/litellm) — Cloud LLM API router

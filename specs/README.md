@@ -56,4 +56,4 @@ gh issue list --label backend-registry
 | `documentation` | Documentation tasks |
 | `good first issue` | Good for new contributors |
 
-See `docs/SPEC_KIT_PROMPTS.md` for detailed prompts and workflow guide.
+See `.github/team/spec-kit-guide.md` for detailed prompts and workflow guide.

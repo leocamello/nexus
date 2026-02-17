@@ -55,8 +55,8 @@ src/
 └── main.rs       # Entry point
 ```
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed component descriptions
-and [docs/RFC-001.md](docs/RFC-001.md) for the platform architecture RFC.
+See [docs/architecture.md](../docs/architecture.md) for detailed component descriptions
+and [.github/team/rfc-001.md](team/rfc-001.md) for the platform architecture RFC.
 
 ## Development Workflow
 
@@ -144,7 +144,7 @@ Every logic file must contain a `#[cfg(test)] mod tests` block. We follow TDD:
 
 ## Resources
 
-- [Architecture](docs/ARCHITECTURE.md) — System design and module structure
-- [Features](docs/FEATURES.md) — Feature specifications (F01–F23)
-- [RFC-001](docs/RFC-001.md) — Platform architecture RFC
-- [Manual Testing Guide](docs/MANUAL_TESTING_GUIDE.md) — How to test manually
+- [Architecture](../docs/architecture.md) — System design and module structure
+- [Roadmap](../docs/roadmap.md) — Feature index (F01–F23) and version history
+- [RFC-001](team/rfc-001.md) — Platform architecture RFC
+- [Manual Testing Guide](team/manual-testing.md) — How to test manually

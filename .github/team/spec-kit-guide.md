@@ -1646,7 +1646,7 @@ gets a correlation ID that tracks it through retries and failovers.
 > forward-looking methods (`embeddings`, `count_tokens`, `load_model`) with default implementations
 > so that F17 (v0.4) and F20 (v0.5) don't require breaking trait changes.
 >
-> See `docs/ARCHITECTURE.md` for the full topology diagram.
+> See `docs/architecture.md` for the full topology diagram.
 
 ### F12: Cloud Backend Support
 ```

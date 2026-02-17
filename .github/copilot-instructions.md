@@ -25,7 +25,7 @@ You are an expert Rust developer building **Nexus**, a distributed LLM orchestra
 | v0.5 | Orchestration — Pre-warming, Model lifecycle, Multi-tenant, Rate limiting | Planned |
 | v1.0 | Complete Product — Management UI, full web-based control plane | Planned |
 
-See `docs/FEATURES.md` for detailed feature specs (F01-F23).
+See `docs/roadmap.md` for detailed feature specs (F01-F23).
 
 ## Build, Test, and Lint
 
@@ -214,7 +214,7 @@ These capabilities were originally out of scope but are now planned:
 
 ### Architecture Evolution (RFC-001)
 
-The v0.3+ architecture follows the **Kubernetes Controller pattern** adapted for latency-sensitive request routing. See `docs/ARCHITECTURE.md` for the full topology diagram.
+The v0.3+ architecture follows the **Kubernetes Controller pattern** adapted for latency-sensitive request routing. See `docs/architecture.md` for the full topology diagram.
 
 **Key architectural decisions:**
 - **NII as Rust trait** (not gRPC) — zero overhead, compile-time safety, single binary

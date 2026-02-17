@@ -277,7 +277,7 @@ These capabilities were originally out of scope but are now planned features:
 
 ### Development Guidance
 - Refer to `.github/copilot-instructions.md` for implementation details
-- Refer to `docs/ARCHITECTURE.md` for system design
-- Refer to `docs/FEATURES.md` for feature specifications
+- Refer to `docs/architecture.md` for system design
+- Refer to `docs/roadmap.md` for feature specifications
 
 **Version**: 1.1.0 | **Ratified**: 2026-02-01 | **Last Amended**: 2026-02-10

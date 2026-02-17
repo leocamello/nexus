@@ -163,7 +163,7 @@ Testing mDNS on a single machine requires OS-specific tools:
 1. **Copy requirements-validation.md** to feature folder BEFORE creating issues
 2. **Complete all 65 validation items** before `speckit.taskstoissues`
 3. **Complete verification.md** before creating PR
-4. **Follow 10-phase workflow** documented in `docs/SPEC_KIT_PROMPTS.md`
+4. **Follow 10-phase workflow** documented in `.github/team/spec-kit-guide.md`
 
 ---
 
@@ -413,7 +413,7 @@ The global metrics recorder issue (F09) and potential future crates with global 
 **Action**: Add a comment at the top of integration test files explaining global state constraints.
 
 #### 4. Manual Testing Guide Is Outdated
-`docs/MANUAL_TESTING_GUIDE.md` hasn't been updated since F05. It should cover the new `/metrics` and `/v1/stats` endpoints.
+`.github/team/manual-testing.md` hasn't been updated since F05. It should cover the new `/metrics` and `/v1/stats` endpoints.
 
 **Action**: Update before starting F10.
 
