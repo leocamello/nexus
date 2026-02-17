@@ -19,8 +19,9 @@ pub use requirements::RequestRequirements;
 pub use scoring::{score_backend, ScoringWeights};
 pub use strategies::RoutingStrategy;
 
+use crate::agent::quality::QualityMetricsStore;
 use crate::agent::tokenizer::TokenizerRegistry;
-use crate::config::{BudgetConfig, PolicyMatcher};
+use crate::config::{BudgetConfig, PolicyMatcher, QualityConfig};
 use crate::registry::{Backend, BackendStatus, Registry};
 use crate::routing::reconciler::budget::BudgetMetrics;
 use dashmap::DashMap;
@@ -89,6 +90,12 @@ pub struct Router {
 
     /// Tokenizer registry for accurate cost estimation (F14)
     tokenizer_registry: Arc<TokenizerRegistry>,
+
+    /// Shared quality metrics store for quality-aware routing
+    quality_store: Arc<QualityMetricsStore>,
+
+    /// Quality configuration for thresholds
+    quality_config: QualityConfig,
 }
 
 impl Router {
@@ -100,6 +107,8 @@ impl Router {
     ) -> Self {
         let tokenizer_registry =
             Arc::new(TokenizerRegistry::new().expect("Failed to initialize tokenizer registry"));
+        let quality_config = QualityConfig::default();
+        let quality_store = Arc::new(QualityMetricsStore::new(quality_config.clone()));
         Self {
             registry,
             strategy,
@@ -111,6 +120,8 @@ impl Router {
             budget_config: BudgetConfig::default(),
             budget_state: Arc::new(DashMap::new()),
             tokenizer_registry,
+            quality_store,
+            quality_config,
         }
     }
 
@@ -124,6 +135,8 @@ impl Router {
     ) -> Self {
         let tokenizer_registry =
             Arc::new(TokenizerRegistry::new().expect("Failed to initialize tokenizer registry"));
+        let quality_config = QualityConfig::default();
+        let quality_store = Arc::new(QualityMetricsStore::new(quality_config.clone()));
         Self {
             registry,
             strategy,
@@ -135,6 +148,8 @@ impl Router {
             budget_config: BudgetConfig::default(),
             budget_state: Arc::new(DashMap::new()),
             tokenizer_registry,
+            quality_store,
+            quality_config,
         }
     }
 
@@ -149,6 +164,8 @@ impl Router {
     ) -> Self {
         let tokenizer_registry =
             Arc::new(TokenizerRegistry::new().expect("Failed to initialize tokenizer registry"));
+        let quality_config = QualityConfig::default();
+        let quality_store = Arc::new(QualityMetricsStore::new(quality_config.clone()));
         Self {
             registry,
             strategy,
@@ -160,6 +177,8 @@ impl Router {
             budget_config: BudgetConfig::default(),
             budget_state: Arc::new(DashMap::new()),
             tokenizer_registry,
+            quality_store,
+            quality_config,
         }
     }
 
@@ -177,6 +196,8 @@ impl Router {
     ) -> Self {
         let tokenizer_registry =
             Arc::new(TokenizerRegistry::new().expect("Failed to initialize tokenizer registry"));
+        let quality_config = QualityConfig::default();
+        let quality_store = Arc::new(QualityMetricsStore::new(quality_config.clone()));
         Self {
             registry,
             strategy,
@@ -188,6 +209,8 @@ impl Router {
             budget_config,
             budget_state,
             tokenizer_registry,
+            quality_store,
+            quality_config,
         }
     }
 
@@ -244,12 +267,15 @@ impl Router {
             Arc::clone(&self.budget_state),
         );
         let tier = TierReconciler::new(Arc::clone(&self.registry), self.policy_matcher.clone());
-        let quality = QualityReconciler::new();
+        let quality =
+            QualityReconciler::new(Arc::clone(&self.quality_store), self.quality_config.clone());
         let scheduler = SchedulerReconciler::new(
             Arc::clone(&self.registry),
             self.strategy,
             self.weights,
             Arc::clone(&self.round_robin_counter),
+            Arc::clone(&self.quality_store),
+            self.quality_config.clone(),
         );
         ReconcilerPipeline::new(vec![
             Box::new(analyzer),
@@ -590,6 +616,11 @@ impl Router {
     /// Get reference to the budget state (F14).
     pub fn budget_state(&self) -> &Arc<DashMap<String, BudgetMetrics>> {
         &self.budget_state
+    }
+
+    /// Get reference to the quality metrics store.
+    pub fn quality_store(&self) -> &Arc<QualityMetricsStore> {
+        &self.quality_store
     }
 
     /// Get current budget status and utilization percentage (F14).

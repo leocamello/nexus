@@ -16,6 +16,7 @@ pub mod lmstudio;
 pub mod ollama;
 pub mod openai;
 pub mod pricing;
+pub mod quality;
 pub mod tokenizer;
 pub mod translation;
 pub mod types;

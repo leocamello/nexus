@@ -38,7 +38,8 @@ pub async fn stats_handler(State(state): State<Arc<AppState>>) -> impl IntoRespo
 
     // Compute stats from Registry atomics
     let uptime_seconds = state.metrics_collector.uptime_seconds();
-    let backends = compute_backend_stats(registry);
+    let quality_store = state.router.quality_store();
+    let backends = compute_backend_stats(registry, Some(quality_store));
     let requests = compute_request_stats(&backends);
     let models = compute_model_stats(registry);
     let budget = compute_budget_stats(&state);
@@ -66,13 +67,32 @@ pub fn compute_request_stats(backends: &[BackendStats]) -> RequestStats {
 }
 
 /// Compute per-backend statistics from Prometheus metrics and Registry.
-pub fn compute_backend_stats(registry: &crate::registry::Registry) -> Vec<BackendStats> {
+pub fn compute_backend_stats(
+    registry: &crate::registry::Registry,
+    quality_store: Option<&crate::agent::quality::QualityMetricsStore>,
+) -> Vec<BackendStats> {
     // Get all backends from registry
     let backends = registry.get_all_backends();
 
     backends
         .into_iter()
         .map(|backend| {
+            let (error_rate_1h, avg_ttft_ms, success_rate_24h) = if let Some(store) = quality_store
+            {
+                let m = store.get_metrics(&backend.id);
+                if m.request_count_1h > 0 || m.last_failure_ts.is_some() {
+                    (
+                        Some(m.error_rate_1h),
+                        Some(m.avg_ttft_ms),
+                        Some(m.success_rate_24h),
+                    )
+                } else {
+                    (None, None, None)
+                }
+            } else {
+                (None, None, None)
+            };
+
             // Backend stats sourced from Registry atomics (real-time values)
             BackendStats {
                 id: backend.id.clone(),
@@ -87,6 +107,9 @@ pub fn compute_backend_stats(registry: &crate::registry::Registry) -> Vec<Backen
                 pending: backend
                     .pending_requests
                     .load(std::sync::atomic::Ordering::SeqCst) as usize,
+                error_rate_1h,
+                avg_ttft_ms,
+                success_rate_24h,
             }
         })
         .collect()
@@ -201,6 +224,9 @@ mod tests {
                 requests: 10,
                 average_latency_ms: 5.0,
                 pending: 0,
+                error_rate_1h: None,
+                avg_ttft_ms: None,
+                success_rate_24h: None,
             },
             BackendStats {
                 id: "b2".to_string(),
@@ -208,6 +234,9 @@ mod tests {
                 requests: 20,
                 average_latency_ms: 3.0,
                 pending: 1,
+                error_rate_1h: None,
+                avg_ttft_ms: None,
+                success_rate_24h: None,
             },
         ];
         let stats = compute_request_stats(&backends);
@@ -217,7 +246,7 @@ mod tests {
     #[test]
     fn test_compute_backend_stats_empty() {
         let registry = crate::registry::Registry::new();
-        let stats = compute_backend_stats(&registry);
+        let stats = compute_backend_stats(&registry, None);
         assert_eq!(stats.len(), 0);
     }
 
@@ -327,7 +356,7 @@ mod tests {
             .store(3, std::sync::atomic::Ordering::SeqCst);
         registry.add_backend(backend).unwrap();
 
-        let stats = compute_backend_stats(&registry);
+        let stats = compute_backend_stats(&registry, None);
         assert_eq!(stats.len(), 1);
         assert_eq!(stats[0].id, "b1");
         assert_eq!(stats[0].name, "backend-1");
@@ -344,6 +373,9 @@ mod tests {
             requests: 100,
             average_latency_ms: 10.0,
             pending: 0,
+            error_rate_1h: None,
+            avg_ttft_ms: None,
+            success_rate_24h: None,
         }];
         let stats = compute_request_stats(&backends);
         assert_eq!(stats.total, 100);
@@ -360,6 +392,9 @@ mod tests {
                 requests: 50,
                 average_latency_ms: 5.0,
                 pending: 0,
+                error_rate_1h: None,
+                avg_ttft_ms: None,
+                success_rate_24h: None,
             },
             BackendStats {
                 id: "b2".to_string(),
@@ -367,6 +402,9 @@ mod tests {
                 requests: 120,
                 average_latency_ms: 8.0,
                 pending: 2,
+                error_rate_1h: None,
+                avg_ttft_ms: None,
+                success_rate_24h: None,
             },
             BackendStats {
                 id: "b3".to_string(),
@@ -374,6 +412,9 @@ mod tests {
                 requests: 30,
                 average_latency_ms: 3.0,
                 pending: 1,
+                error_rate_1h: None,
+                avg_ttft_ms: None,
+                success_rate_24h: None,
             },
         ];
         let stats = compute_request_stats(&backends);

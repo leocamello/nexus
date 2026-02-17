@@ -432,6 +432,13 @@ pub async fn handle(
                 let _ = state.registry.decrement_pending(&backend.id);
                 info!(backend_id = %backend.id, "Request succeeded");
 
+                // Record quality outcome: success with TTFT
+                let ttft_ms = start_time.elapsed().as_millis() as u32;
+                state
+                    .router
+                    .quality_store()
+                    .record_outcome(&backend.id, true, ttft_ms);
+
                 // Record success metrics
                 let duration = start_time.elapsed().as_secs_f64();
                 let sanitized_model = state.metrics_collector.sanitize_label(&actual_model);
@@ -555,6 +562,13 @@ pub async fn handle(
             }
             Err(e) => {
                 let _ = state.registry.decrement_pending(&backend.id);
+
+                // Record quality outcome: failure
+                let ttft_ms = start_time.elapsed().as_millis() as u32;
+                state
+                    .router
+                    .quality_store()
+                    .record_outcome(&backend.id, false, ttft_ms);
 
                 // Track this backend in fallback chain
                 if !fallback_chain_vec.contains(&backend.id) {

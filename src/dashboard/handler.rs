@@ -39,7 +39,7 @@ pub async fn dashboard_handler(State(state): State<Arc<AppState>>) -> Response {
             // Generate initial stats data
             state.metrics_collector.update_fleet_gauges();
             let registry = state.metrics_collector.registry();
-            let backend_stats = crate::metrics::handler::compute_backend_stats(registry);
+            let backend_stats = crate::metrics::handler::compute_backend_stats(registry, None);
             let stats = crate::metrics::types::StatsResponse {
                 uptime_seconds: state.metrics_collector.uptime_seconds(),
                 requests: crate::metrics::handler::compute_request_stats(&backend_stats),

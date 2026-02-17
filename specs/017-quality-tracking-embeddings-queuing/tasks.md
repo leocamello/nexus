@@ -42,19 +42,19 @@
 
 ### Implementation for US1
 
-- [ ] T007 [US1] Implement request outcome recording in completions handler (`src/api/completions.rs`) — after each response, record success/failure + TTFT to the agent's quality metrics. TTFT measured from `Instant::now()` captured at handler entry (post-routing) to first byte written to response stream; for non-streaming, measure to response body ready.
+- [X] T007 [US1] Implement request outcome recording in completions handler (`src/api/completions.rs`) — after each response, record success/failure + TTFT to the agent's quality metrics. TTFT measured from `Instant::now()` captured at handler entry (post-routing) to first byte written to response stream; for non-streaming, measure to response body ready.
   - **AC**: Every chat completion updates the serving agent's quality metrics
-- [ ] T008 [US1] Implement `quality_reconciliation_loop()` background task — runs every `metrics_interval_seconds`, iterates all agents, computes rolling 1h and 24h aggregates from recorded outcomes, updates `AgentQualityMetrics`. Location: new function in `src/routing/reconciler/quality.rs` or `src/agent/mod.rs`.
+- [X] T008 [US1] Implement `quality_reconciliation_loop()` background task — runs every `metrics_interval_seconds`, iterates all agents, computes rolling 1h and 24h aggregates from recorded outcomes, updates `AgentQualityMetrics`. Location: new function in `src/routing/reconciler/quality.rs` or `src/agent/mod.rs`.
   - **AC**: Loop runs on configurable interval, computes aggregates, handles empty history gracefully
-- [ ] T009 [US1] Implement `QualityReconciler` (replace pass-through stub in `src/routing/reconciler/quality.rs`) — read each candidate's `AgentQualityMetrics`, exclude candidates with `error_rate_1h > config.error_rate_threshold`, add rejection_reason for excluded candidates.
+- [X] T009 [US1] Implement `QualityReconciler` (replace pass-through stub in `src/routing/reconciler/quality.rs`) — read each candidate's `AgentQualityMetrics`, exclude candidates with `error_rate_1h > config.error_rate_threshold`, add rejection_reason for excluded candidates.
   - **AC**: Stub replaced with filtering logic, agents above threshold excluded, rejection reasons populated
-- [ ] T010 [US1] Add TTFT penalty to `SchedulerReconciler` (`src/routing/reconciler/scheduler.rs`) — when scoring candidates, penalize agents with `avg_ttft_ms > config.ttft_penalty_threshold_ms`. Penalty: reduce score proportionally to how far above threshold.
+- [X] T010 [US1] Add TTFT penalty to `SchedulerReconciler` (`src/routing/reconciler/scheduler.rs`) — when scoring candidates, penalize agents with `avg_ttft_ms > config.ttft_penalty_threshold_ms`. Penalty: reduce score proportionally to how far above threshold.
   - **AC**: Scoring incorporates TTFT, high-TTFT agents score lower
-- [ ] T011 [P] [US1] Add Prometheus quality metrics in `src/metrics/mod.rs` — `nexus_agent_error_rate` (gauge, labels: agent_id), `nexus_agent_ttft_seconds` (histogram, labels: agent_id), `nexus_agent_success_rate_24h` (gauge, labels: agent_id). Update metrics on each quality loop cycle.
+- [X] T011 [P] [US1] Add Prometheus quality metrics in `src/metrics/mod.rs` — `nexus_agent_error_rate` (gauge, labels: agent_id), `nexus_agent_ttft_seconds` (histogram, labels: agent_id), `nexus_agent_success_rate_24h` (gauge, labels: agent_id). Update metrics on each quality loop cycle.
   - **AC**: Metrics appear in `/metrics` output with correct labels and values
-- [ ] T012 [US1] Add quality data to `/v1/stats` response — extend `StatsResponse` in `src/metrics/types.rs` with per-backend quality fields (error_rate_1h, avg_ttft_ms, success_rate_24h). Populate in stats handler.
+- [X] T012 [US1] Add quality data to `/v1/stats` response — extend `StatsResponse` in `src/metrics/types.rs` with per-backend quality fields (error_rate_1h, avg_ttft_ms, success_rate_24h). Populate in stats handler.
   - **AC**: `/v1/stats` JSON includes quality fields per backend
-- [ ] T013 [US1] Wire quality loop startup in server initialization — start `quality_reconciliation_loop` as a background task with `CancellationToken`. Location: `src/api/mod.rs` or `src/cli/serve.rs`.
+- [X] T013 [US1] Wire quality loop startup in server initialization — start `quality_reconciliation_loop` as a background task with `CancellationToken`. Location: `src/api/mod.rs` or `src/cli/serve.rs`.
   - **AC**: Loop starts on server boot, stops on graceful shutdown
 
 **Checkpoint**: Quality-aware routing works end-to-end. Failing backends are automatically avoided.

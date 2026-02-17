@@ -8,7 +8,9 @@
 
 use chrono::Utc;
 use nexus::agent::factory::create_agent;
+use nexus::agent::quality::QualityMetricsStore;
 use nexus::agent::PrivacyZone;
+use nexus::config::QualityConfig;
 use nexus::config::{PolicyMatcher, TrafficPolicy};
 use nexus::registry::{Backend, BackendStatus, BackendType, DiscoverySource, Registry};
 use nexus::routing::reconciler::decision::RoutingDecision;
@@ -106,12 +108,18 @@ fn test_restricted_backend_available_routes_correctly() {
 
     // Build reconciler pipeline
     let privacy = PrivacyReconciler::new(Arc::clone(&registry), policy_matcher);
-    let scheduler = SchedulerReconciler::new(
-        Arc::clone(&registry),
-        RoutingStrategy::PriorityOnly,
-        ScoringWeights::default(),
-        Arc::new(std::sync::atomic::AtomicU64::new(0)),
-    );
+    let scheduler = {
+        let qcfg = QualityConfig::default();
+        let qstore = std::sync::Arc::new(QualityMetricsStore::new(qcfg.clone()));
+        SchedulerReconciler::new(
+            Arc::clone(&registry),
+            RoutingStrategy::PriorityOnly,
+            ScoringWeights::default(),
+            Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            qstore,
+            qcfg,
+        )
+    };
 
     let mut pipeline = ReconcilerPipeline::new(vec![
         Box::new(RequestAnalyzer::new(HashMap::new(), Arc::clone(&registry))),
@@ -126,6 +134,7 @@ fn test_restricted_backend_available_routes_correctly() {
         needs_vision: false,
         needs_tools: false,
         needs_json_mode: false,
+        prefers_streaming: false,
     };
 
     let mut intent = RoutingIntent::new(
@@ -197,12 +206,18 @@ fn test_restricted_backend_offline_open_available_returns_503() {
 
     // Build reconciler pipeline
     let privacy = PrivacyReconciler::new(Arc::clone(&registry), policy_matcher);
-    let scheduler = SchedulerReconciler::new(
-        Arc::clone(&registry),
-        RoutingStrategy::PriorityOnly,
-        ScoringWeights::default(),
-        Arc::new(std::sync::atomic::AtomicU64::new(0)),
-    );
+    let scheduler = {
+        let qcfg = QualityConfig::default();
+        let qstore = std::sync::Arc::new(QualityMetricsStore::new(qcfg.clone()));
+        SchedulerReconciler::new(
+            Arc::clone(&registry),
+            RoutingStrategy::PriorityOnly,
+            ScoringWeights::default(),
+            Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            qstore,
+            qcfg,
+        )
+    };
 
     let mut pipeline = ReconcilerPipeline::new(vec![
         Box::new(RequestAnalyzer::new(HashMap::new(), Arc::clone(&registry))),
@@ -217,6 +232,7 @@ fn test_restricted_backend_offline_open_available_returns_503() {
         needs_vision: false,
         needs_tools: false,
         needs_json_mode: false,
+        prefers_streaming: false,
     };
 
     let mut intent = RoutingIntent::new(
@@ -286,12 +302,18 @@ fn test_cross_zone_failover_never_happens() {
 
     // Build reconciler pipeline
     let privacy = PrivacyReconciler::new(Arc::clone(&registry), policy_matcher);
-    let scheduler = SchedulerReconciler::new(
-        Arc::clone(&registry),
-        RoutingStrategy::PriorityOnly,
-        ScoringWeights::default(),
-        Arc::new(std::sync::atomic::AtomicU64::new(0)),
-    );
+    let scheduler = {
+        let qcfg = QualityConfig::default();
+        let qstore = std::sync::Arc::new(QualityMetricsStore::new(qcfg.clone()));
+        SchedulerReconciler::new(
+            Arc::clone(&registry),
+            RoutingStrategy::PriorityOnly,
+            ScoringWeights::default(),
+            Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            qstore,
+            qcfg,
+        )
+    };
 
     let mut pipeline = ReconcilerPipeline::new(vec![
         Box::new(RequestAnalyzer::new(HashMap::new(), Arc::clone(&registry))),
@@ -306,6 +328,7 @@ fn test_cross_zone_failover_never_happens() {
         needs_vision: false,
         needs_tools: false,
         needs_json_mode: false,
+        prefers_streaming: false,
     };
 
     let mut intent = RoutingIntent::new(

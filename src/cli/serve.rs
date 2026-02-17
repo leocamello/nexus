@@ -254,6 +254,13 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
         None
     };
 
+    // 4.7. Start quality reconciliation loop
+    let quality_store = Arc::clone(app_state.router.quality_store());
+    let quality_cancel = cancel_token.clone();
+    let quality_handle = tokio::spawn(async move {
+        crate::agent::quality::quality_reconciliation_loop(quality_store, quality_cancel).await;
+    });
+
     // 6. Bind and serve
     let addr = format!("{}:{}", config.server.host, config.server.port);
     tracing::info!(addr = %addr, "Nexus API server listening");
@@ -279,6 +286,9 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
         tracing::info!("Waiting for budget reconciliation loop to stop");
         handle.await?;
     }
+
+    tracing::info!("Waiting for quality reconciliation loop to stop");
+    quality_handle.await?;
 
     tracing::info!("Nexus server stopped");
     Ok(())

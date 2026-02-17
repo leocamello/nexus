@@ -171,6 +171,9 @@ pub fn setup_metrics(
     // Sub-millisecond buckets for reconciler/pipeline latency (FR-036, FR-009)
     let pipeline_buckets = &[0.00005, 0.0001, 0.00025, 0.0005, 0.001, 0.0025, 0.005, 0.01];
 
+    // TTFT buckets for agent quality tracking
+    let ttft_buckets = &[0.05, 0.1, 0.5, 1.0, 5.0];
+
     let handle = PrometheusBuilder::new()
         .set_buckets_for_metric(
             Matcher::Full("nexus_request_duration_seconds".to_string()),
@@ -191,6 +194,10 @@ pub fn setup_metrics(
         .set_buckets_for_metric(
             Matcher::Full("nexus_pipeline_duration_seconds".to_string()),
             pipeline_buckets,
+        )?
+        .set_buckets_for_metric(
+            Matcher::Full("nexus_agent_ttft_seconds".to_string()),
+            ttft_buckets,
         )?
         .install_recorder()?;
 

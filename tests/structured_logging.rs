@@ -293,6 +293,7 @@ mod us3_routing_visibility {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
         let result = router.select_backend(&requirements, None).unwrap();
 
@@ -359,6 +360,7 @@ mod us3_routing_visibility {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
         let result = router.select_backend(&requirements, None).unwrap();
 
@@ -421,6 +423,7 @@ mod us3_routing_visibility {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
         let result = router.select_backend(&requirements, None).unwrap();
 
