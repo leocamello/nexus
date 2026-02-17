@@ -639,4 +639,167 @@ mod tests {
         let count = agent.count_tokens("   \n\t  ");
         assert!(count > 0, "Whitespace should still produce tokens");
     }
+
+    #[test]
+    fn test_name_heuristics_gpt4o() {
+        let mut model = ModelCapability {
+            id: "gpt-4o".to_string(),
+            name: "gpt-4o".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        OpenAIAgent::apply_name_heuristics(&mut model);
+        assert!(model.supports_vision, "gpt-4o should support vision");
+        assert!(model.supports_tools, "gpt-4o should support tools");
+        assert!(model.supports_json_mode, "gpt-4o should support json_mode");
+        assert_eq!(model.context_length, 128000);
+    }
+
+    #[test]
+    fn test_name_heuristics_gpt4o_mini() {
+        let mut model = ModelCapability {
+            id: "gpt-4o-mini".to_string(),
+            name: "gpt-4o-mini".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        OpenAIAgent::apply_name_heuristics(&mut model);
+        assert!(model.supports_vision, "gpt-4o-mini should support vision");
+        assert!(model.supports_tools, "gpt-4o-mini should support tools");
+        assert_eq!(model.context_length, 128000);
+    }
+
+    #[test]
+    fn test_name_heuristics_o1_preview() {
+        let mut model = ModelCapability {
+            id: "o1-preview".to_string(),
+            name: "o1-preview".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        OpenAIAgent::apply_name_heuristics(&mut model);
+        // o1-preview doesn't match any heuristic patterns
+        assert!(
+            !model.supports_vision,
+            "o1-preview should not match vision heuristic"
+        );
+        assert!(
+            !model.supports_tools,
+            "o1-preview should not match tools heuristic"
+        );
+        assert_eq!(
+            model.context_length, 4096,
+            "o1-preview should keep default context"
+        );
+    }
+
+    #[test]
+    fn test_name_heuristics_o1_mini() {
+        let mut model = ModelCapability {
+            id: "o1-mini".to_string(),
+            name: "o1-mini".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        OpenAIAgent::apply_name_heuristics(&mut model);
+        assert!(
+            !model.supports_vision,
+            "o1-mini should not match vision heuristic"
+        );
+        assert!(
+            !model.supports_tools,
+            "o1-mini should not match tools heuristic"
+        );
+        assert_eq!(
+            model.context_length, 4096,
+            "o1-mini should keep default context"
+        );
+    }
+
+    #[test]
+    fn test_name_heuristics_text_embedding() {
+        let mut model = ModelCapability {
+            id: "text-embedding-ada-002".to_string(),
+            name: "text-embedding-ada-002".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        OpenAIAgent::apply_name_heuristics(&mut model);
+        assert!(
+            !model.supports_vision,
+            "embedding model should not support vision"
+        );
+        assert!(
+            !model.supports_tools,
+            "embedding model should not support tools"
+        );
+    }
+
+    #[test]
+    fn test_name_heuristics_dall_e() {
+        let mut model = ModelCapability {
+            id: "dall-e-3".to_string(),
+            name: "dall-e-3".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        OpenAIAgent::apply_name_heuristics(&mut model);
+        assert!(!model.supports_vision, "dall-e should not support vision");
+        assert!(!model.supports_tools, "dall-e should not support tools");
+    }
+
+    #[test]
+    fn test_name_heuristics_unknown_model() {
+        let mut model = ModelCapability {
+            id: "unknown-model".to_string(),
+            name: "unknown-model".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        OpenAIAgent::apply_name_heuristics(&mut model);
+        assert!(
+            !model.supports_vision,
+            "unknown model should keep default vision=false"
+        );
+        assert!(
+            !model.supports_tools,
+            "unknown model should keep default tools=false"
+        );
+        assert!(
+            !model.supports_json_mode,
+            "unknown model should keep default json_mode=false"
+        );
+        assert_eq!(
+            model.context_length, 4096,
+            "unknown model should keep default context"
+        );
+    }
 }

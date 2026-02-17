@@ -615,4 +615,85 @@ mod tests {
             StatusCode::INTERNAL_SERVER_ERROR
         );
     }
+
+    #[test]
+    fn test_from_backend_json_valid_error() {
+        let json_body =
+            r#"{"error":{"message":"Rate limit exceeded","type":"rate_limit_error","param":null,"code":"rate_limit"}}"#
+                .to_string();
+        let result = ApiError::from_backend_json(429, json_body);
+        assert!(result.is_ok());
+        let error = result.unwrap();
+        assert_eq!(error.error.message, "Rate limit exceeded");
+    }
+
+    #[test]
+    fn test_from_backend_json_invalid_json() {
+        let json_body = "this is not json at all".to_string();
+        let result = ApiError::from_backend_json(500, json_body);
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert_eq!(error.error.code.as_deref(), Some("bad_gateway"));
+        assert!(error.error.message.contains("this is not json at all"));
+    }
+
+    #[test]
+    fn test_from_backend_json_empty_string() {
+        let result = ApiError::from_backend_json(500, String::new());
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert_eq!(error.error.code.as_deref(), Some("bad_gateway"));
+    }
+
+    #[test]
+    fn test_from_agent_error_network() {
+        let agent_err = crate::agent::AgentError::Network("connection refused".to_string());
+        let api_err = ApiError::from_agent_error(agent_err);
+        assert_eq!(api_err.error.code.as_deref(), Some("bad_gateway"));
+        assert!(api_err.error.message.contains("Network error"));
+    }
+
+    #[test]
+    fn test_from_agent_error_timeout() {
+        let agent_err = crate::agent::AgentError::Timeout(5000);
+        let api_err = ApiError::from_agent_error(agent_err);
+        assert_eq!(api_err.error.code.as_deref(), Some("gateway_timeout"));
+        assert_eq!(
+            api_err.into_response().status(),
+            StatusCode::GATEWAY_TIMEOUT
+        );
+    }
+
+    #[test]
+    fn test_from_agent_error_upstream_5xx() {
+        let agent_err = crate::agent::AgentError::Upstream {
+            status: 503,
+            message: "Service Unavailable".to_string(),
+        };
+        let api_err = ApiError::from_agent_error(agent_err);
+        assert_eq!(api_err.error.code.as_deref(), Some("bad_gateway"));
+        assert!(api_err.error.message.contains("503"));
+    }
+
+    #[test]
+    fn test_from_agent_error_upstream_404() {
+        let agent_err = crate::agent::AgentError::Upstream {
+            status: 404,
+            message: "Model not found".to_string(),
+        };
+        let api_err = ApiError::from_agent_error(agent_err);
+        assert_eq!(api_err.error.code.as_deref(), Some("not_found"));
+        assert_eq!(
+            api_err.into_response().status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    #[test]
+    fn test_from_agent_error_invalid_response() {
+        let agent_err = crate::agent::AgentError::InvalidResponse("malformed JSON".to_string());
+        let api_err = ApiError::from_agent_error(agent_err);
+        assert_eq!(api_err.error.code.as_deref(), Some("bad_gateway"));
+        assert!(api_err.error.message.contains("Invalid backend response"));
+    }
 }

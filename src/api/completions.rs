@@ -1124,4 +1124,160 @@ mod tests {
             TierEnforcementMode::Strict
         );
     }
+
+    // ── determine_route_reason tests ──
+
+    #[test]
+    fn test_route_reason_fallback_used() {
+        let reason = determine_route_reason("highest_score:backend-1:0.95", true, 0);
+        assert_eq!(reason, RouteReason::Failover);
+    }
+
+    #[test]
+    fn test_route_reason_retry_count() {
+        let reason = determine_route_reason("highest_score:backend-1:0.95", false, 2);
+        assert_eq!(reason, RouteReason::Failover);
+    }
+
+    #[test]
+    fn test_route_reason_privacy() {
+        let reason = determine_route_reason("privacy_zone_match", false, 0);
+        assert_eq!(reason, RouteReason::PrivacyRequirement);
+    }
+
+    #[test]
+    fn test_route_reason_restricted() {
+        let reason = determine_route_reason("restricted_zone_only", false, 0);
+        assert_eq!(reason, RouteReason::PrivacyRequirement);
+    }
+
+    #[test]
+    fn test_route_reason_capacity() {
+        let reason = determine_route_reason("capacity_exceeded", false, 0);
+        assert_eq!(reason, RouteReason::CapacityOverflow);
+    }
+
+    #[test]
+    fn test_route_reason_overflow() {
+        let reason = determine_route_reason("overflow_to_backup", false, 0);
+        assert_eq!(reason, RouteReason::CapacityOverflow);
+    }
+
+    #[test]
+    fn test_route_reason_failover_string() {
+        let reason = determine_route_reason("failover_triggered", false, 0);
+        assert_eq!(reason, RouteReason::Failover);
+    }
+
+    #[test]
+    fn test_route_reason_highest_score_default() {
+        let reason = determine_route_reason("highest_score:backend-1:0.95", false, 0);
+        assert_eq!(reason, RouteReason::CapabilityMatch);
+    }
+
+    #[test]
+    fn test_route_reason_only_healthy_backend() {
+        let reason = determine_route_reason("only_healthy_backend", false, 0);
+        assert_eq!(reason, RouteReason::CapabilityMatch);
+    }
+
+    #[test]
+    fn test_route_reason_round_robin() {
+        let reason = determine_route_reason("round_robin:backend-1", false, 0);
+        assert_eq!(reason, RouteReason::CapabilityMatch);
+    }
+
+    // ── create_error_chunk tests ──
+
+    #[test]
+    fn test_error_chunk_has_error_content() {
+        let chunk = create_error_chunk("something went wrong");
+        assert_eq!(chunk.choices.len(), 1);
+        let content = chunk.choices[0].delta.content.as_deref().unwrap();
+        assert!(content.contains("something went wrong"));
+    }
+
+    #[test]
+    fn test_error_chunk_finish_reason() {
+        let chunk = create_error_chunk("fail");
+        assert_eq!(chunk.choices[0].finish_reason.as_deref(), Some("error"));
+    }
+
+    #[test]
+    fn test_error_chunk_model() {
+        let chunk = create_error_chunk("fail");
+        assert_eq!(chunk.model, "error");
+    }
+
+    #[test]
+    fn test_error_chunk_content_format() {
+        let chunk = create_error_chunk("timeout");
+        let content = chunk.choices[0].delta.content.as_deref().unwrap();
+        assert_eq!(content, "[Error: timeout]");
+    }
+
+    // ── rejection_response tests ──
+
+    #[tokio::test]
+    async fn test_rejection_response_privacy() {
+        let reasons = vec![RejectionReason {
+            agent_id: "agent-1".to_string(),
+            reconciler: "PrivacyReconciler".to_string(),
+            reason: "restricted zone required".to_string(),
+            suggested_action: "Use a local backend".to_string(),
+        }];
+        let resp = rejection_response(reasons, vec![]);
+        assert_eq!(resp.status(), axum::http::StatusCode::SERVICE_UNAVAILABLE);
+
+        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["context"]["privacy_zone_required"], "restricted");
+    }
+
+    #[tokio::test]
+    async fn test_rejection_response_tier() {
+        let reasons = vec![RejectionReason {
+            agent_id: "agent-2".to_string(),
+            reconciler: "TierReconciler".to_string(),
+            reason: "agent tier 2 below minimum 3".to_string(),
+            suggested_action: "Upgrade tier".to_string(),
+        }];
+        let resp = rejection_response(reasons, vec![]);
+        assert_eq!(resp.status(), axum::http::StatusCode::SERVICE_UNAVAILABLE);
+
+        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["context"]["required_tier"], 3);
+    }
+
+    #[tokio::test]
+    async fn test_rejection_response_empty_reasons() {
+        let resp = rejection_response(vec![], vec![]);
+        assert_eq!(resp.status(), axum::http::StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn test_rejection_response_available_backends() {
+        let reasons = vec![RejectionReason {
+            agent_id: "agent-3".to_string(),
+            reconciler: "SchedulerReconciler".to_string(),
+            reason: "no capacity".to_string(),
+            suggested_action: "Wait".to_string(),
+        }];
+        let backends = vec!["backend-a".to_string(), "backend-b".to_string()];
+        let resp = rejection_response(reasons, backends);
+        assert_eq!(resp.status(), axum::http::StatusCode::SERVICE_UNAVAILABLE);
+
+        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let available = json["context"]["available_backends"].as_array().unwrap();
+        assert!(available.iter().any(|v| v == "backend-a"));
+        assert!(available.iter().any(|v| v == "backend-b"));
+    }
 }

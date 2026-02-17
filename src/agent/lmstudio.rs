@@ -472,4 +472,88 @@ mod tests {
         assert!(!profile.capabilities.embeddings);
         assert!(!profile.capabilities.model_lifecycle);
     }
+
+    #[test]
+    fn test_name_heuristics_llava_vision() {
+        let mut model = ModelCapability {
+            id: "llava-v1.6".to_string(),
+            name: "llava-v1.6".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        LMStudioAgent::apply_name_heuristics(&mut model);
+        assert!(model.supports_vision);
+    }
+
+    #[test]
+    fn test_name_heuristics_deepseek_coder_no_tools() {
+        let mut model = ModelCapability {
+            id: "deepseek-coder:33b".to_string(),
+            name: "deepseek-coder:33b".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        LMStudioAgent::apply_name_heuristics(&mut model);
+        assert!(!model.supports_tools);
+    }
+
+    #[test]
+    fn test_name_heuristics_phi3_128k_context() {
+        let mut model = ModelCapability {
+            id: "phi-3-128k".to_string(),
+            name: "phi-3-128k".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        LMStudioAgent::apply_name_heuristics(&mut model);
+        assert_eq!(model.context_length, 131072);
+    }
+
+    #[test]
+    fn test_name_heuristics_random_model_defaults() {
+        let mut model = ModelCapability {
+            id: "random-model".to_string(),
+            name: "random-model".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        LMStudioAgent::apply_name_heuristics(&mut model);
+        assert!(!model.supports_vision);
+        assert!(!model.supports_tools);
+        assert_eq!(model.context_length, 4096);
+    }
+
+    #[test]
+    fn test_name_heuristics_empty_name_defaults() {
+        let mut model = ModelCapability {
+            id: String::new(),
+            name: String::new(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        LMStudioAgent::apply_name_heuristics(&mut model);
+        assert!(!model.supports_vision);
+        assert!(!model.supports_tools);
+        assert_eq!(model.context_length, 4096);
+    }
 }

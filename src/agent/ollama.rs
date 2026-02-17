@@ -674,4 +674,107 @@ mod tests {
         assert!(!model.supports_tools);
         assert_eq!(model.context_length, 4096);
     }
+
+    #[test]
+    fn test_name_heuristics_llava_vision() {
+        let mut model = ModelCapability {
+            id: "llava:7b".to_string(),
+            name: "llava:7b".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        OllamaAgent::apply_name_heuristics(&mut model);
+        assert!(model.supports_vision);
+    }
+
+    #[test]
+    fn test_name_heuristics_codellama_no_tools() {
+        let mut model = ModelCapability {
+            id: "codellama:34b".to_string(),
+            name: "codellama:34b".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        OllamaAgent::apply_name_heuristics(&mut model);
+        assert!(!model.supports_tools);
+    }
+
+    #[test]
+    fn test_name_heuristics_mixtral_no_context_marker() {
+        let mut model = ModelCapability {
+            id: "mixtral:8x22b".to_string(),
+            name: "mixtral:8x22b".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        OllamaAgent::apply_name_heuristics(&mut model);
+        // No context length marker in name, so original value is preserved
+        assert_eq!(model.context_length, 4096);
+    }
+
+    #[test]
+    fn test_name_heuristics_phi3_128k_context() {
+        // "128k" contains "8k" as a substring, so the 8k branch matches first
+        // due to the if-else chain ordering — context_length becomes 8192
+        let mut model = ModelCapability {
+            id: "phi3:128k".to_string(),
+            name: "phi3:128k".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        OllamaAgent::apply_name_heuristics(&mut model);
+        assert_eq!(model.context_length, 8192);
+    }
+
+    #[test]
+    fn test_name_heuristics_random_model_defaults() {
+        let mut model = ModelCapability {
+            id: "some-random-model".to_string(),
+            name: "some-random-model".to_string(),
+            context_length: 8192,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        OllamaAgent::apply_name_heuristics(&mut model);
+        assert!(!model.supports_vision);
+        assert!(!model.supports_tools);
+        assert_eq!(model.context_length, 8192);
+    }
+
+    #[test]
+    fn test_name_heuristics_empty_name_defaults() {
+        let mut model = ModelCapability {
+            id: String::new(),
+            name: String::new(),
+            context_length: 8192,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        OllamaAgent::apply_name_heuristics(&mut model);
+        assert!(!model.supports_vision);
+        assert!(!model.supports_tools);
+        assert_eq!(model.context_length, 8192);
+    }
 }

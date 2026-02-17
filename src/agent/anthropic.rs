@@ -1108,4 +1108,381 @@ mod tests {
             TokenCount::Exact(_) => panic!("Expected heuristic for Anthropic"),
         }
     }
+
+    // ── Request Translation Edge Cases ──────────────────────────────────
+
+    #[test]
+    fn test_translate_request_empty_messages() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let request = make_request(vec![], "claude-3-opus");
+
+        let translated = agent.translate_request(&request);
+
+        assert!(translated.system.is_none());
+        assert!(translated.messages.is_empty());
+    }
+
+    #[test]
+    fn test_translate_request_only_system_messages() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let request = make_request(
+            vec![msg("system", "You are helpful"), msg("system", "Be brief")],
+            "claude-3-opus",
+        );
+
+        let translated = agent.translate_request(&request);
+
+        assert_eq!(
+            translated.system,
+            Some("You are helpful\nBe brief".to_string())
+        );
+        assert!(translated.messages.is_empty());
+    }
+
+    #[test]
+    fn test_translate_request_multiple_user_messages() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let request = make_request(
+            vec![
+                msg("user", "First question"),
+                msg("assistant", "First answer"),
+                msg("user", "Second question"),
+            ],
+            "claude-3-opus",
+        );
+
+        let translated = agent.translate_request(&request);
+
+        assert!(translated.system.is_none());
+        assert_eq!(translated.messages.len(), 3);
+        assert_eq!(translated.messages[0].role, "user");
+        assert_eq!(translated.messages[0].content, "First question");
+        assert_eq!(translated.messages[1].role, "assistant");
+        assert_eq!(translated.messages[1].content, "First answer");
+        assert_eq!(translated.messages[2].role, "user");
+        assert_eq!(translated.messages[2].content, "Second question");
+    }
+
+    #[test]
+    fn test_translate_request_empty_content_string() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let request = make_request(vec![msg("user", "")], "claude-3-opus");
+
+        let translated = agent.translate_request(&request);
+
+        assert_eq!(translated.messages.len(), 1);
+        assert_eq!(translated.messages[0].content, "");
+    }
+
+    #[test]
+    fn test_translate_request_temperature_zero() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let mut request = make_request(vec![msg("user", "Hello")], "claude-3-opus");
+        request.temperature = Some(0.0);
+
+        let translated = agent.translate_request(&request);
+
+        assert_eq!(translated.temperature, Some(0.0));
+    }
+
+    #[test]
+    fn test_translate_request_explicit_max_tokens() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let mut request = make_request(vec![msg("user", "Hello")], "claude-3-opus");
+        request.max_tokens = Some(256);
+
+        let translated = agent.translate_request(&request);
+
+        assert_eq!(translated.max_tokens, 256);
+    }
+
+    // ── Response Translation Edge Cases ─────────────────────────────────
+
+    #[test]
+    fn test_translate_response_empty_content_array() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let response = AnthropicResponse {
+            id: "msg_empty".to_string(),
+            r#type: "message".to_string(),
+            role: "assistant".to_string(),
+            content: vec![],
+            model: "claude-3-opus-20240229".to_string(),
+            stop_reason: Some("end_turn".to_string()),
+            usage: AnthropicUsage {
+                input_tokens: 5,
+                output_tokens: 0,
+            },
+        };
+
+        let translated = agent.translate_response(response);
+
+        if let MessageContent::Text { content } = &translated.choices[0].message.content {
+            assert_eq!(content, "");
+        } else {
+            panic!("Expected text content");
+        }
+    }
+
+    #[test]
+    fn test_translate_response_non_text_content_block_skipped() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let response = AnthropicResponse {
+            id: "msg_mixed".to_string(),
+            r#type: "message".to_string(),
+            role: "assistant".to_string(),
+            content: vec![
+                ContentBlock {
+                    r#type: "text".to_string(),
+                    text: Some("Hello ".to_string()),
+                },
+                ContentBlock {
+                    r#type: "tool_use".to_string(),
+                    text: None,
+                },
+                ContentBlock {
+                    r#type: "text".to_string(),
+                    text: Some("World".to_string()),
+                },
+            ],
+            model: "claude-3-opus-20240229".to_string(),
+            stop_reason: Some("end_turn".to_string()),
+            usage: AnthropicUsage {
+                input_tokens: 10,
+                output_tokens: 10,
+            },
+        };
+
+        let translated = agent.translate_response(response);
+
+        if let MessageContent::Text { content } = &translated.choices[0].message.content {
+            assert_eq!(content, "Hello World");
+        } else {
+            panic!("Expected text content");
+        }
+    }
+
+    #[test]
+    fn test_translate_response_unknown_stop_reason() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let response = AnthropicResponse {
+            id: "msg_unknown".to_string(),
+            r#type: "message".to_string(),
+            role: "assistant".to_string(),
+            content: vec![ContentBlock {
+                r#type: "text".to_string(),
+                text: Some("Done".to_string()),
+            }],
+            model: "claude-3-opus-20240229".to_string(),
+            stop_reason: Some("some_future_reason".to_string()),
+            usage: AnthropicUsage {
+                input_tokens: 5,
+                output_tokens: 3,
+            },
+        };
+
+        let translated = agent.translate_response(response);
+
+        // Unknown stop_reason maps to "stop" (default)
+        assert_eq!(
+            translated.choices[0].finish_reason,
+            Some("stop".to_string())
+        );
+    }
+
+    #[test]
+    fn test_translate_response_none_stop_reason() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let response = AnthropicResponse {
+            id: "msg_none_stop".to_string(),
+            r#type: "message".to_string(),
+            role: "assistant".to_string(),
+            content: vec![ContentBlock {
+                r#type: "text".to_string(),
+                text: Some("Hi".to_string()),
+            }],
+            model: "claude-3-opus-20240229".to_string(),
+            stop_reason: None,
+            usage: AnthropicUsage {
+                input_tokens: 3,
+                output_tokens: 1,
+            },
+        };
+
+        let translated = agent.translate_response(response);
+
+        // None stop_reason also maps to "stop" (default)
+        assert_eq!(
+            translated.choices[0].finish_reason,
+            Some("stop".to_string())
+        );
+    }
+
+    #[test]
+    fn test_translate_response_zero_usage_tokens() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let response = AnthropicResponse {
+            id: "msg_zero".to_string(),
+            r#type: "message".to_string(),
+            role: "assistant".to_string(),
+            content: vec![ContentBlock {
+                r#type: "text".to_string(),
+                text: Some("".to_string()),
+            }],
+            model: "claude-3-opus-20240229".to_string(),
+            stop_reason: Some("end_turn".to_string()),
+            usage: AnthropicUsage {
+                input_tokens: 0,
+                output_tokens: 0,
+            },
+        };
+
+        let translated = agent.translate_response(response);
+
+        let usage = translated.usage.unwrap();
+        assert_eq!(usage.prompt_tokens, 0);
+        assert_eq!(usage.completion_tokens, 0);
+        assert_eq!(usage.total_tokens, 0);
+    }
+
+    #[test]
+    fn test_translate_response_stop_sequence_maps_to_stop() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let response = AnthropicResponse {
+            id: "msg_seq".to_string(),
+            r#type: "message".to_string(),
+            role: "assistant".to_string(),
+            content: vec![ContentBlock {
+                r#type: "text".to_string(),
+                text: Some("Result".to_string()),
+            }],
+            model: "claude-3-opus-20240229".to_string(),
+            stop_reason: Some("stop_sequence".to_string()),
+            usage: AnthropicUsage {
+                input_tokens: 5,
+                output_tokens: 2,
+            },
+        };
+
+        let translated = agent.translate_response(response);
+
+        assert_eq!(
+            translated.choices[0].finish_reason,
+            Some("stop".to_string())
+        );
+    }
+
+    // ── Stream Chunk Translation Edge Cases ─────────────────────────────
+
+    #[test]
+    fn test_translate_stream_chunk_content_block_start_returns_none() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let data = r#"{"index":0,"content_block":{"type":"text","text":""}}"#;
+
+        let result = agent.translate_stream_chunk("content_block_start", data);
+
+        // content_block_start is unrecognized → falls to default arm → None
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_translate_stream_chunk_ping_returns_none() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+
+        let result = agent.translate_stream_chunk("ping", r#"{}"#);
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_translate_stream_chunk_unknown_event_type_returns_none() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+
+        let result = agent.translate_stream_chunk("some_future_event", r#"{"foo":"bar"}"#);
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_translate_stream_chunk_message_start_invalid_json_returns_none() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+
+        let result = agent.translate_stream_chunk("message_start", "not valid json");
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_translate_stream_chunk_content_block_delta_non_text_type_returns_none() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let data = r#"{"delta":{"type":"input_json_delta","text":""}}"#;
+
+        let result = agent.translate_stream_chunk("content_block_delta", data);
+
+        // delta type is not "text_delta" → returns None
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_translate_stream_chunk_message_delta_max_tokens() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let data = r#"{"delta":{"stop_reason":"max_tokens"}}"#;
+
+        let result = agent.translate_stream_chunk("message_delta", data);
+
+        assert!(result.is_some());
+        let chunk = result.unwrap();
+        let json: serde_json::Value =
+            serde_json::from_str(chunk.trim_start_matches("data: ").trim()).unwrap();
+        assert_eq!(json["choices"][0]["finish_reason"], "length");
+    }
+
+    #[test]
+    fn test_translate_stream_chunk_message_delta_null_stop_reason() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let data = r#"{"delta":{"stop_reason":null}}"#;
+
+        let result = agent.translate_stream_chunk("message_delta", data);
+
+        assert!(result.is_some());
+        let chunk = result.unwrap();
+        let json: serde_json::Value =
+            serde_json::from_str(chunk.trim_start_matches("data: ").trim()).unwrap();
+        // null stop_reason defaults to "stop"
+        assert_eq!(json["choices"][0]["finish_reason"], "stop");
+    }
+
+    // ── Count Tokens Edge Cases ─────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_count_tokens_returns_heuristic_variant() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let count = agent.count_tokens("any-model", "test").await;
+
+        assert!(matches!(count, TokenCount::Heuristic(_)));
+    }
+
+    #[tokio::test]
+    async fn test_count_tokens_known_length() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        // 20 chars → 20/4 = 5 tokens
+        let count = agent
+            .count_tokens("claude-3-opus", "12345678901234567890")
+            .await;
+
+        match count {
+            TokenCount::Heuristic(n) => assert_eq!(n, 5),
+            TokenCount::Exact(_) => panic!("Expected heuristic for Anthropic"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_count_tokens_empty_string() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let count = agent.count_tokens("claude-3-opus", "").await;
+
+        match count {
+            TokenCount::Heuristic(n) => assert_eq!(n, 0),
+            TokenCount::Exact(_) => panic!("Expected heuristic for Anthropic"),
+        }
+    }
 }
