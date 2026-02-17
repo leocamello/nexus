@@ -374,6 +374,64 @@ Embedded single-page dashboard served at `GET /`.
 - **Request history**: Displays backend name with UUID tooltip for traceability
 - **No-JS fallback**: Initial server-rendered data injected via `<script id="initial-data">` tag
 
+### 8. CLI Layer
+
+Command-line interface built with **Clap derive** (`src/cli/`).
+
+| File | Purpose |
+|------|---------|
+| `mod.rs` | Root `Cli` struct, `Commands` enum (6 subcommands) |
+| `serve.rs` | Starts HTTP server, health checker, mDNS, budget reconciliation |
+| `backends.rs` | `backends list/add/remove` with auto-type-detection |
+| `models.rs` | `models` listing aggregated across backends |
+| `health.rs` | `health` status with colored terminal output |
+| `config.rs` | `config init` generates example TOML (respects `--force`) |
+| `completions.rs` | Shell completion generation (Bash/Zsh/Fish) |
+| `output.rs` | Table and JSON formatting via `comfy_table` |
+
+**Startup orchestration** (`serve.rs`): Loads config → validates → inits tracing → creates
+registry → registers static backends with agents → starts background tasks (health checker,
+mDNS, budget reconciliation) → binds TCP → runs Axum server → handles graceful shutdown via
+`CancellationToken`.
+
+### 9. Configuration Layer
+
+TOML-based configuration with environment variable overrides (`src/config/`).
+
+| File | Purpose |
+|------|---------|
+| `mod.rs` | `NexusConfig` aggregate struct, `load()`, `with_env_overrides()` |
+| `server.rs` | `ServerConfig`: host, port, timeout, max concurrent requests |
+| `backend.rs` | `BackendConfig`: name, url, type, priority, api_key_env, zone, tier |
+| `routing.rs` | `RoutingConfig`: strategy, policies, aliases, budget |
+| `discovery.rs` | `DiscoveryConfig`: enabled, service types, grace period |
+| `logging.rs` | `LoggingConfig`: level, format, component levels |
+| `error.rs` | Configuration validation errors |
+
+**Precedence**: CLI args > env vars (`NEXUS_*`) > config file > defaults.
+
+Supported environment overrides: `NEXUS_PORT`, `NEXUS_HOST`, `NEXUS_LOG_LEVEL`,
+`NEXUS_LOG_FORMAT`, `NEXUS_DISCOVERY`, `NEXUS_HEALTH_CHECK`. Invalid values are
+silently ignored (no panic).
+
+### 10. Logging Layer
+
+Structured logging via `tracing` (`src/logging/`).
+
+| File | Purpose |
+|------|---------|
+| `mod.rs` | `build_filter_directives()` — constructs `EnvFilter` from config |
+| `middleware.rs` | `generate_request_id()` — UUID v4 correlation IDs |
+| `fields.rs` | `extract_tokens()`, `extract_status()`, `truncate_prompt()` |
+
+**Setup** (in `serve.rs`): `tracing_subscriber::registry()` with `EnvFilter` +
+`fmt::layer()` (Pretty or JSON). Component-specific levels supported
+(e.g., `nexus::routing=debug`).
+
+**Per-request fields** captured via `#[instrument]`: `request_id`, `model`,
+`backend`, `backend_type`, `status`, `status_code`, `latency_ms`, `tokens_prompt`,
+`tokens_completion`, `tokens_total`, `stream`, `route_reason`, `retry_count`.
+
 ---
 
 ## Data Flow Diagrams

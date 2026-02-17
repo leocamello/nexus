@@ -265,6 +265,7 @@ cargo clippy
 | [Architecture](docs/ARCHITECTURE.md) | System architecture, module structure, data flows |
 | [Features](docs/FEATURES.md) | Detailed feature specifications (F01–F23) |
 | [RFC-001](docs/RFC-001.md) | Platform architecture RFC: NII, Control Plane, Reconcilers |
+| [Contributing](CONTRIBUTING.md) | Development workflow, coding standards, PR guidelines |
 | [Changelog](CHANGELOG.md) | Release history and version notes |
 | [Manual Testing Guide](docs/MANUAL_TESTING_GUIDE.md) | How to test Nexus manually |
 | [WebSocket Protocol](docs/WEBSOCKET_PROTOCOL.md) | Dashboard WebSocket API reference |

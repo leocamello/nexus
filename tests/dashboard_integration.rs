@@ -70,24 +70,49 @@ async fn test_websocket_endpoint_accepts_connections() {
 
 #[tokio::test]
 async fn test_websocket_sends_backend_status_update() {
-    // TODO: Implement WebSocket message testing
-    // This test will verify that WebSocket sends backend_status updates
-    // when health check completes
+    use nexus::dashboard::types::UpdateType;
+    use nexus::dashboard::websocket::create_backend_status_update;
+    use nexus::registry::{Backend, BackendType, BackendView, DiscoverySource, Model};
+    use std::collections::HashMap;
 
-    // For now, just verify the endpoint exists
     let state = create_test_state();
-    let mut app = create_router(state);
 
-    let request = Request::builder().uri("/ws").body(Body::empty()).unwrap();
+    // Subscribe to broadcast channel before sending
+    let mut rx = state.ws_broadcast.subscribe();
 
-    let response = app.call(request).await.unwrap();
-
-    // Endpoint should exist (even if not fully implemented yet)
-    assert_ne!(
-        response.status(),
-        StatusCode::NOT_FOUND,
-        "WebSocket endpoint should exist"
+    // Create a backend and generate a status update
+    let backend = Backend::new(
+        "ws-test-1".to_string(),
+        "WS Test Backend".to_string(),
+        "http://localhost:11434".to_string(),
+        BackendType::Ollama,
+        vec![Model {
+            id: "llama3:8b".to_string(),
+            name: "Llama 3 8B".to_string(),
+            context_length: 8192,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+        }],
+        DiscoverySource::Static,
+        HashMap::new(),
     );
+
+    let view = BackendView::from(&backend);
+    let update = create_backend_status_update(vec![view]);
+
+    // Broadcast the update (simulates what health checker does)
+    state.ws_broadcast.send(update).unwrap();
+
+    // Verify subscriber receives the correct message
+    let received = rx.recv().await.unwrap();
+    assert_eq!(received.update_type, UpdateType::BackendStatus);
+
+    let backends: Vec<BackendView> = serde_json::from_value(received.data).unwrap();
+    assert_eq!(backends.len(), 1);
+    assert_eq!(backends[0].id, "ws-test-1");
+    assert_eq!(backends[0].models.len(), 1);
 }
 
 #[tokio::test]
@@ -132,53 +157,44 @@ async fn test_assets_endpoint_returns_css_with_correct_mime() {
 
 #[tokio::test]
 async fn test_websocket_sends_model_change_update_when_models_updated() {
-    // TODO: Implement full WebSocket message testing
-    // This test will verify that WebSocket sends model_change updates
-    // when backend models are updated via discovery
-
-    // For now, verify that we can create a model_change update message
-    use nexus::dashboard::types::{UpdateType, WebSocketUpdate};
+    use nexus::dashboard::types::UpdateType;
+    use nexus::dashboard::websocket::create_model_change_update;
     use serde_json::json;
 
-    let update = WebSocketUpdate {
-        update_type: UpdateType::ModelChange,
-        data: json!({
-            "backend_id": "test-backend",
-            "action": "added",
-            "models": [{
-                "id": "gpt-4",
-                "capabilities": {
-                    "vision": true,
-                    "tools": true,
-                    "json_mode": false
-                }
-            }]
-        }),
-    };
+    let state = create_test_state();
+    let mut rx = state.ws_broadcast.subscribe();
 
-    // Verify serialization works
-    let serialized = serde_json::to_string(&update).unwrap();
-    assert!(serialized.contains("ModelChange"));
-    assert!(serialized.contains("test-backend"));
+    // Simulate a model change event (backend discovered new models)
+    let models = vec![
+        json!({ "id": "gpt-4", "capabilities": { "vision": true, "tools": true } }),
+        json!({ "id": "gpt-3.5-turbo", "capabilities": { "vision": false, "tools": true } }),
+    ];
+    let update = create_model_change_update("discovery-backend".to_string(), models);
+
+    state.ws_broadcast.send(update).unwrap();
+
+    // Verify subscriber receives model change with correct payload
+    let received = rx.recv().await.unwrap();
+    assert_eq!(received.update_type, UpdateType::ModelChange);
+
+    let data = received.data;
+    assert_eq!(data["backend_id"], "discovery-backend");
+    let models_arr = data["models"].as_array().unwrap();
+    assert_eq!(models_arr.len(), 2);
+    assert_eq!(models_arr[0]["id"], "gpt-4");
 }
 
 #[tokio::test]
 async fn test_model_matrix_reflects_model_removal_when_backend_offline() {
-    // TODO: Implement full test with backend lifecycle
-    // This test will verify that model matrix correctly reflects
-    // model unavailability when a backend goes offline
-
-    // For now, verify state management structure exists
-    let state = create_test_state();
-
-    // Registry should track backends
-    let backends = state.registry.get_all_backends();
-    assert_eq!(backends.len(), 0, "Initially should have no backends");
-
-    // Add a test backend
-    use nexus::registry::{Backend, BackendType, DiscoverySource, Model};
+    use nexus::dashboard::types::UpdateType;
+    use nexus::dashboard::websocket::create_backend_status_update;
+    use nexus::registry::{Backend, BackendType, BackendView, DiscoverySource, Model};
     use std::collections::HashMap;
 
+    let state = create_test_state();
+    let mut rx = state.ws_broadcast.subscribe();
+
+    // Add a backend with models
     let models = vec![
         Model {
             id: "llama3:8b".to_string(),
@@ -201,8 +217,8 @@ async fn test_model_matrix_reflects_model_removal_when_backend_offline() {
     ];
 
     let backend = Backend::new(
-        "test-backend-1".to_string(),
-        "Test Backend".to_string(),
+        "lifecycle-test-1".to_string(),
+        "Lifecycle Test".to_string(),
         "http://localhost:8001".to_string(),
         BackendType::Ollama,
         models,
@@ -211,16 +227,42 @@ async fn test_model_matrix_reflects_model_removal_when_backend_offline() {
     );
 
     state.registry.add_backend(backend).unwrap();
+    assert_eq!(state.registry.get_all_backends().len(), 1);
 
-    // Verify backend was added with models
-    let backends = state.registry.get_all_backends();
-    assert_eq!(backends.len(), 1);
-    assert_eq!(backends[0].models.len(), 2);
+    // Broadcast status with backend online (1 backend in list)
+    let views: Vec<BackendView> = state
+        .registry
+        .get_all_backends()
+        .iter()
+        .map(BackendView::from)
+        .collect();
+    let update = create_backend_status_update(views);
+    state.ws_broadcast.send(update).unwrap();
+
+    let received = rx.recv().await.unwrap();
+    assert_eq!(received.update_type, UpdateType::BackendStatus);
+    let online_backends: Vec<BackendView> = serde_json::from_value(received.data).unwrap();
+    assert_eq!(online_backends.len(), 1);
+    assert_eq!(online_backends[0].models.len(), 2);
 
     // Remove backend (simulating offline)
-    state.registry.remove_backend("test-backend-1").unwrap();
+    state.registry.remove_backend("lifecycle-test-1").unwrap();
 
-    // Verify backend was removed
-    let backends = state.registry.get_all_backends();
-    assert_eq!(backends.len(), 0, "Backend should be removed");
+    // Broadcast updated status (0 backends — models no longer available)
+    let views: Vec<BackendView> = state
+        .registry
+        .get_all_backends()
+        .iter()
+        .map(BackendView::from)
+        .collect();
+    let update = create_backend_status_update(views);
+    state.ws_broadcast.send(update).unwrap();
+
+    let received = rx.recv().await.unwrap();
+    let offline_backends: Vec<BackendView> = serde_json::from_value(received.data).unwrap();
+    assert_eq!(
+        offline_backends.len(),
+        0,
+        "No backends should remain after removal"
+    );
 }
