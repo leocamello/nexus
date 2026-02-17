@@ -13,7 +13,7 @@ Nexus is a control plane for heterogeneous LLM inference — it routes requests 
 | **v0.1** | Foundation | Registry, Health, Router, mDNS, CLI, Aliases, Fallbacks | ✅ Released |
 | **v0.2** | Observability | Prometheus metrics, Web Dashboard, Structured logging | ✅ Released |
 | **v0.3** | Cloud Hybrid | Cloud backends, Privacy zones, Capability tiers, Budget management | ✅ Released |
-| **v0.4** | Intelligence | Speculative router, Quality tracking, Embeddings, Queuing | Planned |
+| **v0.4** | Intelligence | Speculative router, Quality tracking, Embeddings, Queuing | 🚧 In Progress |
 | **v0.5** | Orchestration | Pre-warming, Model lifecycle, Multi-tenant, Rate limiting | Planned |
 | **v1.0** | Complete Product | Management UI — full web-based control plane | Planned |
 
@@ -39,11 +39,11 @@ Nexus is a control plane for heterogeneous LLM inference — it routes requests 
 | — | **Control Plane (Phase 2)** | **v0.3** | ✅ Complete | [specs/014-control-plane-reconciler](../specs/014-control-plane-reconciler/) |
 | F13 | Privacy Zones & Capability Tiers | v0.3 | ✅ Complete | [specs/015-privacy-zones-capability-tiers](../specs/015-privacy-zones-capability-tiers/) |
 | F14 | Inference Budget Management | v0.3 | ✅ Complete | [specs/016-inference-budget-mgmt](../specs/016-inference-budget-mgmt/) |
-| — | **Quality + Queuing (Phase 2.5)** | **v0.4** | Planned | - |
+| — | **Quality + Queuing (Phase 2.5)** | **v0.4** | ✅ Complete | [specs/017-quality-tracking-embeddings-queuing](../specs/017-quality-tracking-embeddings-queuing/) |
 | F15 | Speculative Router | v0.4 | Planned | - |
-| F16 | Quality Tracking & Backend Profiling | v0.4 | Planned | - |
-| F17 | Embeddings API | v0.4 | Planned | - |
-| F18 | Request Queuing & Prioritization | v0.4 | Planned | - |
+| F16 | Quality Tracking & Backend Profiling | v0.4 | ✅ Complete | [#173](https://github.com/leocamello/nexus/issues/173) |
+| F17 | Embeddings API | v0.4 | ✅ Complete | [#174](https://github.com/leocamello/nexus/issues/174) |
+| F18 | Request Queuing & Prioritization | v0.4 | ✅ Complete | [#176](https://github.com/leocamello/nexus/issues/176), [#177](https://github.com/leocamello/nexus/issues/177) |
 | — | **Fleet Intelligence (Phase 3)** | **v0.5** | Planned | - |
 | F19 | Pre-warming & Fleet Intelligence | v0.5 | Planned | - |
 | F20 | Model Lifecycle Management | v0.5 | Planned | - |
@@ -69,14 +69,17 @@ Extended Nexus from a local-only gateway to a hybrid local+cloud control plane. 
 
 ---
 
-## What's Next (v0.4)
+### v0.4 (Phase 2.5) — Quality, Embeddings & Queuing
 
-The **Intelligence** release will make Nexus smarter about routing decisions:
+Added intelligence features that make Nexus smarter about backend quality and request handling. Quality tracking ([#173](https://github.com/leocamello/nexus/issues/173)) profiles backend response quality — tracking success rates, error rates, and latency per model to inform routing decisions. The Embeddings API ([#174](https://github.com/leocamello/nexus/issues/174)) adds `/v1/embeddings` support with capability-aware routing to Ollama and OpenAI backends. Request queuing ([#176](https://github.com/leocamello/nexus/issues/176), [#177](https://github.com/leocamello/nexus/issues/177)) holds requests when all capable backends are at capacity instead of rejecting immediately, with priority support via the `X-Nexus-Priority` header.
+
+---
+
+## What's Next (v0.4 — remaining)
+
+The remaining **Intelligence** features for v0.4:
 
 - **Speculative Router (F15)** — Pre-analyze requests to predict optimal backend before payload inspection
-- **Quality Tracking (F16)** — Profile backend response quality and track success rates over time
-- **Embeddings API (F17)** — Support for `/v1/embeddings` endpoint with capability-aware routing
-- **Request Queuing (F18)** — Queue requests when all capable backends are at capacity instead of rejecting immediately
 
 ---
 

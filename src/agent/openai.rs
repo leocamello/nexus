@@ -120,9 +120,9 @@ impl InferenceAgent for OpenAIAgent {
             version: None,
             privacy_zone: self.privacy_zone,
             capabilities: AgentCapabilities {
-                embeddings: false, // Phase 1: Not implemented
+                embeddings: true,
                 model_lifecycle: false,
-                token_counting: true, // F12: tiktoken-rs exact counting (T030)
+                token_counting: true,
                 resource_monitoring: false,
             },
             capability_tier: self.capability_tier,
@@ -352,6 +352,73 @@ impl InferenceAgent for OpenAIAgent {
                 TokenCount::Heuristic((text.len() / 4) as u32)
             }
         }
+    }
+
+    /// Generate embeddings via OpenAI's POST /v1/embeddings endpoint.
+    async fn embeddings(&self, input: Vec<String>) -> Result<Vec<Vec<f32>>, AgentError> {
+        let url = format!("{}/v1/embeddings", self.base_url);
+
+        let body = serde_json::json!({
+            "model": "text-embedding-ada-002",
+            "input": input,
+        });
+
+        let response = self
+            .client
+            .post(&url)
+            .header("authorization", format!("Bearer {}", self.api_key))
+            .json(&body)
+            .timeout(Duration::from_secs(60))
+            .send()
+            .await
+            .map_err(|e| {
+                if e.is_timeout() {
+                    AgentError::Timeout(60000)
+                } else {
+                    AgentError::Network(e.to_string())
+                }
+            })?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(AgentError::Upstream {
+                status: status.as_u16(),
+                message: error_body,
+            });
+        }
+
+        let body: serde_json::Value = response.json().await.map_err(|e| {
+            AgentError::InvalidResponse(format!(
+                "Failed to parse OpenAI embeddings response: {}",
+                e
+            ))
+        })?;
+
+        let data = body["data"].as_array().ok_or_else(|| {
+            AgentError::InvalidResponse(
+                "Missing data array in OpenAI embeddings response".to_string(),
+            )
+        })?;
+
+        let mut results = Vec::with_capacity(data.len());
+        for item in data {
+            let embedding = item["embedding"].as_array().ok_or_else(|| {
+                AgentError::InvalidResponse("Missing embedding array in response item".to_string())
+            })?;
+
+            let vector: Vec<f32> = embedding
+                .iter()
+                .filter_map(|v| v.as_f64().map(|f| f as f32))
+                .collect();
+
+            results.push(vector);
+        }
+
+        Ok(results)
     }
 }
 

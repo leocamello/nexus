@@ -72,6 +72,36 @@ latency = 20
 # hard_limit_action = "block_cloud"   # At 100%: warn | block_cloud | block_all
 # reconciliation_interval_secs = 60   # Background reconciliation interval
 
+# Quality tracking - backend reliability monitoring (Phase 2.5)
+# Tracks error rates, TTFT, and success rates to route away from failing backends
+[quality]
+# Maximum acceptable error rate (1h window) before excluding an agent
+# Default: 0.5 (50% errors). Range: 0.0 (exclude any errors) to 1.0 (never exclude)
+error_rate_threshold = 0.5
+
+# TTFT threshold in milliseconds - agents above this get penalized in scoring
+# Default: 3000ms (3 seconds). Agents with slow time-to-first-token score lower.
+ttft_penalty_threshold_ms = 3000
+
+# Interval between quality metric computations in seconds
+# Default: 30 seconds. Background loop updates metrics at this interval.
+metrics_interval_seconds = 30
+
+# Request queuing - graceful handling of burst traffic (Phase 2.5)
+# When all backends are saturated, queue requests instead of immediate 503
+[queue]
+# Whether request queuing is enabled
+# Default: true. When false, saturated requests immediately return 503.
+enabled = true
+
+# Maximum number of queued requests
+# Default: 100. When 0, queuing is disabled. When full, new requests return 503.
+max_size = 100
+
+# Maximum wait time for queued requests in seconds
+# Default: 30 seconds. Requests exceeding this timeout return 503 with retry_after.
+max_wait_seconds = 30
+
 # Static backend configuration
 # Backends can also be auto-discovered via mDNS
 

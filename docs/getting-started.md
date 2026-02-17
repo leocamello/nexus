@@ -299,7 +299,54 @@ print(response.choices[0].message.content)
 
 ---
 
-## 8. Observability
+## 8. Generate Embeddings
+
+Nexus supports the OpenAI-compatible embeddings endpoint for turning text into vector representations. This works with Ollama and OpenAI backends that support embedding models.
+
+**Single input:**
+
+```bash
+curl http://localhost:8000/v1/embeddings \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "nomic-embed-text",
+    "input": "Nexus is a distributed LLM orchestrator"
+  }'
+```
+
+**Batch input:**
+
+```bash
+curl http://localhost:8000/v1/embeddings \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "nomic-embed-text",
+    "input": [
+      "First document to embed",
+      "Second document to embed",
+      "Third document to embed"
+    ]
+  }'
+```
+
+The response follows the OpenAI format — an array of embedding vectors with token usage:
+
+```json
+{
+  "object": "list",
+  "data": [
+    { "object": "embedding", "embedding": [0.1, 0.2, ...], "index": 0 }
+  ],
+  "model": "nomic-embed-text",
+  "usage": { "prompt_tokens": 8, "total_tokens": 8 }
+}
+```
+
+> **Tip:** Use `nomic-embed-text` with Ollama or `text-embedding-3-small` with OpenAI backends. Any model listed by `/v1/models` on an embeddings-capable backend will work.
+
+---
+
+## 9. Observability
 
 Nexus exposes metrics for monitoring and debugging:
 

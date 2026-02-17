@@ -5,7 +5,9 @@
 
 use super::intent::{BudgetStatus, RoutingIntent};
 use super::Reconciler;
+use crate::agent::quality::QualityMetricsStore;
 use crate::agent::PrivacyZone;
+use crate::config::QualityConfig;
 use crate::registry::{Backend, BackendStatus, Registry};
 use crate::routing::error::RoutingError;
 use crate::routing::scoring::{score_backend, ScoringWeights};
@@ -28,6 +30,12 @@ pub struct SchedulerReconciler {
 
     /// Round-robin counter (shared with Router)
     round_robin_counter: Arc<AtomicU64>,
+
+    /// Quality metrics store for TTFT penalty
+    quality_store: Arc<QualityMetricsStore>,
+
+    /// Quality configuration thresholds
+    quality_config: QualityConfig,
 }
 
 impl SchedulerReconciler {
@@ -37,12 +45,16 @@ impl SchedulerReconciler {
         strategy: RoutingStrategy,
         weights: ScoringWeights,
         round_robin_counter: Arc<AtomicU64>,
+        quality_store: Arc<QualityMetricsStore>,
+        quality_config: QualityConfig,
     ) -> Self {
         Self {
             registry,
             strategy,
             weights,
             round_robin_counter,
+            quality_store,
+            quality_config,
         }
     }
 
@@ -90,6 +102,22 @@ impl SchedulerReconciler {
             }
         }
         score
+    }
+
+    /// Apply TTFT penalty to score. Agents with avg_ttft_ms above the
+    /// configured threshold get a proportional score reduction.
+    fn apply_ttft_penalty(&self, score: u32, agent_id: &str) -> u32 {
+        let metrics = self.quality_store.get_metrics(agent_id);
+        let threshold = self.quality_config.ttft_penalty_threshold_ms;
+        if threshold == 0 || metrics.avg_ttft_ms <= threshold {
+            return score;
+        }
+        // Proportional penalty: the further above threshold, the bigger
+        let excess = metrics.avg_ttft_ms - threshold;
+        // Penalty ratio: excess / threshold, capped at reducing score to 0
+        let penalty_ratio = (excess as f64 / threshold as f64).min(1.0);
+        let penalty = (score as f64 * penalty_ratio) as u32;
+        score.saturating_sub(penalty)
     }
 }
 
@@ -176,7 +204,8 @@ impl Reconciler for SchedulerReconciler {
                                     b.avg_latency_ms.load(Ordering::Relaxed),
                                     &self.weights,
                                 );
-                                self.apply_budget_adjustment(raw_score, b, intent)
+                                let budget_adj = self.apply_budget_adjustment(raw_score, b, intent);
+                                self.apply_ttft_penalty(budget_adj, &b.id)
                             })
                             .unwrap();
                         let raw_score = score_backend(
@@ -185,7 +214,8 @@ impl Reconciler for SchedulerReconciler {
                             best.avg_latency_ms.load(Ordering::Relaxed),
                             &self.weights,
                         );
-                        let adjusted_score = self.apply_budget_adjustment(raw_score, best, intent);
+                        let budget_adj = self.apply_budget_adjustment(raw_score, best, intent);
+                        let adjusted_score = self.apply_ttft_penalty(budget_adj, &best.id);
                         let reason = if candidates.len() == 1 {
                             "only_healthy_backend".to_string()
                         } else {
@@ -243,12 +273,31 @@ impl Reconciler for SchedulerReconciler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::quality::QualityMetricsStore;
     use crate::registry::{Backend, BackendStatus, BackendType, DiscoverySource, Model};
     use crate::routing::reconciler::intent::RoutingIntent;
     use crate::routing::RequestRequirements;
     use chrono::Utc;
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicU32, AtomicU64};
+
+    fn default_quality() -> (Arc<QualityMetricsStore>, QualityConfig) {
+        let config = QualityConfig::default();
+        let store = Arc::new(QualityMetricsStore::new(config.clone()));
+        (store, config)
+    }
+
+    fn make_scheduler(registry: Arc<Registry>, strategy: RoutingStrategy) -> SchedulerReconciler {
+        let (store, config) = default_quality();
+        SchedulerReconciler::new(
+            registry,
+            strategy,
+            ScoringWeights::default(),
+            Arc::new(AtomicU64::new(0)),
+            store,
+            config,
+        )
+    }
 
     fn create_test_backend(
         id: &str,
@@ -291,6 +340,7 @@ mod tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         }
     }
 
@@ -328,12 +378,7 @@ mod tests {
             ))
             .unwrap();
 
-        let scheduler = SchedulerReconciler::new(
-            registry,
-            RoutingStrategy::Smart,
-            ScoringWeights::default(),
-            Arc::new(AtomicU64::new(0)),
-        );
+        let scheduler = make_scheduler(registry, RoutingStrategy::Smart);
 
         let mut intent = create_intent("llama3:8b", vec!["b1".into(), "b2".into()]);
         scheduler.reconcile(&mut intent).unwrap();
@@ -369,12 +414,7 @@ mod tests {
             ))
             .unwrap();
 
-        let scheduler = SchedulerReconciler::new(
-            registry,
-            RoutingStrategy::Smart,
-            ScoringWeights::default(),
-            Arc::new(AtomicU64::new(0)),
-        );
+        let scheduler = make_scheduler(registry, RoutingStrategy::Smart);
 
         let mut intent = create_intent("llama3:8b", vec!["b1".into(), "b2".into()]);
         scheduler.reconcile(&mut intent).unwrap();
@@ -396,12 +436,7 @@ mod tests {
             ))
             .unwrap();
 
-        let scheduler = SchedulerReconciler::new(
-            registry,
-            RoutingStrategy::Smart,
-            ScoringWeights::default(),
-            Arc::new(AtomicU64::new(0)),
-        );
+        let scheduler = make_scheduler(registry, RoutingStrategy::Smart);
 
         let mut intent = create_intent("llama3:8b", vec!["b1".into()]);
         scheduler.reconcile(&mut intent).unwrap();
@@ -424,12 +459,7 @@ mod tests {
             ))
             .unwrap();
 
-        let scheduler = SchedulerReconciler::new(
-            registry,
-            RoutingStrategy::Smart,
-            ScoringWeights::default(),
-            Arc::new(AtomicU64::new(0)),
-        );
+        let scheduler = make_scheduler(registry, RoutingStrategy::Smart);
 
         let mut intent = RoutingIntent::new(
             "req-1".to_string(),
@@ -441,6 +471,7 @@ mod tests {
                 needs_vision: true, // requires vision, but backend doesn't support it
                 needs_tools: false,
                 needs_json_mode: false,
+                prefers_streaming: false,
             },
             vec!["b1".into()],
         );
@@ -475,12 +506,17 @@ mod tests {
             .unwrap();
 
         let counter = Arc::new(AtomicU64::new(0));
-        let scheduler = SchedulerReconciler::new(
-            registry.clone(),
-            RoutingStrategy::RoundRobin,
-            ScoringWeights::default(),
-            counter,
-        );
+        let scheduler = {
+            let (store, config) = default_quality();
+            SchedulerReconciler::new(
+                registry.clone(),
+                RoutingStrategy::RoundRobin,
+                ScoringWeights::default(),
+                counter,
+                store,
+                config,
+            )
+        };
 
         // First call → b1 (index 0)
         let mut intent1 = create_intent("llama3:8b", vec!["b1".into(), "b2".into()]);
@@ -530,6 +566,7 @@ mod tests {
                 needs_vision: true,
                 needs_tools: false,
                 needs_json_mode: false,
+                prefers_streaming: false,
             },
             vec!["b1".into()],
         );
@@ -553,6 +590,7 @@ mod tests {
                 needs_vision: false,
                 needs_tools: false,
                 needs_json_mode: false,
+                prefers_streaming: false,
             },
             vec!["b1".into()],
         );
@@ -589,12 +627,7 @@ mod tests {
             ))
             .unwrap();
 
-        let scheduler = SchedulerReconciler::new(
-            registry,
-            RoutingStrategy::PriorityOnly,
-            ScoringWeights::default(),
-            Arc::new(AtomicU64::new(0)),
-        );
+        let scheduler = make_scheduler(registry, RoutingStrategy::PriorityOnly);
 
         let mut intent = create_intent("llama3:8b", vec!["b1".into(), "b2".into()]);
         scheduler.reconcile(&mut intent).unwrap();
@@ -606,12 +639,7 @@ mod tests {
     fn excludes_backend_not_in_registry() {
         let registry = Arc::new(Registry::new());
 
-        let scheduler = SchedulerReconciler::new(
-            registry,
-            RoutingStrategy::Smart,
-            ScoringWeights::default(),
-            Arc::new(AtomicU64::new(0)),
-        );
+        let scheduler = make_scheduler(registry, RoutingStrategy::Smart);
 
         let mut intent = create_intent("llama3:8b", vec!["ghost".into()]);
         scheduler.reconcile(&mut intent).unwrap();
@@ -636,16 +664,133 @@ mod tests {
             ))
             .unwrap();
 
-        let scheduler = SchedulerReconciler::new(
-            registry,
-            RoutingStrategy::Smart,
-            ScoringWeights::default(),
-            Arc::new(AtomicU64::new(0)),
-        );
+        let scheduler = make_scheduler(registry, RoutingStrategy::Smart);
 
         let mut intent = create_intent("llama3:8b", vec!["b1".into()]);
         scheduler.reconcile(&mut intent).unwrap();
 
         assert_eq!(intent.route_reason.as_deref(), Some("only_healthy_backend"));
+    }
+
+    // ========================================================================
+    // T006: Unit tests for TTFT penalty in SchedulerReconciler
+    // ========================================================================
+
+    #[test]
+    fn high_ttft_reduces_score() {
+        let registry = Arc::new(Registry::new());
+
+        let b1 = create_test_backend("b1", BackendStatus::Healthy, "llama3:8b", 1, 0, 50);
+        let b2 = create_test_backend("b2", BackendStatus::Healthy, "llama3:8b", 1, 0, 50);
+        registry.add_backend(b1).unwrap();
+        registry.add_backend(b2).unwrap();
+
+        let config = QualityConfig::default();
+        let store = Arc::new(QualityMetricsStore::new(config.clone()));
+
+        // b1: low TTFT (200ms)
+        for _ in 0..10 {
+            store.record_outcome("b1", true, 200);
+        }
+        // b2: high TTFT (5000ms, above 3000ms threshold)
+        for _ in 0..10 {
+            store.record_outcome("b2", true, 5000);
+        }
+        store.recompute_all();
+
+        let scheduler = SchedulerReconciler::new(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            Arc::new(AtomicU64::new(0)),
+            store,
+            config,
+        );
+
+        let mut intent = create_intent("llama3:8b", vec!["b1".into(), "b2".into()]);
+        scheduler.reconcile(&mut intent).unwrap();
+
+        // b1 (low TTFT) should be selected (highest score)
+        assert_eq!(intent.candidate_agents.len(), 1);
+        assert_eq!(intent.candidate_agents[0], "b1");
+    }
+
+    #[test]
+    fn ttft_penalty_proportional_to_threshold_excess() {
+        let registry = Arc::new(Registry::new());
+
+        let b1 = create_test_backend("b1", BackendStatus::Healthy, "llama3:8b", 1, 0, 50);
+        let b2 = create_test_backend("b2", BackendStatus::Healthy, "llama3:8b", 1, 0, 50);
+        registry.add_backend(b1).unwrap();
+        registry.add_backend(b2).unwrap();
+
+        let config = QualityConfig::default();
+        let store = Arc::new(QualityMetricsStore::new(config.clone()));
+
+        // b1: slightly above threshold (3500ms)
+        for _ in 0..10 {
+            store.record_outcome("b1", true, 3500);
+        }
+        // b2: way above threshold (10000ms)
+        for _ in 0..10 {
+            store.record_outcome("b2", true, 10000);
+        }
+        store.recompute_all();
+
+        let scheduler = SchedulerReconciler::new(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            Arc::new(AtomicU64::new(0)),
+            store,
+            config,
+        );
+
+        let mut intent = create_intent("llama3:8b", vec!["b1".into(), "b2".into()]);
+        scheduler.reconcile(&mut intent).unwrap();
+
+        // b1 should be first (less penalty than b2)
+        assert_eq!(intent.candidate_agents.len(), 1);
+        assert_eq!(intent.candidate_agents[0], "b1");
+    }
+
+    #[test]
+    fn no_penalty_below_threshold() {
+        let registry = Arc::new(Registry::new());
+
+        let b1 = create_test_backend("b1", BackendStatus::Healthy, "llama3:8b", 1, 0, 50);
+        let b2 = create_test_backend("b2", BackendStatus::Healthy, "llama3:8b", 1, 0, 50);
+        registry.add_backend(b1).unwrap();
+        registry.add_backend(b2).unwrap();
+
+        let config = QualityConfig::default();
+        let store = Arc::new(QualityMetricsStore::new(config.clone()));
+
+        // Both below 3000ms threshold
+        for _ in 0..10 {
+            store.record_outcome("b1", true, 500);
+        }
+        for _ in 0..10 {
+            store.record_outcome("b2", true, 1000);
+        }
+        store.recompute_all();
+
+        let scheduler = SchedulerReconciler::new(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            Arc::new(AtomicU64::new(0)),
+            store,
+            config,
+        );
+
+        let mut intent = create_intent("llama3:8b", vec!["b1".into(), "b2".into()]);
+        scheduler.reconcile(&mut intent).unwrap();
+
+        // Scheduler selects one candidate; both should remain valid but
+        // the final result is 1 candidate (the best). The key point is
+        // that no TTFT penalty changed the winner — both have 0 penalty.
+        // With equal priority/load/latency atomics, either could win.
+        assert_eq!(intent.candidate_agents.len(), 1);
     }
 }

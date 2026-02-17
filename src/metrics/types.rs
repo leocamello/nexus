@@ -44,6 +44,15 @@ pub struct BackendStats {
     pub average_latency_ms: f64,
     /// Current pending requests (queue depth)
     pub pending: usize,
+    /// Error rate over last 1 hour (0.0–1.0)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_rate_1h: Option<f32>,
+    /// Average time to first token in milliseconds (last 1 hour)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avg_ttft_ms: Option<u32>,
+    /// Success rate over last 24 hours (0.0–1.0)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub success_rate_24h: Option<f32>,
 }
 
 /// Per-model statistics.
@@ -107,6 +116,9 @@ mod tests {
                 requests: 500,
                 average_latency_ms: 1250.5,
                 pending: 2,
+                error_rate_1h: None,
+                avg_ttft_ms: None,
+                success_rate_24h: None,
             }],
             models: vec![ModelStats {
                 name: "llama3:70b".to_string(),

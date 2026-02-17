@@ -19,6 +19,9 @@ pub struct RequestRequirements {
 
     /// Whether the request requires JSON mode
     pub needs_json_mode: bool,
+
+    /// Whether the client prefers streaming responses (US4)
+    pub prefers_streaming: bool,
 }
 
 impl RequestRequirements {
@@ -62,12 +65,16 @@ impl RequestRequirements {
             .map(|t: &str| t == "json_object")
             .unwrap_or(false);
 
+        // Check if client prefers streaming
+        let prefers_streaming = request.stream;
+
         Self {
             model,
             estimated_tokens,
             needs_vision,
             needs_tools,
             needs_json_mode,
+            prefers_streaming,
         }
     }
 }

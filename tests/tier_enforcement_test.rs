@@ -9,7 +9,9 @@
 //! - T042: Conflicting headers (both strict and flexible) → strict wins
 
 use nexus::agent::factory::create_agent;
+use nexus::agent::quality::QualityMetricsStore;
 use nexus::agent::PrivacyZone;
+use nexus::config::QualityConfig;
 use nexus::config::{PolicyMatcher, TrafficPolicy};
 use nexus::registry::{Backend, BackendStatus, BackendType, DiscoverySource, Registry};
 use nexus::routing::reconciler::decision::RoutingDecision;
@@ -101,12 +103,18 @@ fn test_no_headers_defaults_to_strict_mode() {
 
     // Build reconciler pipeline
     let tier = TierReconciler::new(Arc::clone(&registry), policy_matcher);
-    let scheduler = SchedulerReconciler::new(
-        Arc::clone(&registry),
-        RoutingStrategy::PriorityOnly,
-        ScoringWeights::default(),
-        Arc::new(std::sync::atomic::AtomicU64::new(0)),
-    );
+    let scheduler = {
+        let qcfg = QualityConfig::default();
+        let qstore = std::sync::Arc::new(QualityMetricsStore::new(qcfg.clone()));
+        SchedulerReconciler::new(
+            Arc::clone(&registry),
+            RoutingStrategy::PriorityOnly,
+            ScoringWeights::default(),
+            Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            qstore,
+            qcfg,
+        )
+    };
 
     let mut pipeline = ReconcilerPipeline::new(vec![
         Box::new(RequestAnalyzer::new(HashMap::new(), Arc::clone(&registry))),
@@ -120,6 +128,7 @@ fn test_no_headers_defaults_to_strict_mode() {
         needs_vision: false,
         needs_tools: false,
         needs_json_mode: false,
+        prefers_streaming: false,
     };
 
     let mut intent = RoutingIntent::new(
@@ -172,12 +181,18 @@ fn test_strict_header_enforces_exact_tier_matching() {
 
     let policy_matcher = PolicyMatcher::compile(vec![policy]).unwrap();
     let tier = TierReconciler::new(Arc::clone(&registry), policy_matcher);
-    let scheduler = SchedulerReconciler::new(
-        Arc::clone(&registry),
-        RoutingStrategy::PriorityOnly,
-        ScoringWeights::default(),
-        Arc::new(std::sync::atomic::AtomicU64::new(0)),
-    );
+    let scheduler = {
+        let qcfg = QualityConfig::default();
+        let qstore = std::sync::Arc::new(QualityMetricsStore::new(qcfg.clone()));
+        SchedulerReconciler::new(
+            Arc::clone(&registry),
+            RoutingStrategy::PriorityOnly,
+            ScoringWeights::default(),
+            Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            qstore,
+            qcfg,
+        )
+    };
 
     let mut pipeline = ReconcilerPipeline::new(vec![
         Box::new(RequestAnalyzer::new(HashMap::new(), Arc::clone(&registry))),
@@ -191,6 +206,7 @@ fn test_strict_header_enforces_exact_tier_matching() {
         needs_vision: false,
         needs_tools: false,
         needs_json_mode: false,
+        prefers_streaming: false,
     };
 
     let mut intent = RoutingIntent::new(
@@ -248,12 +264,18 @@ fn test_flexible_header_allows_higher_tier_substitution() {
 
     let policy_matcher = PolicyMatcher::compile(vec![policy]).unwrap();
     let tier = TierReconciler::new(Arc::clone(&registry), policy_matcher);
-    let scheduler = SchedulerReconciler::new(
-        Arc::clone(&registry),
-        RoutingStrategy::PriorityOnly,
-        ScoringWeights::default(),
-        Arc::new(std::sync::atomic::AtomicU64::new(0)),
-    );
+    let scheduler = {
+        let qcfg = QualityConfig::default();
+        let qstore = std::sync::Arc::new(QualityMetricsStore::new(qcfg.clone()));
+        SchedulerReconciler::new(
+            Arc::clone(&registry),
+            RoutingStrategy::PriorityOnly,
+            ScoringWeights::default(),
+            Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            qstore,
+            qcfg,
+        )
+    };
 
     let mut pipeline = ReconcilerPipeline::new(vec![
         Box::new(RequestAnalyzer::new(HashMap::new(), Arc::clone(&registry))),
@@ -267,6 +289,7 @@ fn test_flexible_header_allows_higher_tier_substitution() {
         needs_vision: false,
         needs_tools: false,
         needs_json_mode: false,
+        prefers_streaming: false,
     };
 
     let mut intent = RoutingIntent::new(
@@ -322,12 +345,18 @@ fn test_flexible_mode_never_downgrades() {
 
     let policy_matcher = PolicyMatcher::compile(vec![policy]).unwrap();
     let tier = TierReconciler::new(Arc::clone(&registry), policy_matcher);
-    let scheduler = SchedulerReconciler::new(
-        Arc::clone(&registry),
-        RoutingStrategy::PriorityOnly,
-        ScoringWeights::default(),
-        Arc::new(std::sync::atomic::AtomicU64::new(0)),
-    );
+    let scheduler = {
+        let qcfg = QualityConfig::default();
+        let qstore = std::sync::Arc::new(QualityMetricsStore::new(qcfg.clone()));
+        SchedulerReconciler::new(
+            Arc::clone(&registry),
+            RoutingStrategy::PriorityOnly,
+            ScoringWeights::default(),
+            Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            qstore,
+            qcfg,
+        )
+    };
 
     let mut pipeline = ReconcilerPipeline::new(vec![
         Box::new(RequestAnalyzer::new(HashMap::new(), Arc::clone(&registry))),
@@ -341,6 +370,7 @@ fn test_flexible_mode_never_downgrades() {
         needs_vision: false,
         needs_tools: false,
         needs_json_mode: false,
+        prefers_streaming: false,
     };
 
     let mut intent = RoutingIntent::new(
@@ -410,12 +440,18 @@ fn test_flexible_mode_upgrades_to_available_higher_tier() {
 
     let policy_matcher = PolicyMatcher::compile(vec![policy]).unwrap();
     let tier = TierReconciler::new(Arc::clone(&registry), policy_matcher);
-    let scheduler = SchedulerReconciler::new(
-        Arc::clone(&registry),
-        RoutingStrategy::PriorityOnly,
-        ScoringWeights::default(),
-        Arc::new(std::sync::atomic::AtomicU64::new(0)),
-    );
+    let scheduler = {
+        let qcfg = QualityConfig::default();
+        let qstore = std::sync::Arc::new(QualityMetricsStore::new(qcfg.clone()));
+        SchedulerReconciler::new(
+            Arc::clone(&registry),
+            RoutingStrategy::PriorityOnly,
+            ScoringWeights::default(),
+            Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            qstore,
+            qcfg,
+        )
+    };
 
     let mut pipeline = ReconcilerPipeline::new(vec![
         Box::new(RequestAnalyzer::new(HashMap::new(), Arc::clone(&registry))),
@@ -429,6 +465,7 @@ fn test_flexible_mode_upgrades_to_available_higher_tier() {
         needs_vision: false,
         needs_tools: false,
         needs_json_mode: false,
+        prefers_streaming: false,
     };
 
     let mut intent = RoutingIntent::new(
@@ -487,12 +524,18 @@ fn test_conflicting_headers_strict_wins() {
 
     let policy_matcher = PolicyMatcher::compile(vec![policy]).unwrap();
     let tier = TierReconciler::new(Arc::clone(&registry), policy_matcher);
-    let scheduler = SchedulerReconciler::new(
-        Arc::clone(&registry),
-        RoutingStrategy::PriorityOnly,
-        ScoringWeights::default(),
-        Arc::new(std::sync::atomic::AtomicU64::new(0)),
-    );
+    let scheduler = {
+        let qcfg = QualityConfig::default();
+        let qstore = std::sync::Arc::new(QualityMetricsStore::new(qcfg.clone()));
+        SchedulerReconciler::new(
+            Arc::clone(&registry),
+            RoutingStrategy::PriorityOnly,
+            ScoringWeights::default(),
+            Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            qstore,
+            qcfg,
+        )
+    };
 
     let mut pipeline = ReconcilerPipeline::new(vec![
         Box::new(RequestAnalyzer::new(HashMap::new(), Arc::clone(&registry))),
@@ -506,6 +549,7 @@ fn test_conflicting_headers_strict_wins() {
         needs_vision: false,
         needs_tools: false,
         needs_json_mode: false,
+        prefers_streaming: false,
     };
 
     let mut intent = RoutingIntent::new(

@@ -19,8 +19,9 @@ pub use requirements::RequestRequirements;
 pub use scoring::{score_backend, ScoringWeights};
 pub use strategies::RoutingStrategy;
 
+use crate::agent::quality::QualityMetricsStore;
 use crate::agent::tokenizer::TokenizerRegistry;
-use crate::config::{BudgetConfig, PolicyMatcher};
+use crate::config::{BudgetConfig, PolicyMatcher, QualityConfig};
 use crate::registry::{Backend, BackendStatus, Registry};
 use crate::routing::reconciler::budget::BudgetMetrics;
 use dashmap::DashMap;
@@ -89,6 +90,15 @@ pub struct Router {
 
     /// Tokenizer registry for accurate cost estimation (F14)
     tokenizer_registry: Arc<TokenizerRegistry>,
+
+    /// Shared quality metrics store for quality-aware routing
+    quality_store: Arc<QualityMetricsStore>,
+
+    /// Quality configuration for thresholds
+    quality_config: QualityConfig,
+
+    /// Whether request queuing is enabled (T026)
+    queue_enabled: bool,
 }
 
 impl Router {
@@ -100,6 +110,8 @@ impl Router {
     ) -> Self {
         let tokenizer_registry =
             Arc::new(TokenizerRegistry::new().expect("Failed to initialize tokenizer registry"));
+        let quality_config = QualityConfig::default();
+        let quality_store = Arc::new(QualityMetricsStore::new(quality_config.clone()));
         Self {
             registry,
             strategy,
@@ -111,6 +123,9 @@ impl Router {
             budget_config: BudgetConfig::default(),
             budget_state: Arc::new(DashMap::new()),
             tokenizer_registry,
+            quality_store,
+            quality_config,
+            queue_enabled: false,
         }
     }
 
@@ -124,6 +139,8 @@ impl Router {
     ) -> Self {
         let tokenizer_registry =
             Arc::new(TokenizerRegistry::new().expect("Failed to initialize tokenizer registry"));
+        let quality_config = QualityConfig::default();
+        let quality_store = Arc::new(QualityMetricsStore::new(quality_config.clone()));
         Self {
             registry,
             strategy,
@@ -135,6 +152,9 @@ impl Router {
             budget_config: BudgetConfig::default(),
             budget_state: Arc::new(DashMap::new()),
             tokenizer_registry,
+            quality_store,
+            quality_config,
+            queue_enabled: false,
         }
     }
 
@@ -149,6 +169,8 @@ impl Router {
     ) -> Self {
         let tokenizer_registry =
             Arc::new(TokenizerRegistry::new().expect("Failed to initialize tokenizer registry"));
+        let quality_config = QualityConfig::default();
+        let quality_store = Arc::new(QualityMetricsStore::new(quality_config.clone()));
         Self {
             registry,
             strategy,
@@ -160,6 +182,9 @@ impl Router {
             budget_config: BudgetConfig::default(),
             budget_state: Arc::new(DashMap::new()),
             tokenizer_registry,
+            quality_store,
+            quality_config,
+            queue_enabled: false,
         }
     }
 
@@ -177,6 +202,8 @@ impl Router {
     ) -> Self {
         let tokenizer_registry =
             Arc::new(TokenizerRegistry::new().expect("Failed to initialize tokenizer registry"));
+        let quality_config = QualityConfig::default();
+        let quality_store = Arc::new(QualityMetricsStore::new(quality_config.clone()));
         Self {
             registry,
             strategy,
@@ -188,6 +215,9 @@ impl Router {
             budget_config,
             budget_state,
             tokenizer_registry,
+            quality_store,
+            quality_config,
+            queue_enabled: false,
         }
     }
 
@@ -244,21 +274,27 @@ impl Router {
             Arc::clone(&self.budget_state),
         );
         let tier = TierReconciler::new(Arc::clone(&self.registry), self.policy_matcher.clone());
-        let quality = QualityReconciler::new();
+        let quality =
+            QualityReconciler::new(Arc::clone(&self.quality_store), self.quality_config.clone());
         let scheduler = SchedulerReconciler::new(
             Arc::clone(&self.registry),
             self.strategy,
             self.weights,
             Arc::clone(&self.round_robin_counter),
+            Arc::clone(&self.quality_store),
+            self.quality_config.clone(),
         );
-        ReconcilerPipeline::new(vec![
-            Box::new(analyzer),
-            Box::new(privacy),
-            Box::new(budget),
-            Box::new(tier),
-            Box::new(quality),
-            Box::new(scheduler),
-        ])
+        ReconcilerPipeline::with_queue(
+            vec![
+                Box::new(analyzer),
+                Box::new(privacy),
+                Box::new(budget),
+                Box::new(tier),
+                Box::new(quality),
+                Box::new(scheduler),
+            ],
+            self.queue_enabled,
+        )
     }
 
     /// Run the pipeline for a specific model (primary or fallback) and return the decision
@@ -354,6 +390,19 @@ impl Router {
                 budget_status,
                 budget_utilization,
                 budget_remaining,
+            });
+        }
+
+        // T026: Handle Queue decision — propagate as RoutingError::Queue
+        if let RoutingDecision::Queue {
+            reason,
+            estimated_wait_ms,
+            ..
+        } = &decision
+        {
+            return Err(RoutingError::Queue {
+                reason: reason.clone(),
+                estimated_wait_ms: *estimated_wait_ms,
             });
         }
 
@@ -592,6 +641,16 @@ impl Router {
         &self.budget_state
     }
 
+    /// Get reference to the quality metrics store.
+    pub fn quality_store(&self) -> &Arc<QualityMetricsStore> {
+        &self.quality_store
+    }
+
+    /// Set whether request queuing is enabled (T026).
+    pub fn set_queue_enabled(&mut self, enabled: bool) {
+        self.queue_enabled = enabled;
+    }
+
     /// Get current budget status and utilization percentage (F14).
     ///
     /// Returns (BudgetStatus, Option<f64>, Option<f64>) where:
@@ -783,6 +842,7 @@ mod filter_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -814,6 +874,7 @@ mod filter_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -845,6 +906,7 @@ mod filter_tests {
             needs_vision: true,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -876,6 +938,7 @@ mod filter_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -899,6 +962,7 @@ mod filter_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let candidates = router.filter_candidates("nonexistent", &requirements);
@@ -929,6 +993,7 @@ mod filter_tests {
             needs_vision: false,
             needs_tools: true,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -979,6 +1044,7 @@ mod filter_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: true,
+            prefers_streaming: false,
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -1020,6 +1086,7 @@ mod filter_tests {
             needs_vision: true,
             needs_tools: true,
             needs_json_mode: true,
+            prefers_streaming: false,
         };
 
         let candidates = router.filter_candidates("llama3:8b", &requirements);
@@ -1094,6 +1161,7 @@ mod smart_strategy_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let result = router.select_backend(&requirements, None).unwrap();
@@ -1115,6 +1183,7 @@ mod smart_strategy_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let result = router.select_backend(&requirements, None).unwrap();
@@ -1136,6 +1205,7 @@ mod smart_strategy_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let result = router.select_backend(&requirements, None).unwrap();
@@ -1159,6 +1229,7 @@ mod smart_strategy_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let result = router.select_backend(&requirements, None);
@@ -1228,6 +1299,7 @@ mod other_strategies_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         // Should cycle through: A, B, C, A, B, C
@@ -1266,6 +1338,7 @@ mod other_strategies_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         // Should always select Backend B (priority 1)
@@ -1290,6 +1363,7 @@ mod other_strategies_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         // Should select from all three backends over many iterations
@@ -1371,6 +1445,7 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let result = router.select_backend(&requirements, None).unwrap();
@@ -1410,6 +1485,7 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let result = router.select_backend(&requirements, None).unwrap();
@@ -1449,6 +1525,7 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let result = router.select_backend(&requirements, None);
@@ -1491,6 +1568,7 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let result = router.select_backend(&requirements, None).unwrap();
@@ -1530,6 +1608,7 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         // When resolving "gpt-4"
@@ -1571,6 +1650,7 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         // When resolving "a"
@@ -1613,6 +1693,7 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         // When resolving "a" (4-level chain)
@@ -1652,6 +1733,7 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         let result = router.select_backend(&requirements, None).unwrap();
@@ -1691,6 +1773,7 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         // When select_backend("primary")
@@ -1735,6 +1818,7 @@ mod alias_and_fallback_tests {
             needs_vision: false,
             needs_tools: false,
             needs_json_mode: false,
+            prefers_streaming: false,
         };
 
         // When select_backend("primary")

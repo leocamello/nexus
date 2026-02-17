@@ -110,7 +110,7 @@ You: Analyze the spec, plan, and tasks for consistency
 
 [Copilot runs speckit.analyze agent]
 
-You: Create GitHub issues from the tasks
+You: Create GitHub issues from the tasks (follow the issue naming and labeling conventions)
 
 [Copilot runs speckit.taskstoissues or uses gh CLI to create issues]
 
@@ -279,17 +279,56 @@ Convert tasks to GitHub issues for open-source collaboration and progress tracki
 ```
 Create GitHub issues from the tasks in specs/001-backend-registry/tasks.md.
 
-Each issue should:
-- Have a clear title prefixed with [Feature Name]
-- Include implementation steps and acceptance criteria
-- Be labeled appropriately (P0, enhancement, testing, etc.)
-- Reference dependencies on other issues
-- Link back to spec and plan files
+Follow the issue naming and labeling conventions documented below.
 ```
 
+#### Issue Naming Convention
+
+All issues **must** follow this title format:
+
+```
+[FXX] type: Description (TXXX-TXXX)
+```
+
+| Component | Description | Examples |
+|-----------|-------------|----------|
+| `[FXX]` | Feature number prefix (required) | `[F12]`, `[F16]`, `[NII]`, `[Control Plane]` |
+| `type` | Conventional commit type | `feat`, `test`, `docs`, `chore` |
+| `Description` | Human-readable task description | `Privacy zone enforcement`, `End-to-end validation` |
+| `(TXXX-TXXX)` | Task range from tasks.md (when applicable) | `(T001-T004)`, `(T14)`, `(Phase 3)` |
+
+**Title examples:**
+- `[F16] feat: Quality Tracking — QualityReconciler, quality loop, TTFT penalty (T004-T013)`
+- `[F05] feat: Implement TXT record parser (T04)`
+- `[F04] docs: Documentation and cleanup (T14)`
+- `[NII] feat: Agent module foundation setup (Phase 1)`
+- `[Control Plane] feat: Privacy zone enforcement (Phase 4)`
+
+#### Issue Labeling Convention
+
+Every issue **must** have labels from all three categories:
+
+| Category | Required | Available Labels |
+|----------|----------|------------------|
+| **Version** | ✅ Always | `v0.1`, `v0.2`, `v0.3`, `v0.4`, `v0.5` |
+| **Feature** | ✅ Always | `F04`–`F18`, `NII`, `control-plane` |
+| **Type** | ✅ Always | `enhancement`, `bug`, `documentation`, `testing` |
+
+**Version-to-feature mapping:**
+
+| Version | Features |
+|---------|----------|
+| `v0.1` | F01–F08 (Foundation: Registry, Health, Router, mDNS, CLI, Aliases, Fallbacks, API Gateway) |
+| `v0.2` | F09–F11 (Observability: Metrics, Dashboard, Logging) |
+| `v0.3` | NII, Control Plane, F12–F14 (Cloud Hybrid: NII Extraction, Reconciler Pipeline, Cloud Backends, Privacy, Budget) |
+| `v0.4` | F15–F18 (Intelligence: Speculative Router, Quality, Embeddings, Queuing) |
+| `v0.5` | F19–F22 (Orchestration: Pre-warming, Model Lifecycle, Multi-tenant, Rate Limiting) |
+
+> **Note:** Priority labels (`P0`, `P1`, `P2`) are **not used** — task ordering in tasks.md already encodes priority. Legacy descriptive labels (e.g., `api-gateway`, `web-dashboard`) are kept for backward compatibility but should not be added to new issues.
+
 **What Gets Created:**
-- One issue per task (T01, T02, etc.)
-- Labels: `P0`, `enhancement`, `backend-registry`, `testing`, `documentation`, `good first issue`
+- One issue per task group (or individual task for small features)
+- Labels: `v0.X` (version), `FXX` (feature), `enhancement` (type)
 - Each issue body includes:
   - Overview and estimated time
   - Dependencies on other issues

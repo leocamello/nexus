@@ -157,8 +157,17 @@ pub fn load_backends_from_config(
 fn build_api_router(
     registry: Arc<Registry>,
     config: Arc<NexusConfig>,
+    queue: Option<Arc<crate::queue::RequestQueue>>,
 ) -> (axum::Router, Arc<AppState>) {
-    let app_state = Arc::new(AppState::new(registry, config));
+    let mut app_state = AppState::new(registry, config.clone());
+    app_state.queue = queue;
+    // Enable queue-aware routing when queue is configured
+    if config.queue.is_enabled() {
+        if let Some(router) = Arc::get_mut(&mut app_state.router) {
+            router.set_queue_enabled(true);
+        }
+    }
+    let app_state = Arc::new(app_state);
     let router = create_router(Arc::clone(&app_state));
     (router, app_state)
 }
@@ -212,9 +221,24 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
     let registry = Arc::new(Registry::new());
     load_backends_from_config(&config, &registry)?;
 
-    // 4. Build API router and get AppState (to access ws_broadcast)
+    // 4. Create request queue (if enabled) (T030)
+    let queue = if config.queue.is_enabled() {
+        tracing::info!(
+            max_size = config.queue.max_size,
+            max_wait_seconds = config.queue.max_wait_seconds,
+            "Request queuing enabled"
+        );
+        Some(Arc::new(crate::queue::RequestQueue::new(
+            config.queue.clone(),
+        )))
+    } else {
+        tracing::debug!("Request queuing disabled");
+        None
+    };
+
+    // 4.1. Build API router and get AppState (to access ws_broadcast)
     let config_arc = Arc::new(config.clone());
-    let (app, app_state) = build_api_router(registry.clone(), config_arc);
+    let (app, app_state) = build_api_router(registry.clone(), config_arc, queue.clone());
 
     // 5. Start health checker (if enabled) with broadcast sender
     let cancel_token = CancellationToken::new();
@@ -254,6 +278,26 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
         None
     };
 
+    // 4.7. Start quality reconciliation loop
+    let quality_store = Arc::clone(app_state.router.quality_store());
+    let quality_cancel = cancel_token.clone();
+    let quality_handle = tokio::spawn(async move {
+        crate::agent::quality::quality_reconciliation_loop(quality_store, quality_cancel).await;
+    });
+
+    // 4.8. Start queue drain loop (T030)
+    let queue_handle = if let Some(ref q) = queue {
+        tracing::info!("Starting queue drain loop");
+        let queue_clone = Arc::clone(q);
+        let state_clone = Arc::clone(&app_state);
+        let queue_cancel = cancel_token.clone();
+        Some(tokio::spawn(async move {
+            crate::queue::queue_drain_loop(queue_clone, state_clone, queue_cancel).await;
+        }))
+    } else {
+        None
+    };
+
     // 6. Bind and serve
     let addr = format!("{}:{}", config.server.host, config.server.port);
     tracing::info!(addr = %addr, "Nexus API server listening");
@@ -277,6 +321,14 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
 
     if let Some(handle) = budget_handle {
         tracing::info!("Waiting for budget reconciliation loop to stop");
+        handle.await?;
+    }
+
+    tracing::info!("Waiting for quality reconciliation loop to stop");
+    quality_handle.await?;
+
+    if let Some(handle) = queue_handle {
+        tracing::info!("Waiting for queue drain loop to stop");
         handle.await?;
     }
 
@@ -509,7 +561,7 @@ mod tests {
     async fn test_build_api_router_returns_app_state() {
         let registry = Arc::new(Registry::new());
         let config = Arc::new(NexusConfig::default());
-        let (_router, app_state) = build_api_router(registry.clone(), config.clone());
+        let (_router, app_state) = build_api_router(registry.clone(), config.clone(), None);
 
         // AppState should reference the same registry
         assert_eq!(app_state.registry.backend_count(), 0);
@@ -600,7 +652,7 @@ mod tests {
 
         load_backends_from_config(&config, &registry).unwrap();
         let config_arc = Arc::new(config);
-        let (_router, app_state) = build_api_router(registry.clone(), config_arc);
+        let (_router, app_state) = build_api_router(registry.clone(), config_arc, None);
 
         assert_eq!(app_state.registry.backend_count(), 1);
     }
