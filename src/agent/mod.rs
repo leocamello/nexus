@@ -256,6 +256,81 @@ mod tests {
     use crate::api::types::{ChatCompletionRequest, ChatCompletionResponse};
     use futures_util::stream::BoxStream;
 
+    // ========================================================================
+    // T004: Unit tests for AgentQualityMetrics
+    // ========================================================================
+
+    #[test]
+    fn quality_metrics_default_values() {
+        let metrics = AgentQualityMetrics::default();
+        assert_eq!(metrics.error_rate_1h, 0.0);
+        assert_eq!(metrics.avg_ttft_ms, 0);
+        assert_eq!(metrics.success_rate_24h, 1.0);
+        assert_eq!(metrics.request_count_1h, 0);
+        assert!(metrics.last_failure_ts.is_none());
+    }
+
+    #[test]
+    fn quality_metrics_new_creates_healthy_defaults() {
+        let metrics = AgentQualityMetrics::new();
+        assert!(metrics.is_healthy());
+        assert_eq!(metrics.error_rate_1h, 0.0);
+        assert_eq!(metrics.success_rate_24h, 1.0);
+    }
+
+    #[test]
+    fn quality_metrics_is_healthy_with_no_history() {
+        let metrics = AgentQualityMetrics {
+            error_rate_1h: 0.0,
+            avg_ttft_ms: 0,
+            success_rate_24h: 1.0,
+            last_failure_ts: None,
+            request_count_1h: 0,
+        };
+        assert!(metrics.is_healthy());
+    }
+
+    #[test]
+    fn quality_metrics_is_healthy_with_low_error_rate() {
+        let metrics = AgentQualityMetrics {
+            error_rate_1h: 0.25, // 25% errors - below threshold
+            avg_ttft_ms: 100,
+            success_rate_24h: 0.75,
+            last_failure_ts: Some(Instant::now()),
+            request_count_1h: 10,
+        };
+        assert!(metrics.is_healthy());
+    }
+
+    #[test]
+    fn quality_metrics_is_unhealthy_with_high_error_rate() {
+        let metrics = AgentQualityMetrics {
+            error_rate_1h: 0.75, // 75% errors - above threshold
+            avg_ttft_ms: 100,
+            success_rate_24h: 0.25,
+            last_failure_ts: Some(Instant::now()),
+            request_count_1h: 10,
+        };
+        assert!(!metrics.is_healthy());
+    }
+
+    #[test]
+    fn quality_metrics_threshold_at_boundary() {
+        let metrics = AgentQualityMetrics {
+            error_rate_1h: 0.5, // Exactly at 50% threshold
+            avg_ttft_ms: 100,
+            success_rate_24h: 0.5,
+            last_failure_ts: Some(Instant::now()),
+            request_count_1h: 10,
+        };
+        // At exactly 0.5, should not be healthy (threshold is <0.5)
+        assert!(!metrics.is_healthy());
+    }
+
+    // ========================================================================
+    // Original InferenceAgent trait tests
+    // ========================================================================
+
     struct MockAgent;
 
     #[async_trait]

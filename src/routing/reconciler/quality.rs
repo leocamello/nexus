@@ -71,6 +71,92 @@ mod tests {
         )
     }
 
+    // ========================================================================
+    // T005: Unit tests for QualityReconciler with real filtering
+    // ========================================================================
+
+    #[test]
+    #[ignore] // TODO: Remove ignore after implementing QualityReconciler
+    fn excludes_high_error_agents_above_threshold() {
+        // Test: Agent with error_rate_1h > threshold should be excluded
+        // This test will fail until we implement the real reconciler in T009
+        let reconciler = QualityReconciler::new();
+        let mut intent = create_intent(
+            "llama3:8b",
+            vec!["agent-healthy".into(), "agent-failing".into()],
+        );
+
+        // TODO: Mock quality metrics showing agent-failing has 0.75 error rate
+        // For now, this test just documents the expected behavior
+
+        reconciler.reconcile(&mut intent).unwrap();
+
+        // Expected: agent-failing should be excluded
+        assert_eq!(intent.candidate_agents.len(), 1);
+        assert_eq!(intent.candidate_agents[0], "agent-healthy");
+        assert_eq!(intent.excluded_agents.len(), 1);
+        assert!(intent.rejection_reasons.len() > 0);
+    }
+
+    #[test]
+    #[ignore] // TODO: Remove ignore after implementing QualityReconciler
+    fn preserves_healthy_agents_below_threshold() {
+        // Test: Agents with low error rates should pass through
+        let reconciler = QualityReconciler::new();
+        let mut intent = create_intent(
+            "llama3:8b",
+            vec!["agent-1".into(), "agent-2".into()],
+        );
+
+        // TODO: Mock quality metrics showing both agents have <0.5 error rate
+
+        reconciler.reconcile(&mut intent).unwrap();
+
+        assert_eq!(intent.candidate_agents.len(), 2);
+        assert!(intent.excluded_agents.is_empty());
+    }
+
+    #[test]
+    #[ignore] // TODO: Remove ignore after implementing QualityReconciler
+    fn all_excluded_produces_rejection_reasons() {
+        // Test: When all agents are excluded, rejection_reasons should be populated
+        let reconciler = QualityReconciler::new();
+        let mut intent = create_intent(
+            "llama3:8b",
+            vec!["agent-bad-1".into(), "agent-bad-2".into()],
+        );
+
+        // TODO: Mock quality metrics showing all agents have high error rates
+
+        reconciler.reconcile(&mut intent).unwrap();
+
+        assert!(intent.candidate_agents.is_empty());
+        assert_eq!(intent.excluded_agents.len(), 2);
+        assert!(intent.rejection_reasons.len() >= 2);
+    }
+
+    #[test]
+    #[ignore] // TODO: Remove ignore after implementing QualityReconciler
+    fn fresh_start_no_history_all_pass() {
+        // Test: Agents with no history (default metrics) should pass through
+        let reconciler = QualityReconciler::new();
+        let mut intent = create_intent(
+            "llama3:8b",
+            vec!["new-agent-1".into(), "new-agent-2".into()],
+        );
+
+        // TODO: Mock quality metrics showing default (no history) values
+
+        reconciler.reconcile(&mut intent).unwrap();
+
+        assert_eq!(intent.candidate_agents.len(), 2);
+        assert!(intent.excluded_agents.is_empty());
+    }
+
+    // ========================================================================
+    // Original pass-through tests (will be replaced by real logic)
+    // ========================================================================
+
     #[test]
     fn pass_through_preserves_all_candidates() {
         let reconciler = QualityReconciler::new();

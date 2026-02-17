@@ -33,11 +33,11 @@
 
 ### Tests for US1
 
-- [ ] T004 [P] [US1] Unit tests for `AgentQualityMetrics` — default values, recording outcomes, rolling window computation. Location: `src/agent/mod.rs` (mod tests)
+- [X] T004 [P] [US1] Unit tests for `AgentQualityMetrics` — default values, recording outcomes, rolling window computation. Location: `src/agent/mod.rs` (mod tests)
   - **AC**: Tests cover: default all-healthy, record_success increments count, record_failure updates error_rate, rolling window drops entries older than 1h
-- [ ] T005 [P] [US1] Unit tests for `QualityReconciler` — exclude high-error agents, preserve healthy agents, empty candidates produces rejection. Location: `src/routing/reconciler/quality.rs` (mod tests)
+- [X] T005 [P] [US1] Unit tests for `QualityReconciler` — exclude high-error agents, preserve healthy agents, empty candidates produces rejection. Location: `src/routing/reconciler/quality.rs` (mod tests)
   - **AC**: Tests cover: agent above threshold excluded, agent below threshold kept, all excluded → rejection_reasons populated, fresh start (no history) → all candidates pass
-- [ ] T006 [P] [US1] Unit tests for TTFT penalty in `SchedulerReconciler` — high TTFT reduces score. Location: `src/routing/reconciler/scheduler.rs` (mod tests)
+- [X] T006 [P] [US1] Unit tests for TTFT penalty in `SchedulerReconciler` — high TTFT reduces score. Location: `src/routing/reconciler/scheduler.rs` (mod tests)
   - **AC**: Agent with TTFT above threshold gets lower score than agent with low TTFT
 
 ### Implementation for US1

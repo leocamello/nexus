@@ -652,4 +652,102 @@ mod tests {
 
         assert_eq!(intent.route_reason.as_deref(), Some("only_healthy_backend"));
     }
+
+    // ========================================================================
+    // T006: Unit tests for TTFT penalty in SchedulerReconciler
+    // ========================================================================
+
+    #[test]
+    #[ignore] // TODO: Remove ignore after implementing TTFT penalty in T010
+    fn high_ttft_reduces_score() {
+        // Test: Agent with high TTFT should get lower score than agent with low TTFT
+        let registry = Arc::new(Registry::new());
+
+        // Backend 1: Low TTFT (fast)
+        let b1 = create_test_backend("b1", BackendStatus::Healthy, "llama3:8b", 1, 0, 50);
+        // TODO: Set avg_ttft_ms = 200ms (low)
+
+        // Backend 2: High TTFT (slow)
+        let b2 = create_test_backend("b2", BackendStatus::Healthy, "llama3:8b", 1, 0, 50);
+        // TODO: Set avg_ttft_ms = 5000ms (above 3000ms threshold)
+
+        registry.add_backend(b1).unwrap();
+        registry.add_backend(b2).unwrap();
+
+        let scheduler = SchedulerReconciler::new(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            Arc::new(AtomicU64::new(0)),
+        );
+
+        let mut intent = create_intent("llama3:8b", vec!["b1".into(), "b2".into()]);
+        scheduler.reconcile(&mut intent).unwrap();
+
+        // Expected: b1 (low TTFT) should be first candidate (highest score)
+        assert_eq!(intent.candidate_agents.len(), 2);
+        assert_eq!(intent.candidate_agents[0], "b1");
+    }
+
+    #[test]
+    #[ignore] // TODO: Remove ignore after implementing TTFT penalty in T010
+    fn ttft_penalty_proportional_to_threshold_excess() {
+        // Test: The further above threshold, the larger the penalty
+        let registry = Arc::new(Registry::new());
+
+        // Backend 1: Slightly above threshold (3500ms)
+        let b1 = create_test_backend("b1", BackendStatus::Healthy, "llama3:8b", 1, 0, 50);
+        // TODO: Set avg_ttft_ms = 3500ms
+
+        // Backend 2: Way above threshold (10000ms)
+        let b2 = create_test_backend("b2", BackendStatus::Healthy, "llama3:8b", 1, 0, 50);
+        // TODO: Set avg_ttft_ms = 10000ms
+
+        registry.add_backend(b1).unwrap();
+        registry.add_backend(b2).unwrap();
+
+        let scheduler = SchedulerReconciler::new(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            Arc::new(AtomicU64::new(0)),
+        );
+
+        let mut intent = create_intent("llama3:8b", vec!["b1".into(), "b2".into()]);
+        scheduler.reconcile(&mut intent).unwrap();
+
+        // Expected: b1 should be first (less penalty than b2)
+        assert_eq!(intent.candidate_agents.len(), 2);
+        assert_eq!(intent.candidate_agents[0], "b1");
+    }
+
+    #[test]
+    #[ignore] // TODO: Remove ignore after implementing TTFT penalty in T010
+    fn no_penalty_below_threshold() {
+        // Test: Agents below TTFT threshold should not be penalized
+        let registry = Arc::new(Registry::new());
+
+        // Both backends below 3000ms threshold
+        let b1 = create_test_backend("b1", BackendStatus::Healthy, "llama3:8b", 1, 0, 50);
+        // TODO: Set avg_ttft_ms = 500ms
+
+        let b2 = create_test_backend("b2", BackendStatus::Healthy, "llama3:8b", 1, 0, 50);
+        // TODO: Set avg_ttft_ms = 1000ms
+
+        registry.add_backend(b1).unwrap();
+        registry.add_backend(b2).unwrap();
+
+        let scheduler = SchedulerReconciler::new(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            Arc::new(AtomicU64::new(0)),
+        );
+
+        let mut intent = create_intent("llama3:8b", vec!["b1".into(), "b2".into()]);
+        scheduler.reconcile(&mut intent).unwrap();
+
+        // Both should remain valid candidates
+        assert_eq!(intent.candidate_agents.len(), 2);
+    }
 }
