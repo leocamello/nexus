@@ -11,8 +11,11 @@
 //! ```rust
 //! use nexus::agent::tokenizer::TokenizerRegistry;
 //!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let registry = TokenizerRegistry::new()?;
 //! let token_count = registry.count_tokens("gpt-4-turbo", "Hello world")?;
+//! # Ok(())
+//! # }
 //! ```
 
 use globset::{Glob, GlobMatcher};
