@@ -366,6 +366,7 @@ grep -c "\- \[ \]" specs/XXX-feature/verification.md  # Should be 0
 - No `println!` — use `tracing` macros for all output
 - No panics on backend errors — always return proper HTTP response
 - Comment the "why", not the "what"; no commented-out code in main branch
+- Do **not** create `.github/agents/copilot-instructions.md` — all Copilot instructions live in this file only
 
 ## Testing Strategy
 
