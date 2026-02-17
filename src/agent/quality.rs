@@ -35,6 +35,10 @@ pub struct QualityMetricsStore {
     config: QualityConfig,
 }
 
+/// Maximum outcomes stored per agent to prevent unbounded memory growth.
+/// At ~24 bytes per outcome, 100k entries ≈ 2.4 MB per agent.
+const MAX_OUTCOMES_PER_AGENT: usize = 100_000;
+
 impl QualityMetricsStore {
     /// Create a new empty store with the given configuration.
     pub fn new(config: QualityConfig) -> Self {
@@ -55,11 +59,26 @@ impl QualityMetricsStore {
 
         self.outcomes
             .entry(agent_id.to_string())
-            .or_insert_with(|| RwLock::new(VecDeque::new()))
-            .value()
-            .write()
-            .expect("RwLock poisoned")
-            .push_back(outcome);
+            .or_insert_with(|| RwLock::new(VecDeque::new()));
+
+        if let Some(entry) = self.outcomes.get(agent_id) {
+            match entry.value().write() {
+                Ok(mut queue) => {
+                    queue.push_back(outcome);
+                    while queue.len() > MAX_OUTCOMES_PER_AGENT {
+                        queue.pop_front();
+                    }
+                }
+                Err(poisoned) => {
+                    tracing::warn!(agent_id, "RwLock poisoned in record_outcome, recovering");
+                    let mut queue = poisoned.into_inner();
+                    queue.push_back(outcome);
+                    while queue.len() > MAX_OUTCOMES_PER_AGENT {
+                        queue.pop_front();
+                    }
+                }
+            }
+        }
     }
 
     /// Get the computed quality metrics for an agent.
@@ -90,7 +109,13 @@ impl QualityMetricsStore {
 
         for entry in self.outcomes.iter() {
             let agent_id = entry.key().clone();
-            let mut outcomes = entry.value().write().expect("RwLock poisoned");
+            let mut outcomes = match entry.value().write() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    tracing::warn!(agent_id, "RwLock poisoned in recompute_all, recovering");
+                    poisoned.into_inner()
+                }
+            };
 
             // Prune outcomes older than 24 hours
             while let Some(front) = outcomes.front() {
