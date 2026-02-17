@@ -511,17 +511,19 @@ Completed items (✅) are grouped first, followed by the work ahead in dependenc
 | 15 | F13 | Privacy Zones & Capability Tiers | v0.3 | Phase 2 | [Link](#f13-privacy-zones--capability-tiers) |
 | 16 | F14 | Inference Budget Management | v0.3 | Phase 2 | [Link](#f14-inference-budget-management) |
 | | | | | | |
-| 17 | F15 | Speculative Router | v0.4 | Phase 2 | [Link](#f15-speculative-router) |
-| 18 | F16 | Quality Tracking & Backend Profiling | v0.4 | Phase 2 | [Link](#f16-quality-tracking--backend-profiling) |
-| 19 | F17 | Embeddings API | v0.4 | Phase 1 | [Link](#f17-embeddings-api) |
-| 20 | F18 | Request Queuing & Prioritization | v0.4 | Phase 2 | [Link](#f18-request-queuing--prioritization) |
+| 17 | — | **Quality + Queuing (Phase 2.5)** | **v0.4** | Phase 2 | [Link](#phase-25-quality--queuing-enables-f15f18) |
+| 18 | F15 | Speculative Router | v0.4 | Phase 2.5 | [Link](#f15-speculative-router) |
+| 19 | F16 | Quality Tracking & Backend Profiling | v0.4 | Phase 2.5 | [Link](#f16-quality-tracking--backend-profiling) |
+| 20 | F17 | Embeddings API | v0.4 | Phase 1, Phase 2.5 | [Link](#f17-embeddings-api) |
+| 21 | F18 | Request Queuing & Prioritization | v0.4 | Phase 2.5 | [Link](#f18-request-queuing--prioritization) |
 | | | | | | |
-| 21 | F19 | Pre-warming & Fleet Intelligence | v0.5 | Phase 1, F16 | [Link](#f19-pre-warming--fleet-intelligence) |
-| 22 | F20 | Model Lifecycle Management | v0.5 | Phase 1 | [Link](#f20-model-lifecycle-management) |
-| 23 | F21 | Multi-Tenant Support | v0.5 | Phase 2 | [Link](#f21-multi-tenant-support) |
-| 24 | F22 | Rate Limiting | v0.5 | Phase 2 | [Link](#f22-rate-limiting) |
+| 22 | — | **Fleet Intelligence (Phase 3)** | **v0.5** | Phase 2.5, F16 | [Link](#phase-3-fleet-intelligence-enables-f19f20) |
+| 23 | F19 | Pre-warming & Fleet Intelligence | v0.5 | Phase 3, F16 | [Link](#f19-pre-warming--fleet-intelligence) |
+| 24 | F20 | Model Lifecycle Management | v0.5 | Phase 3 | [Link](#f20-model-lifecycle-management) |
+| 25 | F21 | Multi-Tenant Support | v0.5 | Phase 2 | [Link](#f21-multi-tenant-support) |
+| 26 | F22 | Rate Limiting | v0.5 | Phase 2 | [Link](#f22-rate-limiting) |
 | | | | | | |
-| 25 | F23 | Management UI | v1.0 | F10, Phase 2 | [Link](#f23-management-ui) |
+| 27 | F23 | Management UI | v1.0 | F10, Phase 2 | [Link](#f23-management-ui) |
 
 ---
 
