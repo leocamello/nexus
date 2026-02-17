@@ -69,22 +69,22 @@
 
 ### Tests for US2
 
-- [ ] T014 [P] [US2] Unit tests for embedding types — `EmbeddingRequest` deserialization (single input, batch input), `EmbeddingResponse` serialization. Location: `src/api/embeddings.rs` (mod tests)
+- [X] T014 [P] [US2] Unit tests for embedding types — `EmbeddingRequest` deserialization (single input, batch input), `EmbeddingResponse` serialization. Location: `src/api/embeddings.rs` (mod tests)
   - **AC**: Tests cover: single string input, array of strings, response format matches OpenAI spec
-- [ ] T015 [P] [US2] Integration test for `/v1/embeddings` endpoint — mock backend, verify routing and response format. Location: `tests/` directory
+- [X] T015 [P] [US2] Integration test for `/v1/embeddings` endpoint — mock backend, verify routing and response format. Location: `tests/` directory
   - **AC**: Test sends embedding request, receives valid response with embedding vectors
 
 ### Implementation for US2
 
-- [ ] T016 [US2] Create `src/api/embeddings.rs` — define `EmbeddingRequest` (model, input as string or array), `EmbeddingResponse` (object, data, model, usage), `EmbeddingObject` (object, embedding, index). Implement `handle()` axum handler that routes through reconciler pipeline and delegates to `agent.embeddings()`.
+- [X] T016 [US2] Create `src/api/embeddings.rs` — define `EmbeddingRequest` (model, input as string or array), `EmbeddingResponse` (object, data, model, usage), `EmbeddingObject` (object, embedding, index). Implement `handle()` axum handler that routes through reconciler pipeline and delegates to `agent.embeddings()`.
   - **AC**: Handler compiles, routes request, returns OpenAI-compatible JSON
-- [ ] T017 [US2] Register `POST /v1/embeddings` route in `src/api/mod.rs`
+- [X] T017 [US2] Register `POST /v1/embeddings` route in `src/api/mod.rs`
   - **AC**: Route accessible, returns 404 → valid response after handler wired
-- [ ] T018 [P] [US2] Implement `embeddings()` in OllamaAgent (`src/agent/ollama.rs`) — use Ollama's `/api/embeddings` endpoint, translate to OpenAI format
+- [X] T018 [P] [US2] Implement `embeddings()` in OllamaAgent (`src/agent/ollama.rs`) — use Ollama's `/api/embeddings` endpoint, translate to OpenAI format
   - **AC**: Ollama embedding requests return vectors in correct format
-- [ ] T019 [P] [US2] Implement `embeddings()` in OpenAIAgent (`src/agent/openai.rs`) — forward to OpenAI's `/v1/embeddings`, pass auth headers
+- [X] T019 [P] [US2] Implement `embeddings()` in OpenAIAgent (`src/agent/openai.rs`) — forward to OpenAI's `/v1/embeddings`, pass auth headers
   - **AC**: OpenAI embedding requests forwarded correctly with API key
-- [ ] T020 [US2] Add embedding capability detection to agent model listing — when listing models, detect if model supports embeddings (heuristic: model name contains "embed" or backend reports embedding capability)
+- [X] T020 [US2] Add embedding capability detection to agent model listing — when listing models, detect if model supports embeddings (heuristic: model name contains "embed" or backend reports embedding capability)
   - **AC**: Embedding-capable models identified, routing only considers capable backends
 
 **Checkpoint**: Embedding requests route to capable backends and return OpenAI-compatible responses

@@ -61,6 +61,7 @@
 //! ```
 
 mod completions;
+pub mod embeddings;
 pub mod error;
 pub mod headers;
 mod health;
@@ -183,6 +184,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/ws", get(crate::dashboard::websocket_handler))
         // API routes
         .route("/v1/chat/completions", post(completions::handle))
+        .route("/v1/embeddings", post(embeddings::handle))
         .route("/v1/models", get(models::handle))
         .route("/v1/history", get(crate::dashboard::history_handler))
         .route("/health", get(health::handle))
