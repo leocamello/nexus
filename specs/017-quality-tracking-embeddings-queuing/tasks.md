@@ -129,13 +129,13 @@
 
 ## Phase 5: Polish & Cross-Cutting
 
-- [ ] T031 [P] Update `nexus.example.toml` with `[quality]` and `[queue]` sections
-- [ ] T032 [P] Update `docs/getting-started.md` with embeddings usage example
-- [ ] T033 [P] Update `docs/api/rest.md` with `/v1/embeddings` endpoint documentation
-- [ ] T034 [P] Update `docs/roadmap.md` — change Phase 2.5 status from "Planned" to "In Progress" / "Complete"
-- [ ] T035 Run full test suite — verify all 1005+ existing tests still pass
-- [ ] T036 Run `cargo clippy --all-targets -- -D warnings` — zero warnings
-- [ ] T037 Run `cargo fmt --all -- --check` — formatting clean
+- [x] T031 [P] Update `nexus.example.toml` with `[quality]` and `[queue]` sections
+- [x] T032 [P] Update `docs/getting-started.md` with embeddings usage example
+- [x] T033 [P] Update `docs/api/rest.md` with `/v1/embeddings` endpoint documentation
+- [x] T034 [P] Update `docs/roadmap.md` — change Phase 2.5 status from "Planned" to "In Progress" / "Complete"
+- [x] T035 Run full test suite — verify all 1005+ existing tests still pass
+- [x] T036 Run `cargo clippy --all-targets -- -D warnings` — zero warnings
+- [x] T037 Run `cargo fmt --all -- --check` — formatting clean
 
 ---
 
