@@ -297,7 +297,7 @@ grep -c "\- \[ \]" specs/XXX-feature/tasks.md         # Should be 0
 
 ### Commit Message Format
 
-Use conventional commits with issue references:
+Use conventional commits with issue references. Always include the Co-authored-by trailer when commits are created with Copilot assistance:
 ```
 feat: implement Feature Name (FXX)
 
@@ -306,6 +306,8 @@ Description of changes...
 Closes #123
 Closes #124
 Closes #125
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 ```
 
 **Note**: Use separate `Closes #X` lines for each issue.
@@ -316,7 +318,9 @@ git checkout -b feature/f09-request-metrics
 
 # 2. Implement the feature (commits go to feature branch)
 git add .
-git commit -m "feat: implement Request Metrics (F09)"
+git commit -m "feat: implement Request Metrics (F09)
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 
 # 3. Push feature branch and create PR
 git push -u origin feature/f09-request-metrics
@@ -325,6 +329,22 @@ gh pr create --title "feat: Request Metrics (F09)" --body "..." --label "enhance
 # 4. Merge PR (closes linked issues automatically)
 gh pr merge --squash
 ```
+
+### Issue Naming & Labeling
+
+When creating GitHub issues, follow these conventions (full guide in `.github/team/spec-kit-guide.md`):
+
+**Title format**: `[FXX] type: Description (TXXX-TXXX)`
+- `[FXX]` = Feature number (e.g., `[F12]`, `[NII]`, `[Control Plane]`)
+- `type` = Conventional commit type: `feat`, `test`, `docs`, `chore`
+- `(TXXX)` = Task reference from tasks.md
+
+**Labels** (always include all three categories):
+- **Version**: `v0.1`–`v0.5`
+- **Feature**: `F04`–`F18`, `NII`, `control-plane`
+- **Type**: `enhancement`, `bug`, `documentation`, `testing`
+
+**Example**: `[F16] feat: Quality Tracking — QualityReconciler (T004-T013)` with labels `v0.4`, `F16`, `enhancement`
 
 ### Task Completion Checklist
 
