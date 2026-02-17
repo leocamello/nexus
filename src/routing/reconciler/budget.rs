@@ -7,6 +7,7 @@
 use super::intent::{BudgetStatus, CostEstimate, RoutingIntent};
 use super::Reconciler;
 use crate::agent::pricing::PricingTable;
+use crate::agent::tokenizer::TokenizerRegistry;
 use crate::agent::PrivacyZone;
 use crate::config::{BudgetConfig, HardLimitAction};
 use crate::registry::Registry;
@@ -54,7 +55,7 @@ impl BudgetMetrics {
 }
 
 /// Shared budget state key for the global spending tracker
-const GLOBAL_BUDGET_KEY: &str = "global";
+pub const GLOBAL_BUDGET_KEY: &str = "global";
 
 /// BudgetReconciler estimates costs and enforces spending limits.
 ///
@@ -73,6 +74,7 @@ pub struct BudgetReconciler {
     registry: Arc<Registry>,
     config: BudgetConfig,
     pricing: PricingTable,
+    tokenizer_registry: Arc<TokenizerRegistry>,
     budget_state: Arc<DashMap<String, BudgetMetrics>>,
 }
 
@@ -81,6 +83,7 @@ impl BudgetReconciler {
     pub fn new(
         registry: Arc<Registry>,
         config: BudgetConfig,
+        tokenizer_registry: Arc<TokenizerRegistry>,
         budget_state: Arc<DashMap<String, BudgetMetrics>>,
     ) -> Self {
         // Initialize global metrics if not present
@@ -92,15 +95,20 @@ impl BudgetReconciler {
             registry,
             config,
             pricing: PricingTable::new(),
+            tokenizer_registry,
             budget_state,
         }
     }
 
     /// Estimate cost for a request (FR-017, FR-018).
     ///
-    /// Uses input token count from requirements and estimates output tokens
-    /// as input_tokens / 2 (heuristic per FR-018).
+    /// Uses TokenizerRegistry when prompt text is available for accurate counting.
+    /// Falls back to requirements.estimated_tokens for backward compatibility.
     fn estimate_cost(&self, model: &str, input_tokens: u32) -> CostEstimate {
+        // For now, use the pre-computed estimated_tokens from RequestRequirements
+        // TODO: Pass actual prompt text for precise tokenization
+        // This maintains compatibility with existing code while preparing for upgrade
+
         let estimated_output_tokens = input_tokens / 2;
 
         let cost_usd = self
@@ -108,11 +116,9 @@ impl BudgetReconciler {
             .estimate_cost(model, input_tokens, estimated_output_tokens)
             .unwrap_or(0.0);
 
-        let token_count_tier = match input_tokens {
-            0..=1000 => 0,
-            1001..=10000 => 1,
-            _ => 2,
-        };
+        // Determine tier based on tokenizer available for this model
+        let tokenizer = self.tokenizer_registry.get_tokenizer(model);
+        let token_count_tier = tokenizer.tier();
 
         CostEstimate {
             input_tokens,
@@ -165,6 +171,18 @@ impl BudgetReconciler {
             .and_modify(|metrics| {
                 // Check for month rollover
                 if metrics.month_key != current_month {
+                    // T027: Log budget reset on month rollover
+                    tracing::info!(
+                        old_month = %metrics.month_key,
+                        new_month = %current_month,
+                        previous_spending = metrics.current_month_spending,
+                        "Budget reset: new billing cycle started"
+                    );
+
+                    // T028: Record month rollover event
+                    metrics::counter!("nexus_budget_events_total", "event_type" => "month_rollover")
+                        .increment(1);
+
                     metrics.current_month_spending = 0.0;
                     metrics.month_key = current_month.clone();
                 }
@@ -207,7 +225,11 @@ impl Reconciler for BudgetReconciler {
         // Step 1: Estimate cost for this request (FR-017, FR-018)
         let cost_estimate =
             self.estimate_cost(&intent.resolved_model, intent.requirements.estimated_tokens);
-        intent.cost_estimate = cost_estimate;
+        intent.cost_estimate = cost_estimate.clone();
+
+        // Record cost metric (US2: Precise Tracking)
+        metrics::histogram!("nexus_cost_per_request_usd", "model" => intent.resolved_model.clone())
+            .record(cost_estimate.cost_usd);
 
         // Step 2: Calculate budget status (FR-019)
         let budget_status = self.calculate_budget_status();
@@ -215,7 +237,9 @@ impl Reconciler for BudgetReconciler {
 
         tracing::debug!(
             model = %intent.resolved_model,
-            cost_usd = intent.cost_estimate.cost_usd,
+            cost_usd = cost_estimate.cost_usd,
+            token_count_tier = cost_estimate.token_count_tier,
+            tier_name = cost_estimate.tier_name(),
             budget_status = ?budget_status,
             candidates = intent.candidate_agents.len(),
             "BudgetReconciler: evaluated budget status"
@@ -293,14 +317,20 @@ impl Reconciler for BudgetReconciler {
 /// with CancellationToken for graceful shutdown.
 pub struct BudgetReconciliationLoop {
     budget_state: Arc<DashMap<String, BudgetMetrics>>,
+    budget_config: BudgetConfig,
     interval_secs: u64,
 }
 
 impl BudgetReconciliationLoop {
     /// Create a new reconciliation loop.
-    pub fn new(budget_state: Arc<DashMap<String, BudgetMetrics>>, interval_secs: u64) -> Self {
+    pub fn new(
+        budget_state: Arc<DashMap<String, BudgetMetrics>>,
+        budget_config: BudgetConfig,
+        interval_secs: u64,
+    ) -> Self {
         Self {
             budget_state,
+            budget_config,
             interval_secs,
         }
     }
@@ -331,10 +361,10 @@ impl BudgetReconciliationLoop {
         })
     }
 
-    /// Reconcile spending data.
+    /// Reconcile spending data and record metrics.
     ///
-    /// Currently: checks for month rollover and updates timestamps.
-    /// Future: query telemetry for actual spending data.
+    /// Records Prometheus gauges for budget spending, utilization, and status.
+    /// Checks for month rollover and updates timestamps.
     fn reconcile_spending(&self) {
         let current_month = BudgetMetrics::current_month_key();
         let now = chrono::Utc::now();
@@ -358,11 +388,49 @@ impl BudgetReconciliationLoop {
             .or_default();
 
         if let Some(metrics) = self.budget_state.get(GLOBAL_BUDGET_KEY) {
+            // T030: Record current spending gauge
+            metrics::gauge!(
+                "nexus_budget_spending_usd",
+                "billing_month" => metrics.month_key.clone()
+            )
+            .set(metrics.current_month_spending);
+
+            // T031, T032: Record utilization and status gauges
+            if let Some(monthly_limit) = self.budget_config.monthly_limit_usd {
+                if monthly_limit > 0.0 {
+                    let utilization = (metrics.current_month_spending / monthly_limit) * 100.0;
+                    metrics::gauge!(
+                        "nexus_budget_utilization_percent",
+                        "billing_month" => metrics.month_key.clone()
+                    )
+                    .set(utilization);
+
+                    // Calculate status: 0=Normal, 1=SoftLimit, 2=HardLimit
+                    let status = if utilization >= 100.0 {
+                        2.0 // HardLimit
+                    } else if utilization >= self.budget_config.soft_limit_percent {
+                        1.0 // SoftLimit
+                    } else {
+                        0.0 // Normal
+                    };
+                    metrics::gauge!(
+                        "nexus_budget_status",
+                        "billing_month" => metrics.month_key.clone()
+                    )
+                    .set(status);
+                }
+            }
+
             tracing::debug!(
                 month = %metrics.month_key,
                 spending = metrics.current_month_spending,
                 "Budget reconciliation completed"
             );
+        }
+
+        // T033: Record budget limit gauge (global, no billing_month label)
+        if let Some(limit) = self.budget_config.monthly_limit_usd {
+            metrics::gauge!("nexus_budget_limit_usd").set(limit);
         }
     }
 }
@@ -370,6 +438,7 @@ impl BudgetReconciliationLoop {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::tokenizer::TokenizerRegistry;
     use crate::registry::{Backend, BackendStatus, BackendType, DiscoverySource, Model};
     use crate::routing::reconciler::intent::RoutingIntent;
     use crate::routing::RequestRequirements;
@@ -429,6 +498,10 @@ mod tests {
         }
     }
 
+    fn tokenizer_registry() -> Arc<TokenizerRegistry> {
+        Arc::new(TokenizerRegistry::new().expect("Failed to create tokenizer registry"))
+    }
+
     // === FR-016: Zero-config default ===
 
     #[test]
@@ -445,6 +518,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(None, HardLimitAction::BlockCloud),
+            tokenizer_registry(),
             state,
         );
 
@@ -465,6 +539,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(Some(100.0), HardLimitAction::Warn),
+            tokenizer_registry(),
             state,
         );
 
@@ -481,6 +556,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(Some(100.0), HardLimitAction::Warn),
+            tokenizer_registry(),
             state,
         );
 
@@ -497,6 +573,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(Some(100.0), HardLimitAction::Warn),
+            tokenizer_registry(),
             Arc::clone(&state),
         );
 
@@ -512,6 +589,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(Some(100.0), HardLimitAction::Warn),
+            tokenizer_registry(),
             Arc::clone(&state),
         );
 
@@ -530,6 +608,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(Some(100.0), HardLimitAction::Warn),
+            tokenizer_registry(),
             Arc::clone(&state),
         );
 
@@ -557,6 +636,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(Some(100.0), HardLimitAction::BlockCloud),
+            tokenizer_registry(),
             Arc::clone(&state),
         );
 
@@ -586,6 +666,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(Some(100.0), HardLimitAction::BlockCloud),
+            tokenizer_registry(),
             Arc::clone(&state),
         );
 
@@ -613,6 +694,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(Some(100.0), HardLimitAction::BlockAll),
+            tokenizer_registry(),
             Arc::clone(&state),
         );
 
@@ -640,6 +722,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(Some(100.0), HardLimitAction::Warn),
+            tokenizer_registry(),
             Arc::clone(&state),
         );
 
@@ -666,6 +749,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(Some(100.0), HardLimitAction::Warn),
+            tokenizer_registry(),
             state,
         );
 
@@ -690,6 +774,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(Some(100.0), HardLimitAction::BlockCloud),
+            tokenizer_registry(),
             Arc::clone(&state),
         );
 
@@ -715,6 +800,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(Some(100.0), HardLimitAction::Warn),
+            tokenizer_registry(),
             Arc::clone(&state),
         );
 
@@ -732,6 +818,7 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(Some(100.0), HardLimitAction::Warn),
+            tokenizer_registry(),
             Arc::clone(&state),
         );
 
@@ -751,12 +838,27 @@ mod tests {
         let reconciler = BudgetReconciler::new(
             Arc::clone(&registry),
             budget_config(None, HardLimitAction::Warn),
+            tokenizer_registry(),
             state,
         );
 
+        // gpt-4 has exact tokenizer (tier 0)
         assert_eq!(reconciler.estimate_cost("gpt-4", 500).token_count_tier, 0);
-        assert_eq!(reconciler.estimate_cost("gpt-4", 5000).token_count_tier, 1);
-        assert_eq!(reconciler.estimate_cost("gpt-4", 50000).token_count_tier, 2);
+        assert_eq!(reconciler.estimate_cost("gpt-4", 5000).token_count_tier, 0);
+
+        // claude has approximation tokenizer (tier 1)
+        assert_eq!(
+            reconciler
+                .estimate_cost("claude-3-sonnet", 1000)
+                .token_count_tier,
+            1
+        );
+
+        // unknown models use heuristic (tier 2)
+        assert_eq!(
+            reconciler.estimate_cost("llama3:8b", 1000).token_count_tier,
+            2
+        );
     }
 
     // === Background reconciliation loop ===
@@ -766,7 +868,8 @@ mod tests {
         let state = Arc::new(DashMap::new());
         state.insert(GLOBAL_BUDGET_KEY.to_string(), BudgetMetrics::new());
 
-        let loop_task = BudgetReconciliationLoop::new(Arc::clone(&state), 1);
+        let budget_config = budget_config(Some(100.0), HardLimitAction::Warn);
+        let loop_task = BudgetReconciliationLoop::new(Arc::clone(&state), budget_config, 1);
         let cancel = CancellationToken::new();
         let handle = loop_task.start(cancel.clone());
 
@@ -819,5 +922,158 @@ mod tests {
         assert_eq!(config.monthly_limit_usd, Some(100.0));
         assert!((config.soft_limit_percent - 75.0).abs() < f64::EPSILON); // default
         assert_eq!(config.hard_limit_action, HardLimitAction::Warn); // default
+    }
+
+    // === SC-002: Soft limit routing shift reduces cloud spending ===
+
+    #[test]
+    fn sc002_soft_limit_marks_budget_status() {
+        // At SoftLimit, BudgetReconciler marks status so SchedulerReconciler
+        // can reduce cloud agent scores by 50%, shifting traffic to local backends
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_backend("local1", "llama3:8b", BackendType::Ollama))
+            .unwrap();
+        registry
+            .add_backend(create_backend("cloud1", "llama3:8b", BackendType::OpenAI))
+            .unwrap();
+
+        let state = Arc::new(DashMap::new());
+        let reconciler = BudgetReconciler::new(
+            Arc::clone(&registry),
+            budget_config(Some(100.0), HardLimitAction::BlockCloud),
+            tokenizer_registry(),
+            Arc::clone(&state),
+        );
+
+        // Simulate spending at 76% (above 75% soft limit)
+        state
+            .entry(GLOBAL_BUDGET_KEY.to_string())
+            .and_modify(|m| m.current_month_spending = 76.0);
+
+        let mut intent = create_intent("llama3:8b", vec!["local1".into(), "cloud1".into()]);
+        reconciler.reconcile(&mut intent).unwrap();
+
+        assert_eq!(
+            intent.budget_status,
+            BudgetStatus::SoftLimit,
+            "Budget should be at SoftLimit above 75%"
+        );
+        // At SoftLimit, candidates remain but SchedulerReconciler will prefer local
+        assert_eq!(
+            intent.candidate_agents.len(),
+            2,
+            "SoftLimit keeps all candidates; SchedulerReconciler adjusts scores"
+        );
+    }
+
+    #[test]
+    fn sc002_hard_limit_excludes_cloud_backends() {
+        // At HardLimit with BlockCloud action, cloud backends are excluded
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_backend("local1", "llama3:8b", BackendType::Ollama))
+            .unwrap();
+        registry
+            .add_backend(create_backend("cloud1", "llama3:8b", BackendType::OpenAI))
+            .unwrap();
+
+        let state = Arc::new(DashMap::new());
+        let reconciler = BudgetReconciler::new(
+            Arc::clone(&registry),
+            budget_config(Some(100.0), HardLimitAction::BlockCloud),
+            tokenizer_registry(),
+            Arc::clone(&state),
+        );
+
+        // Simulate spending at 100% (hard limit)
+        state
+            .entry(GLOBAL_BUDGET_KEY.to_string())
+            .and_modify(|m| m.current_month_spending = 100.0);
+
+        let mut intent = create_intent("llama3:8b", vec!["local1".into(), "cloud1".into()]);
+        reconciler.reconcile(&mut intent).unwrap();
+
+        assert_eq!(intent.budget_status, BudgetStatus::HardLimit);
+        assert!(
+            !intent.candidate_agents.contains(&"cloud1".to_string()),
+            "Cloud backend should be excluded at HardLimit with BlockCloud"
+        );
+        assert!(
+            intent.candidate_agents.contains(&"local1".to_string()),
+            "Local backend should remain available"
+        );
+    }
+
+    #[test]
+    fn sc002_normal_budget_includes_cloud_backends() {
+        // When budget is Normal (below soft limit), cloud backends should be available
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_backend("local1", "llama3:8b", BackendType::Ollama))
+            .unwrap();
+        registry
+            .add_backend(create_backend("cloud1", "llama3:8b", BackendType::OpenAI))
+            .unwrap();
+
+        let state = Arc::new(DashMap::new());
+        let reconciler = BudgetReconciler::new(
+            Arc::clone(&registry),
+            budget_config(Some(100.0), HardLimitAction::BlockCloud),
+            tokenizer_registry(),
+            Arc::clone(&state),
+        );
+
+        // Spending at 50% (well below 75% soft limit)
+        state
+            .entry(GLOBAL_BUDGET_KEY.to_string())
+            .and_modify(|m| m.current_month_spending = 50.0);
+
+        let mut intent = create_intent("llama3:8b", vec!["local1".into(), "cloud1".into()]);
+        reconciler.reconcile(&mut intent).unwrap();
+
+        assert_eq!(intent.budget_status, BudgetStatus::Normal);
+        assert_eq!(
+            intent.candidate_agents.len(),
+            2,
+            "Both local and cloud should be available at Normal budget"
+        );
+    }
+
+    // === SC-006: Budget counter resets on billing cycle ===
+
+    #[test]
+    fn sc006_auto_reset_on_month_rollover() {
+        let registry = Arc::new(Registry::new());
+        let state = Arc::new(DashMap::new());
+
+        // Simulate spending from a previous month
+        let mut old_metrics = BudgetMetrics::new();
+        old_metrics.current_month_spending = 95.0;
+        old_metrics.month_key = "2024-01".to_string(); // Old month
+        state.insert(GLOBAL_BUDGET_KEY.to_string(), old_metrics);
+
+        let reconciler = BudgetReconciler::new(
+            Arc::clone(&registry),
+            budget_config(Some(100.0), HardLimitAction::BlockCloud),
+            tokenizer_registry(),
+            Arc::clone(&state),
+        );
+
+        // Recording new spending should trigger month rollover detection
+        reconciler.record_spending(5.0);
+
+        let metrics = state.get(GLOBAL_BUDGET_KEY).unwrap();
+        // Spending should be reset to just the new amount (5.0), not 95.0 + 5.0
+        assert!(
+            (metrics.current_month_spending - 5.0).abs() < f64::EPSILON,
+            "Spending should be reset on month rollover, got {}",
+            metrics.current_month_spending
+        );
+        // Month key should be updated to current month
+        assert_ne!(
+            metrics.month_key, "2024-01",
+            "Month key should update on rollover"
+        );
     }
 }

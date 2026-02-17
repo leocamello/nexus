@@ -232,6 +232,7 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
         let budget_state: Arc<DashMap<String, BudgetMetrics>> = Arc::new(DashMap::new());
         let budget_loop = BudgetReconciliationLoop::new(
             Arc::clone(&budget_state),
+            config.routing.budget.clone(),
             config.routing.budget.reconciliation_interval_secs,
         );
         Some(budget_loop.start(cancel_token.clone()))
@@ -273,7 +274,7 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::BackendConfig;
+    use crate::config::{BackendConfig, BudgetConfig, HardLimitAction};
     use crate::registry::BackendType;
     use std::path::PathBuf;
     use std::time::Duration;
@@ -520,7 +521,14 @@ mod tests {
     #[tokio::test]
     async fn test_budget_loop_starts_and_stops() {
         let budget_state: Arc<DashMap<String, BudgetMetrics>> = Arc::new(DashMap::new());
-        let budget_loop = BudgetReconciliationLoop::new(Arc::clone(&budget_state), 1);
+        let budget_config = BudgetConfig {
+            monthly_limit_usd: Some(100.0),
+            soft_limit_percent: 75.0,
+            hard_limit_action: HardLimitAction::Warn,
+            reconciliation_interval_secs: 60,
+        };
+        let budget_loop =
+            BudgetReconciliationLoop::new(Arc::clone(&budget_state), budget_config, 1);
 
         let cancel = CancellationToken::new();
         let handle = budget_loop.start(cancel.clone());

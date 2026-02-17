@@ -220,6 +220,7 @@ fn bench_routing_with_alias(c: &mut Criterion) {
 
 // === Reconciler Pipeline Benchmarks ===
 
+use nexus::agent::tokenizer::TokenizerRegistry;
 use nexus::config::{BudgetConfig, PolicyMatcher};
 use nexus::routing::reconciler::budget::{BudgetMetrics, BudgetReconciler};
 use nexus::routing::reconciler::intent::RoutingIntent;
@@ -260,6 +261,7 @@ fn bench_full_pipeline(c: &mut Criterion) {
                     Box::new(BudgetReconciler::new(
                         Arc::clone(&registry),
                         BudgetConfig::default(),
+                        Arc::new(TokenizerRegistry::new().expect("tokenizer registry")),
                         Arc::clone(&budget_state),
                     )),
                     Box::new(TierReconciler::new(
@@ -338,6 +340,49 @@ fn bench_request_analyzer(c: &mut Criterion) {
     group.finish();
 }
 
+/// Benchmark tokenizer registry operations (SC-007: <200ms P95 overhead).
+fn bench_tokenizer_counting(c: &mut Criterion) {
+    let mut group = c.benchmark_group("tokenizer");
+    let registry = TokenizerRegistry::new().expect("tokenizer registry");
+
+    let short_text = "Hello, world!";
+    let medium_text = "The quick brown fox jumps over the lazy dog. ".repeat(10);
+    let long_text = "The quick brown fox jumps over the lazy dog. ".repeat(100);
+
+    // Exact tokenizer (OpenAI models)
+    for (label, text) in [
+        ("exact_short", short_text),
+        ("exact_medium", medium_text.as_str()),
+        ("exact_long", long_text.as_str()),
+    ] {
+        group.bench_function(label, |b| {
+            b.iter(|| {
+                black_box(registry.count_tokens("gpt-4", text).unwrap());
+            });
+        });
+    }
+
+    // Approximation tokenizer (Anthropic models)
+    group.bench_function("approx_medium", |b| {
+        b.iter(|| {
+            black_box(
+                registry
+                    .count_tokens("claude-3-sonnet-20240229", &medium_text)
+                    .unwrap(),
+            );
+        });
+    });
+
+    // Heuristic tokenizer (unknown/local models)
+    group.bench_function("heuristic_medium", |b| {
+        b.iter(|| {
+            black_box(registry.count_tokens("llama3:8b", &medium_text).unwrap());
+        });
+    });
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_smart_routing_by_backend_count,
@@ -347,5 +392,6 @@ criterion_group!(
     bench_routing_with_alias,
     bench_full_pipeline,
     bench_request_analyzer,
+    bench_tokenizer_counting,
 );
 criterion_main!(benches);
