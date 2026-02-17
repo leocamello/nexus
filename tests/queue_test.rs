@@ -60,12 +60,11 @@ async fn queue_accepts_up_to_capacity_and_rejects_overflow() {
 
     // N+1th request should be rejected
     let (tx, _rx) = tokio::sync::oneshot::channel();
-    let request: nexus::api::ChatCompletionRequest =
-        serde_json::from_value(serde_json::json!({
-            "model": "test-model",
-            "messages": [{"role": "user", "content": "overflow"}]
-        }))
-        .unwrap();
+    let request: nexus::api::ChatCompletionRequest = serde_json::from_value(serde_json::json!({
+        "model": "test-model",
+        "messages": [{"role": "user", "content": "overflow"}]
+    }))
+    .unwrap();
     let intent = nexus::routing::reconciler::intent::RoutingIntent::new(
         "req-overflow".to_string(),
         "test-model".to_string(),

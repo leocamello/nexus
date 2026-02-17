@@ -294,9 +294,7 @@ async fn process_queued_request(
     let _ = state.registry.decrement_pending(&backend.id);
 
     match result {
-        Ok(response) => {
-            Ok(axum::response::Json(response).into_response())
-        }
+        Ok(response) => Ok(axum::response::Json(response).into_response()),
         Err(e) => Err(e),
     }
 }
@@ -305,15 +303,12 @@ use axum::response::IntoResponse;
 
 /// Build a 503 response with retry_after header for timed-out requests.
 pub fn build_timeout_response(retry_after: &str) -> axum::response::Response {
-    let error = crate::api::ApiError::service_unavailable(
-        "Request timed out in queue",
-    );
+    let error = crate::api::ApiError::service_unavailable("Request timed out in queue");
     let mut response = error.into_response();
     if let Ok(val) = axum::http::HeaderValue::from_str(retry_after) {
-        response.headers_mut().insert(
-            axum::http::header::RETRY_AFTER,
-            val,
-        );
+        response
+            .headers_mut()
+            .insert(axum::http::header::RETRY_AFTER, val);
     }
     response
 }

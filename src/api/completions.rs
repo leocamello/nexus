@@ -414,14 +414,13 @@ pub async fn handle(
                     if let Some(ref queue) = state.queue {
                         let priority = extract_priority(&headers);
                         let (tx, rx) = tokio::sync::oneshot::channel();
-                        let intent =
-                            crate::routing::reconciler::intent::RoutingIntent::new(
-                                request_id.clone(),
-                                requested_model.clone(),
-                                requested_model.clone(),
-                                requirements.clone(),
-                                vec![],
-                            );
+                        let intent = crate::routing::reconciler::intent::RoutingIntent::new(
+                            request_id.clone(),
+                            requested_model.clone(),
+                            requested_model.clone(),
+                            requirements.clone(),
+                            vec![],
+                        );
                         let queued = crate::queue::QueuedRequest {
                             intent,
                             request: request.clone(),
@@ -439,52 +438,37 @@ pub async fn handle(
                                     "Request enqueued"
                                 );
 
-                                let max_wait = std::time::Duration::from_secs(
-                                    queue.config().max_wait_seconds,
-                                );
-                                match tokio::time::timeout(max_wait, rx).await
-                                {
+                                let max_wait =
+                                    std::time::Duration::from_secs(queue.config().max_wait_seconds);
+                                match tokio::time::timeout(max_wait, rx).await {
                                     Ok(Ok(resp)) => {
                                         return resp;
                                     }
                                     _ => {
-                                        return Ok(
-                                            crate::queue::build_timeout_response(
-                                                &queue
-                                                    .config()
-                                                    .max_wait_seconds
-                                                    .to_string(),
-                                            ),
-                                        );
+                                        return Ok(crate::queue::build_timeout_response(
+                                            &queue.config().max_wait_seconds.to_string(),
+                                        ));
                                     }
                                 }
                             }
                             Err(crate::queue::QueueError::Full { .. }) => {
                                 warn!("Queue full, rejecting request");
-                                return Ok(
-                                    ApiError::service_unavailable(
-                                        "All backends at capacity \
+                                return Ok(ApiError::service_unavailable(
+                                    "All backends at capacity \
                                          and queue is full",
-                                    )
-                                    .into_response(),
-                                );
+                                )
+                                .into_response());
                             }
                             Err(crate::queue::QueueError::Disabled) => {
-                                return Ok(
-                                    ApiError::service_unavailable(
-                                        "All backends at capacity",
-                                    )
-                                    .into_response(),
-                                );
+                                return Ok(ApiError::service_unavailable(
+                                    "All backends at capacity",
+                                )
+                                .into_response());
                             }
                         }
                     } else {
-                        return Ok(
-                            ApiError::service_unavailable(
-                                "All backends at capacity",
-                            )
-                            .into_response(),
-                        );
+                        return Ok(ApiError::service_unavailable("All backends at capacity")
+                            .into_response());
                     }
                 }
             }
@@ -891,10 +875,7 @@ async fn handle_streaming(
                 crate::routing::RoutingError::Queue { .. } => {
                     // Streaming requests don't support queuing
                     return Ok(
-                        ApiError::service_unavailable(
-                            "All backends at capacity",
-                        )
-                        .into_response(),
+                        ApiError::service_unavailable("All backends at capacity").into_response()
                     );
                 }
             }

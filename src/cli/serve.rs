@@ -238,8 +238,7 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
 
     // 4.1. Build API router and get AppState (to access ws_broadcast)
     let config_arc = Arc::new(config.clone());
-    let (app, app_state) =
-        build_api_router(registry.clone(), config_arc, queue.clone());
+    let (app, app_state) = build_api_router(registry.clone(), config_arc, queue.clone());
 
     // 5. Start health checker (if enabled) with broadcast sender
     let cancel_token = CancellationToken::new();
