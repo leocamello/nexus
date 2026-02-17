@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Quality & Queue Stats Extension",
+  "description": "JSON Schema for quality_metrics and queue fields in /v1/stats response",
+  "type": "object",
+  "properties": {
+    "quality_metrics": {
+      "type": "object",
+      "description": "Per-agent quality metrics keyed by agent_id",
+      "additionalProperties": {
+        "$ref": "#/definitions/AgentQualityMetrics"
+      }
+    },
+    "queue": {
+      "$ref": "#/definitions/QueueStatus"
+    }
+  },
+  "definitions": {
+    "AgentQualityMetrics": {
+      "type": "object",
+      "description": "Quality health snapshot for a single agent",
+      "required": ["error_rate_1h", "avg_ttft_ms", "success_rate_24h", "request_count_1h"],
+      "properties": {
+        "error_rate_1h": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Fraction of failed requests in the last 1 hour"
+        },
+        "avg_ttft_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Average Time To First Token in milliseconds (1h window)"
+        },
+        "success_rate_24h": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Fraction of successful requests in the last 24 hours"
+        },
+        "last_failure_ts": {
+          "type": ["string", "null"],
+          "description": "ISO 8601 timestamp of most recent failure, or null"
+        },
+        "request_count_1h": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total requests processed in the last 1 hour"
+        }
+      }
+    },
+    "QueueStatus": {
+      "type": "object",
+      "description": "Current state of the request queue",
+      "required": ["enabled", "depth", "max_size"],
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether request queuing is active"
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Current number of queued requests"
+        },
+        "max_size": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Maximum queue capacity"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,129 @@
+# Prometheus Metrics Contract — Phase 2.5
+
+# Quality Tracking Metrics (F16)
+
+metrics:
+  - name: nexus_agent_error_rate
+    type: gauge
+    help: "Per-agent error rate over a 1-hour rolling window"
+    labels:
+      - agent_id
+    range: [0.0, 1.0]
+    update_frequency: "Every 30s (configurable via quality.metrics_interval_seconds)"
+    example_promql:
+      - query: 'nexus_agent_error_rate > 0.3'
+        description: "Agents with concerning error rates"
+      - query: 'avg(nexus_agent_error_rate)'
+        description: "Fleet-wide average error rate"
+
+  - name: nexus_agent_ttft_seconds
+    type: gauge
+    help: "Per-agent average Time To First Token in seconds (1h window)"
+    labels:
+      - agent_id
+    unit: seconds
+    update_frequency: "Every 30s"
+    example_promql:
+      - query: 'nexus_agent_ttft_seconds > 3.0'
+        description: "Agents exceeding TTFT penalty threshold"
+      - query: 'topk(3, nexus_agent_ttft_seconds)'
+        description: "Slowest 3 agents by TTFT"
+
+  - name: nexus_agent_request_count_1h
+    type: gauge
+    help: "Per-agent total request count in the last 1 hour"
+    labels:
+      - agent_id
+    update_frequency: "Every 30s"
+    example_promql:
+      - query: 'sum(nexus_agent_request_count_1h)'
+        description: "Total fleet request volume (1h)"
+
+  - name: nexus_agent_success_rate_24h
+    type: gauge
+    help: "Per-agent success rate over a 24-hour rolling window"
+    labels:
+      - agent_id
+    range: [0.0, 1.0]
+    update_frequency: "Every 30s"
+
+# Request Queue Metrics (F18)
+
+  - name: nexus_queue_depth
+    type: gauge
+    help: "Current number of requests in the queue"
+    labels: []
+    update_frequency: "Real-time (on enqueue/dequeue)"
+    example_promql:
+      - query: 'nexus_queue_depth / 100'
+        description: "Queue utilization as percentage of max_size"
+      - query: 'nexus_queue_depth > 80'
+        description: "Queue nearing capacity (alert threshold)"
+
+  - name: nexus_queue_enqueued_total
+    type: counter
+    help: "Total number of requests enqueued"
+    labels: []
+    example_promql:
+      - query: 'rate(nexus_queue_enqueued_total[5m])'
+        description: "Queue ingestion rate"
+
+  - name: nexus_queue_timeout_total
+    type: counter
+    help: "Total number of requests that timed out in the queue"
+    labels: []
+    example_promql:
+      - query: 'rate(nexus_queue_timeout_total[5m]) > 0'
+        description: "Alert: requests timing out"
+      - query: 'nexus_queue_timeout_total / nexus_queue_enqueued_total'
+        description: "Timeout ratio (should be near 0)"
+
+  - name: nexus_queue_drained_total
+    type: counter
+    help: "Total number of requests successfully drained from the queue"
+    labels: []
+
+# Embedding Metrics (F17)
+
+  - name: nexus_embeddings_requests_total
+    type: counter
+    help: "Total embedding requests processed"
+    labels:
+      - model
+      - status  # success, error
+    example_promql:
+      - query: 'rate(nexus_embeddings_requests_total[5m])'
+        description: "Embedding request rate"
+
+  - name: nexus_embeddings_tokens_total
+    type: counter
+    help: "Total tokens processed for embeddings"
+    labels:
+      - model
+
+# Alert Rules (Recommended)
+
+alerts:
+  - name: HighAgentErrorRate
+    condition: 'nexus_agent_error_rate > 0.5'
+    for: 2m
+    severity: warning
+    description: "Agent {{ $labels.agent_id }} has error rate above 50%"
+
+  - name: QueueNearCapacity
+    condition: 'nexus_queue_depth > 80'
+    for: 1m
+    severity: warning
+    description: "Request queue at {{ $value }} items (max: 100)"
+
+  - name: QueueTimeouts
+    condition: 'rate(nexus_queue_timeout_total[5m]) > 0'
+    for: 5m
+    severity: critical
+    description: "Requests are timing out in the queue"
+
+  - name: SlowAgentTTFT
+    condition: 'nexus_agent_ttft_seconds > 5.0'
+    for: 5m
+    severity: warning
+    description: "Agent {{ $labels.agent_id }} TTFT exceeds 5 seconds"

@@ -1,0 +1,95 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Embeddings API Contract",
+  "description": "JSON Schema for POST /v1/embeddings — OpenAI-compatible embedding endpoint",
+  "definitions": {
+    "EmbeddingRequest": {
+      "type": "object",
+      "required": ["model", "input"],
+      "properties": {
+        "model": {
+          "type": "string",
+          "description": "Model identifier (e.g., 'nomic-embed-text', 'text-embedding-3-small')",
+          "examples": ["nomic-embed-text", "text-embedding-3-small"]
+        },
+        "input": {
+          "oneOf": [
+            {
+              "type": "string",
+              "description": "Single text to embed",
+              "minLength": 1
+            },
+            {
+              "type": "array",
+              "description": "Batch of texts to embed",
+              "items": { "type": "string", "minLength": 1 },
+              "minItems": 1
+            }
+          ]
+        },
+        "encoding_format": {
+          "type": "string",
+          "enum": ["float", "base64"],
+          "default": "float",
+          "description": "Output encoding format"
+        }
+      }
+    },
+    "EmbeddingResponse": {
+      "type": "object",
+      "required": ["object", "data", "model", "usage"],
+      "properties": {
+        "object": {
+          "type": "string",
+          "const": "list"
+        },
+        "data": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/EmbeddingObject" },
+          "minItems": 1
+        },
+        "model": {
+          "type": "string",
+          "description": "Model identifier echoed back"
+        },
+        "usage": {
+          "$ref": "#/definitions/EmbeddingUsage"
+        }
+      }
+    },
+    "EmbeddingObject": {
+      "type": "object",
+      "required": ["object", "embedding", "index"],
+      "properties": {
+        "object": {
+          "type": "string",
+          "const": "embedding"
+        },
+        "embedding": {
+          "type": "array",
+          "items": { "type": "number" },
+          "description": "Embedding vector (float32 values)"
+        },
+        "index": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Index of input text this embedding corresponds to"
+        }
+      }
+    },
+    "EmbeddingUsage": {
+      "type": "object",
+      "required": ["prompt_tokens", "total_tokens"],
+      "properties": {
+        "prompt_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_tokens": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}
