@@ -34,7 +34,9 @@ Nexus is a control plane for heterogeneous LLM inference — it routes requests 
 | F09 | Request Metrics | v0.2 | ✅ Complete | [specs/009-request-metrics](../specs/009-request-metrics/) |
 | F10 | Web Dashboard | v0.2 | ✅ Complete | [specs/010-web-dashboard](../specs/010-web-dashboard/) |
 | F11 | Structured Request Logging | v0.2 | ✅ Complete | [specs/011-structured-logging](../specs/011-structured-logging/) |
+| — | **NII Extraction (Phase 1)** | **v0.3** | ✅ Complete | [specs/012-nii-extraction](../specs/012-nii-extraction/) |
 | F12 | Cloud Backend Support | v0.3 | ✅ Complete | [specs/013-cloud-backend-support](../specs/013-cloud-backend-support/) |
+| — | **Control Plane (Phase 2)** | **v0.3** | ✅ Complete | [specs/014-control-plane-reconciler](../specs/014-control-plane-reconciler/) |
 | F13 | Privacy Zones & Capability Tiers | v0.3 | ✅ Complete | [specs/015-privacy-zones-capability-tiers](../specs/015-privacy-zones-capability-tiers/) |
 | F14 | Inference Budget Management | v0.3 | ✅ Complete | [specs/016-inference-budget-mgmt](../specs/016-inference-budget-mgmt/) |
 | — | **Quality + Queuing (Phase 2.5)** | **v0.4** | Planned | - |
