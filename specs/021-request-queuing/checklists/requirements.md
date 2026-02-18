@@ -62,7 +62,7 @@
 ### Retrospective Context
 
 This specification was created **after** the feature was fully implemented. All requirements, user scenarios, and success criteria were derived from the existing implementation in:
-- `src/queue/mod.rs` (595 lines, 14 unit tests)
+- `src/queue/mod.rs` (632 lines, 14 unit tests)
 - `src/config/queue.rs` (58 lines)
 - `src/api/completions.rs` (queue integration at lines 409-450)
 - `tests/queue_test.rs` (169 lines, 2 integration tests)

@@ -31,7 +31,7 @@ This directory contains the complete retrospective documentation for the Request
 
 | Source File | Purpose | Lines |
 |-------------|---------|-------|
-| `src/queue/mod.rs` | Core queue implementation | 595 |
+| `src/queue/mod.rs` | Core queue implementation | 632 |
 | `src/config/queue.rs` | Configuration structs | 59 |
 | `tests/queue_test.rs` | Integration tests | ~100 |
 
