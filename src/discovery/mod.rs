@@ -871,4 +871,272 @@ mod tests {
     fn test_extract_name_from_instance_no_dots() {
         assert_eq!(extract_name_from_instance("simple-name"), "simple-name");
     }
+
+    #[tokio::test]
+    async fn test_handle_mdns_event_service_removed() {
+        let registry = Arc::new(Registry::new());
+        let discovery = create_test_discovery(registry.clone());
+
+        // First add a backend via ServiceFound
+        discovery
+            .handle_event(create_found_event("remove-me"))
+            .await;
+        assert_eq!(registry.backend_count(), 1);
+
+        // Now remove via ServiceRemoved
+        discovery
+            .handle_event(create_removed_event("remove-me"))
+            .await;
+
+        // Backend should still exist (grace period), but status should be Unknown
+        let id = registry.find_by_mdns_instance("remove-me").unwrap();
+        let backend = registry.get_backend(&id).unwrap();
+        assert_eq!(backend.status, crate::registry::BackendStatus::Unknown);
+
+        // Should be in pending_removal
+        let pending = discovery.pending_removal.lock().await;
+        assert!(pending.contains_key("remove-me"));
+    }
+
+    #[tokio::test]
+    async fn test_handle_mdns_event_search_started() {
+        // SearchStarted is handled gracefully (no state changes)
+        let registry = Arc::new(Registry::new());
+        let discovery = create_test_discovery(registry.clone());
+
+        // Add a backend first to verify it's not affected
+        discovery
+            .handle_event(create_found_event("existing-service"))
+            .await;
+        assert_eq!(registry.backend_count(), 1);
+
+        // Simulate SearchStarted via handle_mdns_event
+        discovery
+            .handle_mdns_event(mdns_sd::ServiceEvent::SearchStarted(
+                "_ollama._tcp.local.".to_string(),
+            ))
+            .await;
+
+        // Registry should be unchanged
+        assert_eq!(registry.backend_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_handle_mdns_event_search_stopped() {
+        // SearchStopped is handled gracefully (no state changes)
+        let registry = Arc::new(Registry::new());
+        let discovery = create_test_discovery(registry.clone());
+
+        // Add a backend first to verify it's not affected
+        discovery
+            .handle_event(create_found_event("existing-service"))
+            .await;
+        assert_eq!(registry.backend_count(), 1);
+
+        // Simulate SearchStopped via handle_mdns_event
+        discovery
+            .handle_mdns_event(mdns_sd::ServiceEvent::SearchStopped(
+                "_ollama._tcp.local.".to_string(),
+            ))
+            .await;
+
+        // Registry should be unchanged
+        assert_eq!(registry.backend_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_stale_backends() {
+        let registry = Arc::new(Registry::new());
+        let config = DiscoveryConfig {
+            grace_period_seconds: 0, // Expire immediately
+            ..Default::default()
+        };
+        let discovery = MdnsDiscovery::new(config, registry.clone());
+
+        // Discover two backends (different IPs so URLs are unique)
+        discovery.handle_event(create_found_event("stale-1")).await;
+        let event2 = DiscoveryEvent::ServiceFound {
+            instance: "stale-2".to_string(),
+            service_type: "_ollama._tcp.local".to_string(),
+            addresses: vec![IpAddr::V4(Ipv4Addr::new(192, 168, 1, 20))],
+            port: 11434,
+            txt_records: HashMap::new(),
+        };
+        discovery.handle_event(event2).await;
+        assert_eq!(registry.backend_count(), 2);
+
+        // Remove only one
+        discovery
+            .handle_event(create_removed_event("stale-1"))
+            .await;
+
+        // Wait a moment for grace period to expire (grace_period_seconds=0)
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+        discovery.cleanup_stale_backends().await;
+
+        // stale-1 should be removed, stale-2 should remain
+        assert!(registry.find_by_mdns_instance("stale-1").is_none());
+        assert!(registry.find_by_mdns_instance("stale-2").is_some());
+        assert_eq!(registry.backend_count(), 1);
+
+        // pending_removal should be empty for stale-1
+        let pending = discovery.pending_removal.lock().await;
+        assert!(!pending.contains_key("stale-1"));
+    }
+
+    #[test]
+    fn test_build_url_with_different_ports() {
+        let ip = "10.0.0.1".parse::<IpAddr>().unwrap();
+
+        // Port 0
+        assert_eq!(build_url(ip, 0, ""), "http://10.0.0.1:0");
+
+        // Very large port number (max u16)
+        assert_eq!(build_url(ip, 65535, ""), "http://10.0.0.1:65535");
+
+        // Port 1
+        assert_eq!(build_url(ip, 1, ""), "http://10.0.0.1:1");
+
+        // Common port with path
+        assert_eq!(build_url(ip, 443, "/api"), "http://10.0.0.1:443/api");
+
+        // IPv6 with port 0
+        let ipv6 = "fe80::1".parse::<IpAddr>().unwrap();
+        assert_eq!(build_url(ipv6, 0, ""), "http://[fe80::1]:0");
+
+        // IPv6 with max port
+        assert_eq!(build_url(ipv6, 65535, "/v1"), "http://[fe80::1]:65535/v1");
+    }
+
+    #[test]
+    fn test_service_to_backend_with_version_metadata() {
+        let mut txt = HashMap::new();
+        txt.insert("version".to_string(), "0.5.1".to_string());
+        let event = create_test_event(
+            "versioned-server",
+            vec![IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1))],
+            8080,
+            txt,
+        );
+        let backend = service_event_to_backend(&event).unwrap();
+        assert_eq!(backend.metadata.get("version").unwrap(), "0.5.1");
+        assert_eq!(
+            backend.metadata.get("mdns_instance").unwrap(),
+            "versioned-server"
+        );
+    }
+
+    #[test]
+    fn test_service_to_backend_service_removed_event_returns_none() {
+        let event = DiscoveryEvent::ServiceRemoved {
+            instance: "removed._ollama._tcp.local".to_string(),
+            service_type: "_ollama._tcp.local".to_string(),
+        };
+        let result = service_event_to_backend(&event);
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_handle_service_removed_not_in_registry() {
+        let registry = Arc::new(Registry::new());
+        let discovery = create_test_discovery(registry.clone());
+
+        // Removing a service that was never discovered should not panic
+        discovery
+            .handle_event(create_removed_event("never-existed"))
+            .await;
+
+        assert_eq!(registry.backend_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_handle_event_dispatches_service_found() {
+        let registry = Arc::new(Registry::new());
+        let discovery = create_test_discovery(registry.clone());
+
+        let event = create_found_event("dispatch-test");
+        discovery.handle_event(event).await;
+
+        assert_eq!(registry.backend_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_handle_event_dispatches_service_removed() {
+        let registry = Arc::new(Registry::new());
+        let discovery = create_test_discovery(registry.clone());
+
+        // Add then remove
+        discovery
+            .handle_event(create_found_event("dispatch-rm"))
+            .await;
+        assert_eq!(registry.backend_count(), 1);
+
+        discovery
+            .handle_event(create_removed_event("dispatch-rm"))
+            .await;
+
+        // Still exists (grace period) but status changed
+        let id = registry.find_by_mdns_instance("dispatch-rm").unwrap();
+        let backend = registry.get_backend(&id).unwrap();
+        assert_eq!(backend.status, crate::registry::BackendStatus::Unknown);
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_stale_backends_no_expired() {
+        let registry = Arc::new(Registry::new());
+        let config = DiscoveryConfig {
+            grace_period_seconds: 3600, // Very long grace period
+            ..Default::default()
+        };
+        let discovery = MdnsDiscovery::new(config, registry.clone());
+
+        discovery
+            .handle_event(create_found_event("long-grace"))
+            .await;
+        discovery
+            .handle_event(create_removed_event("long-grace"))
+            .await;
+
+        // Cleanup should NOT remove (grace period not expired)
+        discovery.cleanup_stale_backends().await;
+        assert!(registry.find_by_mdns_instance("long-grace").is_some());
+    }
+
+    #[test]
+    fn test_service_to_backend_different_service_types() {
+        // Test with _vllm._tcp.local service type (maps to Generic without TXT type)
+        let event = DiscoveryEvent::ServiceFound {
+            instance: "vllm-server".to_string(),
+            service_type: "_vllm._tcp.local".to_string(),
+            addresses: vec![IpAddr::V4(Ipv4Addr::new(10, 0, 0, 5))],
+            port: 8000,
+            txt_records: HashMap::new(),
+        };
+        let backend = service_event_to_backend(&event).unwrap();
+        // Without TXT "type" record, non-ollama service types map to Generic
+        assert_eq!(backend.backend_type, BackendType::Generic);
+        assert_eq!(backend.url, "http://10.0.0.5:8000/v1");
+    }
+
+    #[test]
+    fn test_service_to_backend_with_vllm_txt_type() {
+        // With explicit TXT "type=vllm" → BackendType::VLLM
+        let mut txt = HashMap::new();
+        txt.insert("type".to_string(), "vllm".to_string());
+        let event = DiscoveryEvent::ServiceFound {
+            instance: "vllm-server".to_string(),
+            service_type: "_llm._tcp.local".to_string(),
+            addresses: vec![IpAddr::V4(Ipv4Addr::new(10, 0, 0, 5))],
+            port: 8000,
+            txt_records: txt,
+        };
+        let backend = service_event_to_backend(&event).unwrap();
+        assert_eq!(backend.backend_type, BackendType::VLLM);
+    }
+
+    #[test]
+    fn test_extract_name_from_instance_empty() {
+        assert_eq!(extract_name_from_instance(""), "");
+    }
 }

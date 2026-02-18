@@ -205,4 +205,189 @@ mod tests {
         assert_eq!(h.get(HEADER_PRIVACY_ZONE).unwrap(), "open");
         assert_eq!(h.get(HEADER_COST_ESTIMATED).unwrap(), "0.0042");
     }
+
+    #[test]
+    fn test_inject_headers_no_cost() {
+        use axum::http::Response;
+
+        let headers = NexusTransparentHeaders::new(
+            "local-backend".to_string(),
+            BackendType::Ollama,
+            RouteReason::CapabilityMatch,
+            PrivacyZone::Restricted,
+            None, // No cost
+        );
+
+        let mut response = Response::new("test body");
+        headers.inject_into_response(&mut response);
+
+        let h = response.headers();
+        assert_eq!(h.get(HEADER_BACKEND).unwrap(), "local-backend");
+        assert_eq!(h.get(HEADER_BACKEND_TYPE).unwrap(), "local");
+        assert_eq!(h.get(HEADER_ROUTE_REASON).unwrap(), "capability-match");
+        assert_eq!(h.get(HEADER_PRIVACY_ZONE).unwrap(), "restricted");
+        // X-Nexus-Cost-Estimated should NOT be present when cost is None
+        assert!(
+            h.get(HEADER_COST_ESTIMATED).is_none(),
+            "Cost header should not be present when cost_estimated is None"
+        );
+    }
+
+    #[test]
+    fn test_inject_headers_vllm_local() {
+        use axum::http::Response;
+
+        let headers = NexusTransparentHeaders::new(
+            "vllm-backend".to_string(),
+            BackendType::VLLM,
+            RouteReason::CapacityOverflow,
+            PrivacyZone::Restricted,
+            None,
+        );
+
+        let mut response = Response::new("test body");
+        headers.inject_into_response(&mut response);
+
+        let h = response.headers();
+        assert_eq!(h.get(HEADER_BACKEND_TYPE).unwrap(), "local");
+        assert_eq!(h.get(HEADER_ROUTE_REASON).unwrap(), "capacity-overflow");
+    }
+
+    #[test]
+    fn test_inject_headers_llamacpp_local() {
+        use axum::http::Response;
+
+        let headers = NexusTransparentHeaders::new(
+            "llcpp-backend".to_string(),
+            BackendType::LlamaCpp,
+            RouteReason::Failover,
+            PrivacyZone::Restricted,
+            None,
+        );
+
+        let mut response = Response::new("test body");
+        headers.inject_into_response(&mut response);
+
+        let h = response.headers();
+        assert_eq!(h.get(HEADER_BACKEND_TYPE).unwrap(), "local");
+        assert_eq!(h.get(HEADER_ROUTE_REASON).unwrap(), "failover");
+    }
+
+    #[test]
+    fn test_inject_headers_exo_local() {
+        use axum::http::Response;
+
+        let headers = NexusTransparentHeaders::new(
+            "exo-backend".to_string(),
+            BackendType::Exo,
+            RouteReason::PrivacyRequirement,
+            PrivacyZone::Restricted,
+            None,
+        );
+
+        let mut response = Response::new("test body");
+        headers.inject_into_response(&mut response);
+
+        let h = response.headers();
+        assert_eq!(h.get(HEADER_BACKEND_TYPE).unwrap(), "local");
+        assert_eq!(h.get(HEADER_ROUTE_REASON).unwrap(), "privacy-requirement");
+    }
+
+    #[test]
+    fn test_inject_headers_lmstudio_local() {
+        use axum::http::Response;
+
+        let headers = NexusTransparentHeaders::new(
+            "lms-backend".to_string(),
+            BackendType::LMStudio,
+            RouteReason::CapabilityMatch,
+            PrivacyZone::Open,
+            None,
+        );
+
+        let mut response = Response::new("test body");
+        headers.inject_into_response(&mut response);
+
+        let h = response.headers();
+        assert_eq!(h.get(HEADER_BACKEND_TYPE).unwrap(), "local");
+        assert_eq!(h.get(HEADER_PRIVACY_ZONE).unwrap(), "open");
+    }
+
+    #[test]
+    fn test_inject_headers_generic_local() {
+        use axum::http::Response;
+
+        let headers = NexusTransparentHeaders::new(
+            "gen-backend".to_string(),
+            BackendType::Generic,
+            RouteReason::CapabilityMatch,
+            PrivacyZone::Restricted,
+            None,
+        );
+
+        let mut response = Response::new("test body");
+        headers.inject_into_response(&mut response);
+
+        assert_eq!(
+            response.headers().get(HEADER_BACKEND_TYPE).unwrap(),
+            "local"
+        );
+    }
+
+    #[test]
+    fn test_inject_headers_anthropic_cloud() {
+        use axum::http::Response;
+
+        let headers = NexusTransparentHeaders::new(
+            "anthropic-backend".to_string(),
+            BackendType::Anthropic,
+            RouteReason::CapabilityMatch,
+            PrivacyZone::Open,
+            Some(0.015),
+        );
+
+        let mut response = Response::new("test body");
+        headers.inject_into_response(&mut response);
+
+        let h = response.headers();
+        assert_eq!(h.get(HEADER_BACKEND_TYPE).unwrap(), "cloud");
+        assert_eq!(h.get(HEADER_COST_ESTIMATED).unwrap(), "0.0150");
+    }
+
+    #[test]
+    fn test_inject_headers_google_cloud() {
+        use axum::http::Response;
+
+        let headers = NexusTransparentHeaders::new(
+            "google-backend".to_string(),
+            BackendType::Google,
+            RouteReason::CapabilityMatch,
+            PrivacyZone::Open,
+            Some(0.001),
+        );
+
+        let mut response = Response::new("test body");
+        headers.inject_into_response(&mut response);
+
+        let h = response.headers();
+        assert_eq!(h.get(HEADER_BACKEND_TYPE).unwrap(), "cloud");
+        assert_eq!(h.get(HEADER_COST_ESTIMATED).unwrap(), "0.0010");
+    }
+
+    #[test]
+    fn test_route_reason_display() {
+        assert_eq!(
+            format!("{}", RouteReason::CapabilityMatch),
+            "capability-match"
+        );
+        assert_eq!(
+            format!("{}", RouteReason::CapacityOverflow),
+            "capacity-overflow"
+        );
+        assert_eq!(
+            format!("{}", RouteReason::PrivacyRequirement),
+            "privacy-requirement"
+        );
+        assert_eq!(format!("{}", RouteReason::Failover), "failover");
+    }
 }

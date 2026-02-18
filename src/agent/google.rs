@@ -1702,4 +1702,191 @@ mod tests {
         }
         mock.assert_async().await;
     }
+
+    #[tokio::test]
+    async fn test_chat_completion_non_streaming_api_error() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock(
+                "POST",
+                "/v1beta/models/gemini-1.5-pro:generateContent?key=test-key-123",
+            )
+            .with_status(400)
+            .with_body(r#"{"error":{"message":"Invalid request"}}"#)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "test-key-123".to_string());
+        let request = ChatCompletionRequest {
+            model: "gemini-1.5-pro".to_string(),
+            messages: vec![ChatMessage {
+                role: "user".to_string(),
+                content: MessageContent::Text {
+                    content: "Hello".to_string(),
+                },
+                name: None,
+                function_call: None,
+            }],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+
+        let result = agent.chat_completion(request, None).await;
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("Expected error"),
+        };
+        match err {
+            AgentError::Upstream { status, .. } => assert_eq!(status, 400),
+            other => panic!("Expected Upstream error, got: {:?}", other),
+        }
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_non_streaming_network_error() {
+        let agent = test_agent(
+            "http://invalid-host-that-does-not-exist:9999".to_string(),
+            "test-key".to_string(),
+        );
+        let request = ChatCompletionRequest {
+            model: "gemini-1.5-pro".to_string(),
+            messages: vec![ChatMessage {
+                role: "user".to_string(),
+                content: MessageContent::Text {
+                    content: "Hello".to_string(),
+                },
+                name: None,
+                function_call: None,
+            }],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+
+        let result = agent.chat_completion(request, None).await;
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("Expected error"),
+        };
+        assert!(
+            matches!(err, AgentError::Network(_) | AgentError::Timeout(_)),
+            "Expected Network or Timeout error, got: {:?}",
+            err
+        );
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_non_streaming_invalid_json() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock(
+                "POST",
+                "/v1beta/models/gemini-1.5-pro:generateContent?key=test-key-123",
+            )
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body("not valid json")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "test-key-123".to_string());
+        let request = ChatCompletionRequest {
+            model: "gemini-1.5-pro".to_string(),
+            messages: vec![ChatMessage {
+                role: "user".to_string(),
+                content: MessageContent::Text {
+                    content: "Hello".to_string(),
+                },
+                name: None,
+                function_call: None,
+            }],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+
+        let result = agent.chat_completion(request, None).await;
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("Expected error"),
+        };
+        assert!(
+            matches!(err, AgentError::InvalidResponse(_)),
+            "Expected InvalidResponse error, got: {:?}",
+            err
+        );
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_health_check_failure() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v1beta/models?key=bad-key")
+            .with_status(403)
+            .with_body(r#"{"error":"forbidden"}"#)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "bad-key".to_string());
+        let status = agent.health_check().await.unwrap();
+
+        mock.assert_async().await;
+        assert_eq!(status, HealthStatus::Unhealthy);
+    }
+
+    #[tokio::test]
+    async fn test_health_check_network_error() {
+        let agent = test_agent(
+            "http://invalid-host-that-does-not-exist:9999".to_string(),
+            "test-key".to_string(),
+        );
+        let result = agent.health_check().await;
+
+        assert!(matches!(result, Err(AgentError::Network(_))));
+    }
+
+    #[tokio::test]
+    async fn test_list_models_api_error() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v1beta/models?key=bad-key")
+            .with_status(401)
+            .with_body(r#"{"error":"unauthorized"}"#)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "bad-key".to_string());
+        let result = agent.list_models().await;
+
+        mock.assert_async().await;
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("Expected error"),
+        };
+        match err {
+            AgentError::Upstream { status, .. } => assert_eq!(status, 401),
+            other => panic!("Expected Upstream error, got: {:?}", other),
+        }
+    }
 }

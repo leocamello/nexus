@@ -630,4 +630,336 @@ mod tests {
         }
         mock.assert_async().await;
     }
+
+    #[tokio::test]
+    async fn test_chat_completion_non_streaming_api_error() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .with_status(429)
+            .with_body(r#"{"error":"rate limit"}"#)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url());
+        let request = ChatCompletionRequest {
+            model: "test".to_string(),
+            messages: vec![],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+
+        let result = agent.chat_completion(request, None).await;
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("Expected error"),
+        };
+        match err {
+            AgentError::Upstream { status, .. } => assert_eq!(status, 429),
+            other => panic!("Expected Upstream error, got: {:?}", other),
+        }
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_non_streaming_invalid_json() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body("not valid json")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url());
+        let request = ChatCompletionRequest {
+            model: "test".to_string(),
+            messages: vec![],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+
+        let result = agent.chat_completion(request, None).await;
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("Expected error"),
+        };
+        assert!(
+            matches!(err, AgentError::InvalidResponse(_)),
+            "Expected InvalidResponse error, got: {:?}",
+            err
+        );
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_health_check_network_error() {
+        let agent = test_agent("http://invalid-host-that-does-not-exist:9999".to_string());
+        let result = agent.health_check().await;
+
+        assert!(matches!(result, Err(AgentError::Network(_))));
+    }
+
+    #[tokio::test]
+    async fn test_list_models_api_error() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v1/models")
+            .with_status(500)
+            .with_body("Internal error")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url());
+        let result = agent.list_models().await;
+
+        mock.assert_async().await;
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("Expected error"),
+        };
+        match err {
+            AgentError::Upstream { status, .. } => assert_eq!(status, 500),
+            other => panic!("Expected Upstream error, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_health_check_invalid_json() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v1/models")
+            .with_status(200)
+            .with_body("not valid json")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url());
+        let result = agent.health_check().await;
+
+        mock.assert_async().await;
+        assert!(matches!(result, Err(AgentError::InvalidResponse(_))));
+    }
+
+    #[tokio::test]
+    async fn test_list_models_invalid_json() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v1/models")
+            .with_status(200)
+            .with_body("not json")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url());
+        let result = agent.list_models().await;
+
+        mock.assert_async().await;
+        assert!(matches!(result, Err(AgentError::InvalidResponse(_))));
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_with_auth_header() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .match_header("authorization", "Bearer lm-key")
+            .with_status(200)
+            .with_body(r#"{"id":"1","object":"chat.completion","created":123,"model":"test","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}"#)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url());
+        let request = ChatCompletionRequest {
+            model: "test".to_string(),
+            messages: vec![],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("authorization", "Bearer lm-key".parse().unwrap());
+        let response = agent
+            .chat_completion(request, Some(&headers))
+            .await
+            .unwrap();
+        assert_eq!(response.id, "1");
+        mock.assert_async().await;
+    }
+
+    #[test]
+    fn test_name_heuristics_context_16k() {
+        let mut model = ModelCapability {
+            id: "codellama-16k".to_string(),
+            name: "codellama-16k".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        LMStudioAgent::apply_name_heuristics(&mut model);
+        assert_eq!(model.context_length, 16384);
+    }
+
+    #[test]
+    fn test_name_heuristics_context_8k() {
+        let mut model = ModelCapability {
+            id: "mistral-8k".to_string(),
+            name: "mistral-8k".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        LMStudioAgent::apply_name_heuristics(&mut model);
+        assert_eq!(model.context_length, 8192);
+    }
+
+    #[test]
+    fn test_name_heuristics_context_4k() {
+        let mut model = ModelCapability {
+            id: "tiny-4k".to_string(),
+            name: "tiny-4k".to_string(),
+            context_length: 2048,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        LMStudioAgent::apply_name_heuristics(&mut model);
+        assert_eq!(model.context_length, 4096);
+    }
+
+    #[test]
+    fn test_name_heuristics_command_tools() {
+        let mut model = ModelCapability {
+            id: "command-r".to_string(),
+            name: "command-r".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        LMStudioAgent::apply_name_heuristics(&mut model);
+        assert!(model.supports_tools);
+        assert!(model.supports_json_mode);
+    }
+
+    #[test]
+    fn test_name_heuristics_vision_keyword() {
+        let mut model = ModelCapability {
+            id: "some-vision-model".to_string(),
+            name: "some-vision-model".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        LMStudioAgent::apply_name_heuristics(&mut model);
+        assert!(model.supports_vision);
+    }
+
+    #[test]
+    fn test_profile_with_capability_tier() {
+        let client = Arc::new(Client::new());
+        let agent = LMStudioAgent::new(
+            "test".to_string(),
+            "Test".to_string(),
+            "http://localhost".to_string(),
+            client,
+            PrivacyZone::Open,
+            Some(2),
+        );
+        let profile = agent.profile();
+        assert_eq!(profile.capability_tier, Some(2));
+        assert_eq!(profile.privacy_zone, PrivacyZone::Open);
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_stream_with_auth_header() {
+        use futures_util::stream::StreamExt;
+
+        let mut server = Server::new_async().await;
+        let sse_body = "data: {\"id\":\"chatcmpl-auth\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Auth\"},\"finish_reason\":null}]}\n\n";
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .match_header("authorization", "Bearer stream-key")
+            .with_status(200)
+            .with_header("content-type", "text/event-stream")
+            .with_body(sse_body)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url());
+        let request = ChatCompletionRequest {
+            model: "test".to_string(),
+            messages: vec![],
+            stream: true,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("authorization", "Bearer stream-key".parse().unwrap());
+        let mut stream = agent
+            .chat_completion_stream(request, Some(&headers))
+            .await
+            .unwrap();
+        let chunk = stream.next().await.unwrap().unwrap();
+        assert!(chunk.data.contains("Auth"));
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_health_check_unhealthy() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v1/models")
+            .with_status(500)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url());
+        let status = agent.health_check().await.unwrap();
+
+        mock.assert_async().await;
+        assert_eq!(status, HealthStatus::Unhealthy);
+    }
 }

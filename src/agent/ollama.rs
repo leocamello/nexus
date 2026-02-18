@@ -972,4 +972,587 @@ mod tests {
         }
         mock.assert_async().await;
     }
+
+    #[tokio::test]
+    async fn test_chat_completion_non_streaming_network_error() {
+        let agent = test_agent("http://invalid-host-that-does-not-exist:9999".to_string());
+        let request = ChatCompletionRequest {
+            model: "llama3".to_string(),
+            messages: vec![],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+
+        let result = agent.chat_completion(request, None).await;
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("Expected error"),
+        };
+        assert!(
+            matches!(err, AgentError::Network(_) | AgentError::Timeout(_)),
+            "Expected Network or Timeout error, got: {:?}",
+            err
+        );
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_non_streaming_invalid_json() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body("not valid json")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url());
+        let request = ChatCompletionRequest {
+            model: "llama3".to_string(),
+            messages: vec![],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+
+        let result = agent.chat_completion(request, None).await;
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("Expected error"),
+        };
+        assert!(
+            matches!(err, AgentError::InvalidResponse(_)),
+            "Expected InvalidResponse error, got: {:?}",
+            err
+        );
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_list_models_api_error() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", "/api/tags")
+            .with_status(500)
+            .with_body("Internal error")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url());
+        let result = agent.list_models().await;
+
+        mock.assert_async().await;
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("Expected error"),
+        };
+        match err {
+            AgentError::Upstream { status, .. } => assert_eq!(status, 500),
+            other => panic!("Expected Upstream error, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_embeddings_single_input() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/api/embed")
+            .with_status(500)
+            .with_body("model not found")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url());
+        let result = agent
+            .embeddings("nomic-embed-text", vec!["hello".to_string()])
+            .await;
+
+        mock.assert_async().await;
+        assert!(matches!(
+            result,
+            Err(AgentError::Upstream { status: 500, .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_embeddings_invalid_response() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/api/embed")
+            .with_status(200)
+            .with_body(r#"{"not_embeddings": true}"#)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url());
+        let result = agent
+            .embeddings("nomic-embed-text", vec!["hello".to_string()])
+            .await;
+
+        mock.assert_async().await;
+        assert!(matches!(result, Err(AgentError::InvalidResponse(_))));
+    }
+
+    #[tokio::test]
+    async fn test_embeddings_multiple_inputs() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/api/embed")
+            .with_status(200)
+            .with_body(r#"{"embeddings":[[0.1, 0.2]]}"#)
+            .expect(2)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url());
+        let result = agent
+            .embeddings(
+                "nomic-embed-text",
+                vec!["hello".to_string(), "world".to_string()],
+            )
+            .await;
+
+        mock.assert_async().await;
+        let embeddings = result.unwrap();
+        assert_eq!(embeddings.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_health_check_invalid_json() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", "/api/tags")
+            .with_status(200)
+            .with_body("not valid json")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url());
+        let result = agent.health_check().await;
+
+        mock.assert_async().await;
+        assert!(matches!(result, Err(AgentError::InvalidResponse(_))));
+    }
+
+    #[tokio::test]
+    async fn test_list_models_invalid_json() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", "/api/tags")
+            .with_status(200)
+            .with_body("not json")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url());
+        let result = agent.list_models().await;
+
+        mock.assert_async().await;
+        assert!(matches!(result, Err(AgentError::InvalidResponse(_))));
+    }
+
+    #[test]
+    fn test_name_heuristics_context_128k() {
+        let mut model = ModelCapability {
+            id: "llama-128k".to_string(),
+            name: "llama-128k".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        OllamaAgent::apply_name_heuristics(&mut model);
+        assert_eq!(model.context_length, 131072);
+    }
+
+    #[test]
+    fn test_name_heuristics_context_32k() {
+        let mut model = ModelCapability {
+            id: "llama-32k".to_string(),
+            name: "llama-32k".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        OllamaAgent::apply_name_heuristics(&mut model);
+        assert_eq!(model.context_length, 32768);
+    }
+
+    #[test]
+    fn test_name_heuristics_context_16k() {
+        let mut model = ModelCapability {
+            id: "llama-16k".to_string(),
+            name: "llama-16k".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        OllamaAgent::apply_name_heuristics(&mut model);
+        assert_eq!(model.context_length, 16384);
+    }
+
+    #[test]
+    fn test_name_heuristics_context_4k() {
+        let mut model = ModelCapability {
+            id: "tiny-4k".to_string(),
+            name: "tiny-4k".to_string(),
+            context_length: 2048,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        OllamaAgent::apply_name_heuristics(&mut model);
+        assert_eq!(model.context_length, 4096);
+    }
+
+    #[test]
+    fn test_name_heuristics_command_tools() {
+        let mut model = ModelCapability {
+            id: "command-r-plus".to_string(),
+            name: "command-r-plus".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        OllamaAgent::apply_name_heuristics(&mut model);
+        assert!(model.supports_tools);
+    }
+
+    #[test]
+    fn test_name_heuristics_functionary_tools() {
+        let mut model = ModelCapability {
+            id: "functionary-v2".to_string(),
+            name: "functionary-v2".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        OllamaAgent::apply_name_heuristics(&mut model);
+        assert!(model.supports_tools);
+    }
+
+    #[test]
+    fn test_name_heuristics_hermes_tools() {
+        let mut model = ModelCapability {
+            id: "hermes-3-llama".to_string(),
+            name: "hermes-3-llama".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        OllamaAgent::apply_name_heuristics(&mut model);
+        assert!(model.supports_tools);
+    }
+
+    #[test]
+    fn test_name_heuristics_bakllava_vision() {
+        let mut model = ModelCapability {
+            id: "bakllava:7b".to_string(),
+            name: "bakllava:7b".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        OllamaAgent::apply_name_heuristics(&mut model);
+        assert!(model.supports_vision);
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_stream_data_chunks() {
+        use futures_util::stream::StreamExt;
+
+        let mut server = Server::new_async().await;
+        let sse_body =
+            "data: {\"id\":\"chatcmpl-123\",\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}\n\n";
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .with_status(200)
+            .with_header("content-type", "text/event-stream")
+            .with_body(sse_body)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url());
+        let request = ChatCompletionRequest {
+            model: "llama3:8b".to_string(),
+            messages: vec![],
+            stream: true,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+
+        let result = agent.chat_completion_stream(request, None).await;
+        assert!(result.is_ok());
+        let mut stream = result.unwrap();
+        let chunk = stream.next().await;
+        assert!(chunk.is_some());
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_stream_upstream_error() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .with_status(500)
+            .with_body("error")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url());
+        let request = ChatCompletionRequest {
+            model: "llama3:8b".to_string(),
+            messages: vec![],
+            stream: true,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+
+        let result = agent.chat_completion_stream(request, None).await;
+        assert!(matches!(
+            result,
+            Err(AgentError::Upstream { status: 500, .. })
+        ));
+        mock.assert_async().await;
+    }
+
+    #[test]
+    fn test_profile_with_capability_tier() {
+        let client = Arc::new(Client::new());
+        let agent = OllamaAgent::new(
+            "test".to_string(),
+            "Test".to_string(),
+            "http://localhost".to_string(),
+            client,
+            PrivacyZone::Open,
+            Some(5),
+        );
+        let profile = agent.profile();
+        assert_eq!(profile.capability_tier, Some(5));
+        assert_eq!(profile.privacy_zone, PrivacyZone::Open);
+    }
+
+    #[tokio::test]
+    async fn test_list_models_upstream_error() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", "/api/tags")
+            .with_status(500)
+            .with_body("server error")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url());
+        let result = agent.list_models().await;
+
+        mock.assert_async().await;
+        assert!(matches!(
+            result,
+            Err(AgentError::Upstream { status: 500, .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_with_auth_header() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .match_header("authorization", "Bearer ollama-key")
+            .with_status(200)
+            .with_body(r#"{"id":"1","object":"chat.completion","created":123,"model":"test","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}"#)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url());
+        let request = ChatCompletionRequest {
+            model: "test".to_string(),
+            messages: vec![],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("authorization", "Bearer ollama-key".parse().unwrap());
+        let response = agent
+            .chat_completion(request, Some(&headers))
+            .await
+            .unwrap();
+        assert_eq!(response.id, "1");
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_embeddings_api_success() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/api/embed")
+            .with_status(200)
+            .with_body(r#"{"embeddings":[[0.1,0.2,0.3]]}"#)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url());
+        let result = agent
+            .embeddings("llama3:8b", vec!["hello".to_string()])
+            .await
+            .unwrap();
+
+        mock.assert_async().await;
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_embeddings_api_upstream_error() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/api/embed")
+            .with_status(500)
+            .with_body("fail")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url());
+        let result = agent.embeddings("test", vec!["hello".to_string()]).await;
+
+        mock.assert_async().await;
+        assert!(matches!(
+            result,
+            Err(AgentError::Upstream { status: 500, .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_embeddings_api_invalid_response() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/api/embed")
+            .with_status(200)
+            .with_body(r#"{"embeddings":"not_array"}"#)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url());
+        let result = agent.embeddings("test", vec!["hello".to_string()]).await;
+
+        mock.assert_async().await;
+        assert!(matches!(result, Err(AgentError::InvalidResponse(_))));
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_stream_success_with_data() {
+        use futures_util::stream::StreamExt;
+
+        let mut server = Server::new_async().await;
+        let sse_body = "data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hello\"},\"finish_reason\":null}]}\n\n";
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .with_status(200)
+            .with_header("content-type", "text/event-stream")
+            .with_body(sse_body)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url());
+        let request = ChatCompletionRequest {
+            model: "test".to_string(),
+            messages: vec![],
+            stream: true,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+        let mut stream = agent.chat_completion_stream(request, None).await.unwrap();
+        let chunk = stream.next().await.unwrap().unwrap();
+        assert!(chunk.data.contains("Hello"));
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_invalid_json_response() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .with_status(200)
+            .with_body("not json")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url());
+        let request = ChatCompletionRequest {
+            model: "test".to_string(),
+            messages: vec![],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+        let result = agent.chat_completion(request, None).await;
+        assert!(matches!(result, Err(AgentError::InvalidResponse(_))));
+        mock.assert_async().await;
+    }
 }

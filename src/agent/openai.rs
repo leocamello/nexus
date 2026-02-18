@@ -999,4 +999,535 @@ mod tests {
         }
         mock.assert_async().await;
     }
+
+    #[tokio::test]
+    async fn test_chat_completion_non_streaming_api_error() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .with_status(429)
+            .with_body(r#"{"error":{"message":"Rate limit exceeded","type":"rate_limit_error"}}"#)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "sk-test".to_string());
+        let request = ChatCompletionRequest {
+            model: "gpt-4".to_string(),
+            messages: vec![],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+
+        let result = agent.chat_completion(request, None).await;
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("Expected error"),
+        };
+        match err {
+            AgentError::Upstream { status, .. } => assert_eq!(status, 429),
+            other => panic!("Expected Upstream error, got: {:?}", other),
+        }
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_non_streaming_network_error() {
+        let agent = test_agent(
+            "http://invalid-host-that-does-not-exist:9999".to_string(),
+            "sk-test".to_string(),
+        );
+        let request = ChatCompletionRequest {
+            model: "gpt-4".to_string(),
+            messages: vec![],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+
+        let result = agent.chat_completion(request, None).await;
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("Expected error"),
+        };
+        assert!(
+            matches!(err, AgentError::Network(_) | AgentError::Timeout(_)),
+            "Expected Network or Timeout error, got: {:?}",
+            err
+        );
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_non_streaming_invalid_json() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body("not valid json")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "sk-test".to_string());
+        let request = ChatCompletionRequest {
+            model: "gpt-4".to_string(),
+            messages: vec![],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+
+        let result = agent.chat_completion(request, None).await;
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("Expected error"),
+        };
+        assert!(
+            matches!(err, AgentError::InvalidResponse(_)),
+            "Expected InvalidResponse error, got: {:?}",
+            err
+        );
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_non_streaming_auth_header_override() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .match_header("authorization", "Bearer override-key")
+            .with_status(200)
+            .with_body(r#"{"id":"cmpl-1","object":"chat.completion","created":1234567890,"model":"gpt-4","choices":[{"index":0,"message":{"role":"assistant","content":"Hi"},"finish_reason":"stop"}]}"#)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "sk-default".to_string());
+        let request = ChatCompletionRequest {
+            model: "gpt-4".to_string(),
+            messages: vec![],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+
+        let mut headers = HeaderMap::new();
+        headers.insert("authorization", "Bearer override-key".parse().unwrap());
+        let response = agent
+            .chat_completion(request, Some(&headers))
+            .await
+            .unwrap();
+        assert_eq!(response.model, "gpt-4");
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_list_models_api_error() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v1/models")
+            .with_status(401)
+            .with_body(r#"{"error":"unauthorized"}"#)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "bad-key".to_string());
+        let result = agent.list_models().await;
+
+        mock.assert_async().await;
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("Expected error"),
+        };
+        match err {
+            AgentError::Upstream { status, .. } => assert_eq!(status, 401),
+            other => panic!("Expected Upstream error, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_count_tokens_exact_via_trait() {
+        let agent = test_agent("https://api.openai.com".to_string(), "sk-test".to_string());
+        let result = agent.count_tokens("Hello, world!");
+        assert!(result > 0 && result < 10);
+    }
+
+    #[tokio::test]
+    async fn test_count_tokens_empty_via_trait() {
+        let agent = test_agent("https://api.openai.com".to_string(), "sk-test".to_string());
+        let result = agent.count_tokens("");
+        assert_eq!(result, 0);
+    }
+
+    #[tokio::test]
+    async fn test_embeddings_with_mock_server() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/embeddings")
+            .with_status(200)
+            .with_body(r#"{"data":[{"embedding":[0.1, 0.2, 0.3]},{"embedding":[0.4, 0.5, 0.6]}]}"#)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "sk-test".to_string());
+        let result = agent
+            .embeddings(
+                "text-embedding-ada-002",
+                vec!["hello".to_string(), "world".to_string()],
+            )
+            .await;
+
+        mock.assert_async().await;
+        let embeddings = result.unwrap();
+        assert_eq!(embeddings.len(), 2);
+        assert_eq!(embeddings[0].len(), 3);
+        assert!((embeddings[0][0] - 0.1).abs() < 0.001);
+    }
+
+    #[tokio::test]
+    async fn test_embeddings_api_error() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/embeddings")
+            .with_status(429)
+            .with_body(r#"{"error":"rate limited"}"#)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "sk-test".to_string());
+        let result = agent
+            .embeddings("text-embedding-ada-002", vec!["hello".to_string()])
+            .await;
+
+        mock.assert_async().await;
+        assert!(matches!(
+            result,
+            Err(AgentError::Upstream { status: 429, .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_embeddings_invalid_response() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/embeddings")
+            .with_status(200)
+            .with_body(r#"{"not_data": true}"#)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "sk-test".to_string());
+        let result = agent
+            .embeddings("text-embedding-ada-002", vec!["hello".to_string()])
+            .await;
+
+        mock.assert_async().await;
+        assert!(matches!(result, Err(AgentError::InvalidResponse(_))));
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_with_header_override() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .match_header("authorization", "Bearer custom-key")
+            .with_status(200)
+            .with_body(r#"{"id":"1","object":"chat.completion","created":123,"model":"gpt-4","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}"#)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "sk-default".to_string());
+        let request = ChatCompletionRequest {
+            model: "gpt-4".to_string(),
+            messages: vec![],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("authorization", "Bearer custom-key".parse().unwrap());
+
+        let response = agent
+            .chat_completion(request, Some(&headers))
+            .await
+            .unwrap();
+        assert_eq!(response.id, "1");
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_health_check_invalid_json() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v1/models")
+            .with_status(200)
+            .with_body("not valid json")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "sk-test".to_string());
+        let result = agent.health_check().await;
+
+        mock.assert_async().await;
+        assert!(matches!(result, Err(AgentError::InvalidResponse(_))));
+    }
+
+    #[tokio::test]
+    async fn test_list_models_invalid_json() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v1/models")
+            .with_status(200)
+            .with_body("not json")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "sk-test".to_string());
+        let result = agent.list_models().await;
+
+        mock.assert_async().await;
+        assert!(matches!(result, Err(AgentError::InvalidResponse(_))));
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_stream_upstream_error() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .with_status(500)
+            .with_body("error")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "sk-test".to_string());
+        let request = ChatCompletionRequest {
+            model: "gpt-4".to_string(),
+            messages: vec![],
+            stream: true,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+
+        let result = agent.chat_completion_stream(request, None).await;
+        assert!(matches!(
+            result,
+            Err(AgentError::Upstream { status: 500, .. })
+        ));
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_list_models_upstream_error() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v1/models")
+            .with_status(500)
+            .with_body("server error")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "sk-test".to_string());
+        let result = agent.list_models().await;
+
+        mock.assert_async().await;
+        assert!(matches!(
+            result,
+            Err(AgentError::Upstream { status: 500, .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_list_models_invalid_json_response() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v1/models")
+            .with_status(200)
+            .with_body("not json")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "sk-test".to_string());
+        let result = agent.list_models().await;
+
+        mock.assert_async().await;
+        assert!(matches!(result, Err(AgentError::InvalidResponse(_))));
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_upstream_error_429() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .with_status(429)
+            .with_body(r#"{"error":"rate limit"}"#)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "sk-test123".to_string());
+        let request = ChatCompletionRequest {
+            model: "gpt-4".to_string(),
+            messages: vec![],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+        let result = agent.chat_completion(request, None).await;
+        assert!(matches!(
+            result,
+            Err(AgentError::Upstream { status: 429, .. })
+        ));
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_invalid_json_body() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .with_status(200)
+            .with_body("invalid json")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "sk-test".to_string());
+        let request = ChatCompletionRequest {
+            model: "gpt-4".to_string(),
+            messages: vec![],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+        let result = agent.chat_completion(request, None).await;
+        assert!(matches!(result, Err(AgentError::InvalidResponse(_))));
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_with_auth_header_forwarding() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .match_header("authorization", "Bearer custom-key")
+            .with_status(200)
+            .with_body(r#"{"id":"cmpl-hdr","object":"chat.completion","created":1234567890,"model":"gpt-4","choices":[{"index":0,"message":{"role":"assistant","content":"Ok"},"finish_reason":"stop"}]}"#)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "sk-test123".to_string());
+        let request = ChatCompletionRequest {
+            model: "gpt-4".to_string(),
+            messages: vec![],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("authorization", "Bearer custom-key".parse().unwrap());
+        let response = agent
+            .chat_completion(request, Some(&headers))
+            .await
+            .unwrap();
+        assert_eq!(response.id, "cmpl-hdr");
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_embeddings_upstream_error_response() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/embeddings")
+            .with_status(500)
+            .with_body("error")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "sk-test".to_string());
+        let result = agent.embeddings("test", vec!["hello".to_string()]).await;
+
+        mock.assert_async().await;
+        assert!(matches!(
+            result,
+            Err(AgentError::Upstream { status: 500, .. })
+        ));
+    }
+
+    #[test]
+    fn test_count_tokens_exact_value() {
+        let agent = test_agent("http://localhost".to_string(), "sk-test".to_string());
+        let count = agent.count_tokens("Hello, world!");
+        assert!(count > 0);
+        assert!(count < 10);
+    }
+
+    #[tokio::test]
+    async fn test_health_check_invalid_json_body() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v1/models")
+            .with_status(200)
+            .with_body("not json at all")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "sk-test".to_string());
+        let result = agent.health_check().await;
+
+        mock.assert_async().await;
+        assert!(matches!(result, Err(AgentError::InvalidResponse(_))));
+    }
 }

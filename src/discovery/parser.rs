@@ -120,4 +120,77 @@ mod tests {
         let parsed = parse_txt_records(&txt, "_llm._tcp.local");
         assert_eq!(parsed.backend_type, BackendType::Ollama);
     }
+
+    #[test]
+    fn test_parse_txt_type_llamacpp() {
+        let mut txt = HashMap::new();
+        txt.insert("type".to_string(), "llamacpp".to_string());
+        let parsed = parse_txt_records(&txt, "_llm._tcp.local");
+        assert_eq!(parsed.backend_type, BackendType::LlamaCpp);
+    }
+
+    #[test]
+    fn test_parse_txt_type_llama_dot_cpp() {
+        let mut txt = HashMap::new();
+        txt.insert("type".to_string(), "llama.cpp".to_string());
+        let parsed = parse_txt_records(&txt, "_llm._tcp.local");
+        assert_eq!(parsed.backend_type, BackendType::LlamaCpp);
+    }
+
+    #[test]
+    fn test_parse_txt_type_exo() {
+        let mut txt = HashMap::new();
+        txt.insert("type".to_string(), "exo".to_string());
+        let parsed = parse_txt_records(&txt, "_llm._tcp.local");
+        assert_eq!(parsed.backend_type, BackendType::Exo);
+    }
+
+    #[test]
+    fn test_parse_txt_type_openai() {
+        let mut txt = HashMap::new();
+        txt.insert("type".to_string(), "openai".to_string());
+        let parsed = parse_txt_records(&txt, "_llm._tcp.local");
+        assert_eq!(parsed.backend_type, BackendType::OpenAI);
+    }
+
+    #[test]
+    fn test_parse_txt_type_unknown_becomes_generic() {
+        let mut txt = HashMap::new();
+        txt.insert("type".to_string(), "something_else".to_string());
+        let parsed = parse_txt_records(&txt, "_llm._tcp.local");
+        assert_eq!(parsed.backend_type, BackendType::Generic);
+    }
+
+    #[test]
+    fn test_parse_txt_version_extracted() {
+        let mut txt = HashMap::new();
+        txt.insert("type".to_string(), "ollama".to_string());
+        txt.insert("version".to_string(), "0.3.12".to_string());
+        let parsed = parse_txt_records(&txt, "_ollama._tcp.local");
+        assert_eq!(parsed.version.as_deref(), Some("0.3.12"));
+    }
+
+    #[test]
+    fn test_parse_txt_no_version() {
+        let mut txt = HashMap::new();
+        txt.insert("type".to_string(), "vllm".to_string());
+        let parsed = parse_txt_records(&txt, "_llm._tcp.local");
+        assert!(parsed.version.is_none());
+    }
+
+    #[test]
+    fn test_parse_txt_ollama_default_api_path_empty() {
+        let mut txt = HashMap::new();
+        txt.insert("type".to_string(), "ollama".to_string());
+        let parsed = parse_txt_records(&txt, "_llm._tcp.local");
+        assert_eq!(parsed.api_path, "");
+    }
+
+    #[test]
+    fn test_parse_txt_non_ollama_default_api_path_v1() {
+        let mut txt = HashMap::new();
+        txt.insert("type".to_string(), "vllm".to_string());
+        let parsed = parse_txt_records(&txt, "_llm._tcp.local");
+        assert_eq!(parsed.api_path, "/v1");
+    }
 }

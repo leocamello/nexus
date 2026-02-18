@@ -389,4 +389,451 @@ mod tests {
         let req: EmbeddingRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.encoding_format, Some("float".to_string()));
     }
+
+    #[tokio::test]
+    async fn test_handle_oversized_batch() {
+        use crate::api::{create_router, AppState};
+        use crate::config::NexusConfig;
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource, Model, Registry};
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use std::sync::Arc;
+        use tower::Service;
+
+        let registry = Arc::new(Registry::new());
+        let backend = crate::registry::Backend::new(
+            "emb-batch".to_string(),
+            "Emb Batch".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        registry.add_backend(backend).unwrap();
+        registry
+            .update_status("emb-batch", BackendStatus::Healthy, None)
+            .unwrap();
+        registry
+            .update_models(
+                "emb-batch",
+                vec![Model {
+                    id: "emb-model".to_string(),
+                    name: "emb-model".to_string(),
+                    context_length: 4096,
+                    supports_vision: false,
+                    supports_tools: false,
+                    supports_json_mode: false,
+                    max_output_tokens: None,
+                }],
+            )
+            .unwrap();
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+        let mut app = create_router(state);
+
+        // Create a batch larger than MAX_EMBEDDING_BATCH_SIZE (2048)
+        let inputs: Vec<String> = (0..2049).map(|i| format!("input {}", i)).collect();
+        let body = serde_json::json!({
+            "model": "emb-model",
+            "input": inputs
+        });
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/v1/embeddings")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
+
+        let response = app.call(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let json = body_json(response).await;
+        let msg = json["error"]["message"].as_str().unwrap();
+        assert!(
+            msg.contains("2049") && msg.contains("2048"),
+            "Expected batch size error, got: {}",
+            msg
+        );
+    }
+
+    #[tokio::test]
+    async fn test_handle_embedding_success_with_headers() {
+        use crate::agent::types::{AgentCapabilities, AgentProfile, PrivacyZone};
+        use crate::agent::{AgentError, HealthStatus, InferenceAgent, ModelCapability};
+        use crate::api::{create_router, AppState, ChatCompletionRequest, ChatCompletionResponse};
+        use crate::config::NexusConfig;
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource, Model, Registry};
+        use async_trait::async_trait;
+        use axum::body::Body;
+        use axum::http::{HeaderMap, Request, StatusCode};
+        use futures_util::stream::BoxStream;
+        use std::sync::Arc;
+        use tower::Service;
+
+        /// A mock agent that supports embeddings.
+        struct EmbeddingAgent;
+
+        #[async_trait]
+        impl InferenceAgent for EmbeddingAgent {
+            fn id(&self) -> &str {
+                "emb-success"
+            }
+            fn name(&self) -> &str {
+                "Embedding Agent"
+            }
+            fn profile(&self) -> AgentProfile {
+                AgentProfile {
+                    backend_type: "ollama".to_string(),
+                    version: None,
+                    privacy_zone: PrivacyZone::Restricted,
+                    capabilities: AgentCapabilities {
+                        embeddings: true,
+                        model_lifecycle: false,
+                        token_counting: false,
+                        resource_monitoring: false,
+                    },
+                    capability_tier: None,
+                }
+            }
+            async fn health_check(&self) -> Result<HealthStatus, AgentError> {
+                Ok(HealthStatus::Healthy { model_count: 1 })
+            }
+            async fn list_models(&self) -> Result<Vec<ModelCapability>, AgentError> {
+                Ok(vec![])
+            }
+            async fn chat_completion(
+                &self,
+                _request: ChatCompletionRequest,
+                _headers: Option<&HeaderMap>,
+            ) -> Result<ChatCompletionResponse, AgentError> {
+                Err(AgentError::Unsupported("chat_completion"))
+            }
+            async fn chat_completion_stream(
+                &self,
+                _request: ChatCompletionRequest,
+                _headers: Option<&HeaderMap>,
+            ) -> Result<BoxStream<'static, Result<crate::agent::StreamChunk, AgentError>>, AgentError>
+            {
+                Err(AgentError::Unsupported("chat_completion_stream"))
+            }
+            async fn embeddings(
+                &self,
+                _model: &str,
+                _inputs: Vec<String>,
+            ) -> Result<Vec<Vec<f32>>, AgentError> {
+                Ok(vec![vec![0.1, 0.2, 0.3]])
+            }
+        }
+
+        let registry = Arc::new(Registry::new());
+        let backend = crate::registry::Backend::new(
+            "emb-success".to_string(),
+            "Emb Success".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        let agent: Arc<dyn InferenceAgent> = Arc::new(EmbeddingAgent);
+        registry.add_backend_with_agent(backend, agent).unwrap();
+        registry
+            .update_status("emb-success", BackendStatus::Healthy, None)
+            .unwrap();
+        registry
+            .update_models(
+                "emb-success",
+                vec![Model {
+                    id: "emb-model".to_string(),
+                    name: "emb-model".to_string(),
+                    context_length: 4096,
+                    supports_vision: false,
+                    supports_tools: false,
+                    supports_json_mode: false,
+                    max_output_tokens: None,
+                }],
+            )
+            .unwrap();
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+        let mut app = create_router(state);
+
+        let body = serde_json::json!({
+            "model": "emb-model",
+            "input": "hello world"
+        });
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/v1/embeddings")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
+
+        let response = app.call(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Verify X-Nexus-* headers are present
+        assert!(
+            response.headers().contains_key("x-nexus-backend"),
+            "Missing x-nexus-backend header"
+        );
+        assert_eq!(
+            response.headers().get("x-nexus-backend").unwrap(),
+            "emb-success"
+        );
+        assert!(
+            response.headers().contains_key("x-nexus-backend-type"),
+            "Missing x-nexus-backend-type header"
+        );
+        assert!(
+            response.headers().contains_key("x-nexus-privacy-zone"),
+            "Missing x-nexus-privacy-zone header"
+        );
+
+        // Verify response body is valid embedding response
+        let json = body_json(response).await;
+        assert_eq!(json["object"], "list");
+        assert_eq!(json["data"][0]["embedding"][0], 0.1);
+    }
+
+    // ====================================================================
+    // Integration-style handler tests via full axum router
+    // ====================================================================
+
+    /// Helper: read response body as JSON.
+    async fn body_json(response: axum::response::Response) -> serde_json::Value {
+        let bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_handle_empty_input() {
+        use crate::api::{create_router, AppState};
+        use crate::config::NexusConfig;
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource, Model, Registry};
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use std::sync::Arc;
+        use tower::Service;
+
+        // Register a backend with the model so routing succeeds
+        let registry = Arc::new(Registry::new());
+        let backend = crate::registry::Backend::new(
+            "emb-backend".to_string(),
+            "Emb Backend".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        registry.add_backend(backend).unwrap();
+        registry
+            .update_status("emb-backend", BackendStatus::Healthy, None)
+            .unwrap();
+        registry
+            .update_models(
+                "emb-backend",
+                vec![Model {
+                    id: "emb-model".to_string(),
+                    name: "emb-model".to_string(),
+                    context_length: 4096,
+                    supports_vision: false,
+                    supports_tools: false,
+                    supports_json_mode: false,
+                    max_output_tokens: None,
+                }],
+            )
+            .unwrap();
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+        let mut app = create_router(state);
+
+        // Empty batch input
+        let body = serde_json::json!({
+            "model": "emb-model",
+            "input": []
+        });
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/v1/embeddings")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
+
+        let response = app.call(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let json = body_json(response).await;
+        let msg = json["error"]["message"].as_str().unwrap();
+        assert!(msg.contains("empty"), "msg was: {}", msg);
+    }
+
+    #[tokio::test]
+    async fn test_handle_model_not_found_embeddings() {
+        use crate::api::{create_router, AppState};
+        use crate::config::NexusConfig;
+        use crate::registry::Registry;
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use std::sync::Arc;
+        use tower::Service;
+
+        let registry = Arc::new(Registry::new());
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+        let mut app = create_router(state);
+
+        let body = serde_json::json!({
+            "model": "nonexistent-embedding-model",
+            "input": "hello"
+        });
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/v1/embeddings")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
+
+        let response = app.call(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        let json = body_json(response).await;
+        let msg = json["error"]["message"].as_str().unwrap();
+        assert!(
+            msg.contains("nonexistent-embedding-model"),
+            "msg was: {}",
+            msg
+        );
+    }
+
+    #[tokio::test]
+    async fn test_handle_unsupported_backend() {
+        use crate::agent::types::{AgentCapabilities, AgentProfile, PrivacyZone};
+        use crate::agent::{AgentError, HealthStatus, InferenceAgent, ModelCapability};
+        use crate::api::{create_router, AppState, ChatCompletionRequest, ChatCompletionResponse};
+        use crate::config::NexusConfig;
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource, Model, Registry};
+        use async_trait::async_trait;
+        use axum::body::Body;
+        use axum::http::{HeaderMap, Request, StatusCode};
+        use futures_util::stream::BoxStream;
+        use std::sync::Arc;
+        use tower::Service;
+
+        /// A mock agent that does NOT support embeddings.
+        struct NoEmbeddingsAgent;
+
+        #[async_trait]
+        impl InferenceAgent for NoEmbeddingsAgent {
+            fn id(&self) -> &str {
+                "no-emb"
+            }
+            fn name(&self) -> &str {
+                "No Embeddings Agent"
+            }
+            fn profile(&self) -> AgentProfile {
+                AgentProfile {
+                    backend_type: "ollama".to_string(),
+                    version: None,
+                    privacy_zone: PrivacyZone::Restricted,
+                    capabilities: AgentCapabilities {
+                        embeddings: false,
+                        model_lifecycle: false,
+                        token_counting: false,
+                        resource_monitoring: false,
+                    },
+                    capability_tier: None,
+                }
+            }
+            async fn health_check(&self) -> Result<HealthStatus, AgentError> {
+                Ok(HealthStatus::Healthy { model_count: 1 })
+            }
+            async fn list_models(&self) -> Result<Vec<ModelCapability>, AgentError> {
+                Ok(vec![])
+            }
+            async fn chat_completion(
+                &self,
+                _request: ChatCompletionRequest,
+                _headers: Option<&HeaderMap>,
+            ) -> Result<ChatCompletionResponse, AgentError> {
+                Err(AgentError::Unsupported("chat_completion"))
+            }
+            async fn chat_completion_stream(
+                &self,
+                _request: ChatCompletionRequest,
+                _headers: Option<&HeaderMap>,
+            ) -> Result<BoxStream<'static, Result<crate::agent::StreamChunk, AgentError>>, AgentError>
+            {
+                Err(AgentError::Unsupported("chat_completion_stream"))
+            }
+        }
+
+        let registry = Arc::new(Registry::new());
+        let backend = crate::registry::Backend::new(
+            "no-emb".to_string(),
+            "No Emb".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        let agent: Arc<dyn InferenceAgent> = Arc::new(NoEmbeddingsAgent);
+        registry.add_backend_with_agent(backend, agent).unwrap();
+        registry
+            .update_status("no-emb", BackendStatus::Healthy, None)
+            .unwrap();
+        registry
+            .update_models(
+                "no-emb",
+                vec![Model {
+                    id: "emb-model".to_string(),
+                    name: "emb-model".to_string(),
+                    context_length: 4096,
+                    supports_vision: false,
+                    supports_tools: false,
+                    supports_json_mode: false,
+                    max_output_tokens: None,
+                }],
+            )
+            .unwrap();
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+        let mut app = create_router(state);
+
+        let body = serde_json::json!({
+            "model": "emb-model",
+            "input": "hello world"
+        });
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/v1/embeddings")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
+
+        let response = app.call(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let json = body_json(response).await;
+        let msg = json["error"]["message"].as_str().unwrap();
+        assert!(
+            msg.contains("does not support embeddings"),
+            "msg was: {}",
+            msg
+        );
+    }
 }

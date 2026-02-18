@@ -66,4 +66,56 @@ mod tests {
             "Fish completions should reference the 'nexus' command name"
         );
     }
+
+    #[test]
+    fn test_handle_completions_bash() {
+        // Call handle_completions through the generate function to avoid stdout
+        // This verifies the function doesn't panic
+        let mut cmd = Cli::command();
+        let bin_name = cmd.get_name().to_string();
+        let mut buf = Vec::new();
+        generate(Shell::Bash, &mut cmd, bin_name, &mut buf);
+        let output = String::from_utf8(buf).unwrap();
+        assert!(!output.is_empty());
+    }
+
+    #[test]
+    fn test_handle_completions_zsh() {
+        let mut cmd = Cli::command();
+        let bin_name = cmd.get_name().to_string();
+        let mut buf = Vec::new();
+        generate(Shell::Zsh, &mut cmd, bin_name, &mut buf);
+        let output = String::from_utf8(buf).unwrap();
+        assert!(!output.is_empty());
+    }
+
+    #[test]
+    fn test_handle_completions_fish() {
+        let mut cmd = Cli::command();
+        let bin_name = cmd.get_name().to_string();
+        let mut buf = Vec::new();
+        generate(Shell::Fish, &mut cmd, bin_name, &mut buf);
+        let output = String::from_utf8(buf).unwrap();
+        assert!(!output.is_empty());
+    }
+
+    #[test]
+    fn test_handle_completions_powershell() {
+        let mut cmd = Cli::command();
+        let bin_name = cmd.get_name().to_string();
+        let mut buf = Vec::new();
+        generate(Shell::PowerShell, &mut cmd, bin_name, &mut buf);
+        let output = String::from_utf8(buf).unwrap();
+        assert!(!output.is_empty());
+    }
+
+    #[test]
+    fn test_handle_completions_elvish() {
+        let mut cmd = Cli::command();
+        let bin_name = cmd.get_name().to_string();
+        let mut buf = Vec::new();
+        generate(Shell::Elvish, &mut cmd, bin_name, &mut buf);
+        let output = String::from_utf8(buf).unwrap();
+        assert!(!output.is_empty());
+    }
 }

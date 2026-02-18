@@ -248,4 +248,130 @@ mod tests {
         let status = response.status();
         assert!(status == StatusCode::OK || status == StatusCode::NOT_FOUND);
     }
+
+    #[tokio::test]
+    async fn test_history_handler_returns_recent_requests() {
+        use crate::config::NexusConfig;
+        use crate::dashboard::types::{HistoryEntry, RequestStatus};
+        use crate::registry::Registry;
+
+        let registry = Arc::new(Registry::new());
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+
+        // Add some entries to request_history
+        state.request_history.push(HistoryEntry {
+            timestamp: 1000,
+            model: "gpt-4".to_string(),
+            backend_id: "b1".to_string(),
+            duration_ms: 100,
+            status: RequestStatus::Success,
+            error_message: None,
+        });
+        state.request_history.push(HistoryEntry {
+            timestamp: 2000,
+            model: "llama3".to_string(),
+            backend_id: "b2".to_string(),
+            duration_ms: 200,
+            status: RequestStatus::Error,
+            error_message: Some("timeout".to_string()),
+        });
+
+        let response = history_handler(State(state)).await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Extract body and verify JSON content
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let entries: Vec<HistoryEntry> = serde_json::from_slice(&body).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].model, "gpt-4");
+        assert_eq!(entries[1].model, "llama3");
+        assert_eq!(entries[1].error_message.as_deref(), Some("timeout"));
+    }
+
+    #[tokio::test]
+    async fn test_dashboard_handler_content_type() {
+        use crate::config::NexusConfig;
+        use crate::registry::Registry;
+
+        let registry = Arc::new(Registry::new());
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+
+        let response = dashboard_handler(State(state)).await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let content_type = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .expect("should have content-type header");
+        let ct_str = content_type.to_str().unwrap();
+        assert!(
+            ct_str.contains("text/html"),
+            "Expected text/html content type, got: {}",
+            ct_str
+        );
+    }
+
+    #[tokio::test]
+    async fn test_assets_handler_unknown_asset() {
+        let response = assets_handler(Path("totally_nonexistent_file_xyz.wasm".to_string())).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_assets_handler_serves_css() {
+        let response = assets_handler(Path("styles.css".to_string())).await;
+        let status = response.status();
+        // If the asset is embedded, should serve with correct content type
+        if status == StatusCode::OK {
+            let ct = response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .unwrap()
+                .to_str()
+                .unwrap();
+            assert!(ct.contains("css"), "Expected CSS content type, got: {}", ct);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_assets_handler_serves_js() {
+        let response = assets_handler(Path("dashboard.js".to_string())).await;
+        let status = response.status();
+        if status == StatusCode::OK {
+            let ct = response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .unwrap()
+                .to_str()
+                .unwrap();
+            assert!(
+                ct.contains("javascript"),
+                "Expected JS content type, got: {}",
+                ct
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_assets_handler_index_html() {
+        let response = assets_handler(Path("index.html".to_string())).await;
+        let status = response.status();
+        if status == StatusCode::OK {
+            let ct = response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .unwrap()
+                .to_str()
+                .unwrap();
+            assert!(
+                ct.contains("html"),
+                "Expected HTML content type, got: {}",
+                ct
+            );
+        }
+    }
 }

@@ -413,6 +413,198 @@ mod tests {
     }
 
     #[test]
+    fn test_create_update_with_request_history() {
+        let entry = HistoryEntry {
+            timestamp: 1700000000,
+            model: "llama3:8b".to_string(),
+            backend_id: "backend-abc".to_string(),
+            duration_ms: 320,
+            status: RequestStatus::Success,
+            error_message: None,
+        };
+
+        let update = create_request_complete_update(entry);
+        assert_eq!(update.update_type, UpdateType::RequestComplete);
+        assert_eq!(update.data["timestamp"], 1700000000);
+        assert_eq!(update.data["model"], "llama3:8b");
+        assert_eq!(update.data["backend_id"], "backend-abc");
+        assert_eq!(update.data["duration_ms"], 320);
+        assert_eq!(update.data["status"], "Success");
+        assert!(update.data["error_message"].is_null());
+    }
+
+    #[test]
+    fn test_create_update_with_multiple_backends() {
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource};
+        use chrono::Utc;
+        use std::collections::HashMap;
+
+        let backends = vec![
+            BackendView {
+                id: "healthy-1".to_string(),
+                name: "Healthy Backend".to_string(),
+                url: "http://localhost:11434".to_string(),
+                backend_type: BackendType::Ollama,
+                status: BackendStatus::Healthy,
+                last_health_check: Utc::now(),
+                last_error: None,
+                models: vec![],
+                priority: 10,
+                pending_requests: 2,
+                total_requests: 100,
+                avg_latency_ms: 50,
+                discovery_source: DiscoverySource::Static,
+                metadata: HashMap::new(),
+            },
+            BackendView {
+                id: "unhealthy-1".to_string(),
+                name: "Unhealthy Backend".to_string(),
+                url: "http://localhost:8000".to_string(),
+                backend_type: BackendType::VLLM,
+                status: BackendStatus::Unhealthy,
+                last_health_check: Utc::now(),
+                last_error: Some("Connection refused".to_string()),
+                models: vec![],
+                priority: 5,
+                pending_requests: 0,
+                total_requests: 50,
+                avg_latency_ms: 0,
+                discovery_source: DiscoverySource::MDNS,
+                metadata: HashMap::new(),
+            },
+            BackendView {
+                id: "unknown-1".to_string(),
+                name: "Unknown Backend".to_string(),
+                url: "http://localhost:9090".to_string(),
+                backend_type: BackendType::Generic,
+                status: BackendStatus::Unknown,
+                last_health_check: Utc::now(),
+                last_error: None,
+                models: vec![],
+                priority: 1,
+                pending_requests: 0,
+                total_requests: 0,
+                avg_latency_ms: 0,
+                discovery_source: DiscoverySource::Manual,
+                metadata: HashMap::new(),
+            },
+        ];
+
+        let update = create_backend_status_update(backends);
+        assert_eq!(update.update_type, UpdateType::BackendStatus);
+        let arr = update.data.as_array().unwrap();
+        assert_eq!(arr.len(), 3);
+        assert_eq!(arr[0]["id"], "healthy-1");
+        assert_eq!(arr[1]["id"], "unhealthy-1");
+        assert_eq!(arr[2]["id"], "unknown-1");
+        assert_eq!(arr[1]["last_error"], "Connection refused");
+    }
+
+    #[test]
+    fn test_websocket_update_serialization_roundtrip() {
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource};
+        use chrono::Utc;
+        use std::collections::HashMap;
+
+        let backends = vec![BackendView {
+            id: "rt-1".to_string(),
+            name: "Roundtrip Backend".to_string(),
+            url: "http://10.0.0.1:11434".to_string(),
+            backend_type: BackendType::Ollama,
+            status: BackendStatus::Healthy,
+            last_health_check: Utc::now(),
+            last_error: None,
+            models: vec![],
+            priority: 7,
+            pending_requests: 1,
+            total_requests: 42,
+            avg_latency_ms: 99,
+            discovery_source: DiscoverySource::Static,
+            metadata: HashMap::new(),
+        }];
+
+        let original = create_backend_status_update(backends);
+        let json = serde_json::to_string(&original).unwrap();
+        let deserialized: WebSocketUpdate = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.update_type, original.update_type);
+        assert_eq!(deserialized.data["id"], original.data["id"]);
+        assert_eq!(deserialized.data[0]["name"], "Roundtrip Backend");
+        assert_eq!(deserialized.data[0]["url"], "http://10.0.0.1:11434");
+        assert_eq!(deserialized.data[0]["priority"], 7);
+        assert_eq!(deserialized.data[0]["total_requests"], 42);
+        assert_eq!(deserialized.data[0]["avg_latency_ms"], 99);
+    }
+
+    #[test]
+    fn test_backend_update_fields() {
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource, Model};
+        use chrono::Utc;
+        use std::collections::HashMap;
+
+        let mut metadata = HashMap::new();
+        metadata.insert("version".to_string(), "0.4.1".to_string());
+        metadata.insert(
+            "mdns_instance".to_string(),
+            "my-server._ollama._tcp.local".to_string(),
+        );
+
+        let backends = vec![BackendView {
+            id: "full-fields".to_string(),
+            name: "Fully Populated".to_string(),
+            url: "http://192.168.1.100:11434".to_string(),
+            backend_type: BackendType::Ollama,
+            status: BackendStatus::Healthy,
+            last_health_check: Utc::now(),
+            last_error: None,
+            models: vec![
+                Model {
+                    id: "llama3".to_string(),
+                    name: "LLaMA 3".to_string(),
+                    context_length: 8192,
+                    supports_vision: false,
+                    supports_tools: true,
+                    supports_json_mode: true,
+                    max_output_tokens: Some(4096),
+                },
+                Model {
+                    id: "llava".to_string(),
+                    name: "LLaVA".to_string(),
+                    context_length: 4096,
+                    supports_vision: true,
+                    supports_tools: false,
+                    supports_json_mode: false,
+                    max_output_tokens: None,
+                },
+            ],
+            priority: 10,
+            pending_requests: 5,
+            total_requests: 1000,
+            avg_latency_ms: 250,
+            discovery_source: DiscoverySource::MDNS,
+            metadata,
+        }];
+
+        let update = create_backend_status_update(backends);
+        let data = &update.data[0];
+
+        assert_eq!(data["id"], "full-fields");
+        assert_eq!(data["name"], "Fully Populated");
+        assert_eq!(data["url"], "http://192.168.1.100:11434");
+        assert_eq!(data["priority"], 10);
+        assert_eq!(data["pending_requests"], 5);
+        assert_eq!(data["total_requests"], 1000);
+        assert_eq!(data["avg_latency_ms"], 250);
+
+        let models = data["models"].as_array().unwrap();
+        assert_eq!(models.len(), 2);
+        assert_eq!(models[0]["id"], "llama3");
+        assert_eq!(models[0]["supports_tools"], true);
+        assert_eq!(models[1]["id"], "llava");
+        assert_eq!(models[1]["supports_vision"], true);
+    }
+
+    #[test]
     fn test_create_model_change_update_with_models() {
         let models = vec![serde_json::json!({"id": "llama3", "name": "LLaMA 3"})];
         let update = create_model_change_update("backend-1".to_string(), models);

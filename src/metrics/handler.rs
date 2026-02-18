@@ -463,4 +463,167 @@ mod tests {
         let response = metrics_handler(State(state)).await.into_response();
         assert_eq!(response.status(), axum::http::StatusCode::OK);
     }
+
+    #[tokio::test]
+    async fn test_metrics_handler_returns_prometheus_output() {
+        use crate::config::NexusConfig;
+        use crate::registry::Registry;
+        use axum::response::IntoResponse;
+
+        let registry = Arc::new(Registry::new());
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+
+        let response = metrics_handler(State(state)).await.into_response();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .expect("should have content-type header");
+        assert!(
+            content_type.to_str().unwrap().starts_with("text/plain"),
+            "content-type should be text/plain"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_stats_handler_returns_json_fields() {
+        use crate::config::NexusConfig;
+        use crate::registry::Registry;
+        use axum::response::IntoResponse;
+
+        let registry = Arc::new(Registry::new());
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+
+        let response = stats_handler(State(state)).await.into_response();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(
+            json["uptime_seconds"].is_number(),
+            "uptime_seconds should be a number"
+        );
+        assert!(json["requests"].is_object(), "requests should be an object");
+        assert!(
+            json["requests"]["total"].is_number(),
+            "requests.total should be a number"
+        );
+        assert!(json["backends"].is_array(), "backends should be an array");
+        assert!(json["models"].is_array(), "models should be an array");
+    }
+
+    #[test]
+    fn test_compute_budget_stats_no_monthly_limit() {
+        use crate::config::NexusConfig;
+        use crate::registry::Registry;
+
+        let registry = Arc::new(Registry::new());
+        // Default config has no monthly_limit_usd
+        let config = Arc::new(NexusConfig::default());
+        let state = AppState::new(registry, config);
+
+        let result = compute_budget_stats(&state);
+        assert!(
+            result.is_none(),
+            "no budget stats when monthly_limit_usd is None"
+        );
+    }
+
+    #[test]
+    fn test_compute_budget_stats_with_monthly_limit() {
+        use crate::config::routing::BudgetConfig;
+        use crate::config::NexusConfig;
+        use crate::registry::Registry;
+        use crate::routing::reconciler::budget::BudgetMetrics;
+        use dashmap::DashMap;
+
+        let registry = Arc::new(Registry::new());
+        let config = Arc::new(NexusConfig::default());
+
+        let budget_config = BudgetConfig {
+            monthly_limit_usd: Some(100.0),
+            soft_limit_percent: 75.0,
+            hard_limit_action: HardLimitAction::Warn,
+            reconciliation_interval_secs: 60,
+        };
+        let budget_state = Arc::new(DashMap::new());
+        let mut metrics = BudgetMetrics::new();
+        metrics.current_month_spending = 25.0;
+        budget_state.insert(GLOBAL_BUDGET_KEY.to_string(), metrics);
+
+        let router = Arc::new(crate::routing::Router::with_full_config(
+            Arc::clone(&registry),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            budget_config,
+            budget_state,
+        ));
+
+        let mut state = AppState::new(Arc::clone(&registry), config);
+        state.router = router;
+
+        let result = compute_budget_stats(&state);
+        assert!(result.is_some(), "should return budget stats");
+
+        let stats = result.unwrap();
+        assert_eq!(stats.current_spending_usd, 25.0);
+        assert_eq!(stats.monthly_limit_usd, Some(100.0));
+        assert!((stats.utilization_percent - 25.0).abs() < 0.01);
+        assert_eq!(stats.status, "Normal");
+        assert_eq!(stats.hard_limit_action, "Warn");
+    }
+
+    #[test]
+    fn test_compute_budget_stats_hard_limit() {
+        use crate::config::routing::BudgetConfig;
+        use crate::config::NexusConfig;
+        use crate::registry::Registry;
+        use crate::routing::reconciler::budget::BudgetMetrics;
+        use dashmap::DashMap;
+
+        let registry = Arc::new(Registry::new());
+        let config = Arc::new(NexusConfig::default());
+
+        let budget_config = BudgetConfig {
+            monthly_limit_usd: Some(50.0),
+            soft_limit_percent: 75.0,
+            hard_limit_action: HardLimitAction::BlockCloud,
+            reconciliation_interval_secs: 60,
+        };
+        let budget_state = Arc::new(DashMap::new());
+        let mut metrics = BudgetMetrics::new();
+        metrics.current_month_spending = 75.0;
+        budget_state.insert(GLOBAL_BUDGET_KEY.to_string(), metrics);
+
+        let router = Arc::new(crate::routing::Router::with_full_config(
+            Arc::clone(&registry),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            budget_config,
+            budget_state,
+        ));
+
+        let mut state = AppState::new(Arc::clone(&registry), config);
+        state.router = router;
+
+        let result = compute_budget_stats(&state);
+        assert!(result.is_some());
+
+        let stats = result.unwrap();
+        assert_eq!(stats.status, "HardLimit");
+        assert!(stats.utilization_percent >= 100.0);
+        assert_eq!(stats.hard_limit_action, "BlockCloud");
+        let remaining = stats.monthly_limit_usd.unwrap() - stats.current_spending_usd;
+        assert!(remaining <= 0.0, "remaining should be <= 0 when over limit");
+    }
 }
