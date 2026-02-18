@@ -814,4 +814,61 @@ mod tests {
         let backend = backends.first().unwrap();
         assert_eq!(backend.discovery_source, DiscoverySource::Static);
     }
+
+    #[test]
+    fn test_select_best_ip_prefers_ipv4() {
+        let addrs = vec![
+            "::1".parse::<IpAddr>().unwrap(),
+            "192.168.1.100".parse::<IpAddr>().unwrap(),
+        ];
+        assert_eq!(
+            select_best_ip(&addrs),
+            "192.168.1.100".parse::<IpAddr>().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_select_best_ip_falls_back_to_ipv6() {
+        let addrs = vec!["::1".parse::<IpAddr>().unwrap()];
+        assert_eq!(select_best_ip(&addrs), "::1".parse::<IpAddr>().unwrap());
+    }
+
+    #[test]
+    fn test_build_url_ipv4() {
+        let ip = "192.168.1.1".parse::<IpAddr>().unwrap();
+        assert_eq!(build_url(ip, 11434, ""), "http://192.168.1.1:11434");
+    }
+
+    #[test]
+    fn test_build_url_ipv4_with_path() {
+        let ip = "192.168.1.1".parse::<IpAddr>().unwrap();
+        assert_eq!(build_url(ip, 8000, "/v1"), "http://192.168.1.1:8000/v1");
+    }
+
+    #[test]
+    fn test_build_url_ipv6() {
+        let ip = "::1".parse::<IpAddr>().unwrap();
+        assert_eq!(build_url(ip, 11434, ""), "http://[::1]:11434");
+    }
+
+    #[test]
+    fn test_extract_name_from_instance_simple() {
+        assert_eq!(
+            extract_name_from_instance("my-ollama._http._tcp.local"),
+            "my-ollama"
+        );
+    }
+
+    #[test]
+    fn test_extract_name_from_instance_with_underscores() {
+        assert_eq!(
+            extract_name_from_instance("my_ollama._http._tcp.local"),
+            "my ollama"
+        );
+    }
+
+    #[test]
+    fn test_extract_name_from_instance_no_dots() {
+        assert_eq!(extract_name_from_instance("simple-name"), "simple-name");
+    }
 }

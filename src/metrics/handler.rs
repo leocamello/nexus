@@ -422,4 +422,45 @@ mod tests {
         assert_eq!(stats.success, 200);
         assert_eq!(stats.errors, 0);
     }
+
+    #[test]
+    fn test_compute_budget_stats_no_config() {
+        use crate::config::NexusConfig;
+        use crate::registry::Registry;
+
+        let registry = Arc::new(Registry::new());
+        let config = Arc::new(NexusConfig::default());
+        let state = AppState::new(registry, config);
+
+        let result = compute_budget_stats(&state);
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_stats_handler_returns_json() {
+        use crate::config::NexusConfig;
+        use crate::registry::Registry;
+        use axum::response::IntoResponse;
+
+        let registry = Arc::new(Registry::new());
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+
+        let response = stats_handler(State(state)).await.into_response();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_metrics_handler_returns_text() {
+        use crate::config::NexusConfig;
+        use crate::registry::Registry;
+        use axum::response::IntoResponse;
+
+        let registry = Arc::new(Registry::new());
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+
+        let response = metrics_handler(State(state)).await.into_response();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+    }
 }

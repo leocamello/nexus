@@ -873,4 +873,130 @@ mod tests {
             "unknown model should keep default context"
         );
     }
+
+    #[tokio::test]
+    async fn test_chat_completion_stream_success() {
+        use futures_util::stream::StreamExt;
+
+        let mut server = Server::new_async().await;
+        let sse_body = "data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hello\"},\"finish_reason\":null}]}\n\n";
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .with_status(200)
+            .with_header("content-type", "text/event-stream")
+            .with_body(sse_body)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "sk-test".to_string());
+        let request = ChatCompletionRequest {
+            model: "gpt-4".to_string(),
+            messages: vec![],
+            stream: true,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+        let result = agent.chat_completion_stream(request, None).await;
+        assert!(result.is_ok());
+        let mut stream = result.unwrap();
+        let chunk = stream.next().await;
+        assert!(chunk.is_some());
+        let chunk = chunk.unwrap().unwrap();
+        assert!(chunk.data.contains("Hello"));
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_stream_error() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .with_status(500)
+            .with_body("Internal Server Error")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "sk-test".to_string());
+        let request = ChatCompletionRequest {
+            model: "gpt-4".to_string(),
+            messages: vec![],
+            stream: true,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+        let result = agent.chat_completion_stream(request, None).await;
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("Expected error"),
+        };
+        match err {
+            AgentError::Upstream { status, .. } => assert_eq!(status, 500),
+            other => panic!("Expected Upstream error, got: {:?}", other),
+        }
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_embeddings_success() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/embeddings")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                r#"{"object":"list","data":[{"object":"embedding","embedding":[0.1,0.2,0.3],"index":0}],"model":"text-embedding-ada-002","usage":{"prompt_tokens":5,"total_tokens":5}}"#,
+            )
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "sk-test".to_string());
+        let result = agent
+            .embeddings("text-embedding-ada-002", vec!["hello world".to_string()])
+            .await;
+        assert!(result.is_ok());
+        let embeddings = result.unwrap();
+        assert_eq!(embeddings.len(), 1);
+        assert_eq!(embeddings[0].len(), 3);
+        assert!((embeddings[0][0] - 0.1).abs() < f32::EPSILON);
+        assert!((embeddings[0][1] - 0.2).abs() < f32::EPSILON);
+        assert!((embeddings[0][2] - 0.3).abs() < f32::EPSILON);
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_embeddings_error() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/embeddings")
+            .with_status(500)
+            .with_body("Internal Server Error")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "sk-test".to_string());
+        let result = agent
+            .embeddings("text-embedding-ada-002", vec!["hello world".to_string()])
+            .await;
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("Expected error"),
+        };
+        match err {
+            AgentError::Upstream { status, .. } => assert_eq!(status, 500),
+            other => panic!("Expected Upstream error, got: {:?}", other),
+        }
+        mock.assert_async().await;
+    }
 }

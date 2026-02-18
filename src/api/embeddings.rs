@@ -331,4 +331,62 @@ mod tests {
         assert_eq!(json["index"], 0);
         assert_eq!(json["embedding"].as_array().unwrap().len(), 1536);
     }
+
+    #[test]
+    fn test_max_embedding_batch_size_constant() {
+        assert_eq!(MAX_EMBEDDING_BATCH_SIZE, 2048);
+    }
+
+    #[test]
+    fn test_embedding_response_serialization() {
+        let response = EmbeddingResponse {
+            object: "list".to_string(),
+            data: vec![EmbeddingObject {
+                object: "embedding".to_string(),
+                embedding: vec![0.1, 0.2, 0.3],
+                index: 0,
+            }],
+            model: "test-model".to_string(),
+            usage: EmbeddingUsage {
+                prompt_tokens: 5,
+                total_tokens: 5,
+            },
+        };
+        let json = serde_json::to_value(&response).unwrap();
+        assert_eq!(json["object"], "list");
+        assert_eq!(json["data"][0]["embedding"].as_array().unwrap().len(), 3);
+        assert_eq!(json["usage"]["prompt_tokens"], 5);
+    }
+
+    #[test]
+    fn test_embedding_request_deserialization_single() {
+        let json = r#"{"model": "text-embedding-ada-002", "input": "Hello world"}"#;
+        let req: EmbeddingRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.model, "text-embedding-ada-002");
+        match req.input {
+            EmbeddingInput::Single(s) => assert_eq!(s, "Hello world"),
+            _ => panic!("Expected Single variant"),
+        }
+    }
+
+    #[test]
+    fn test_embedding_request_deserialization_batch() {
+        let json = r#"{"model": "test", "input": ["Hello", "World"]}"#;
+        let req: EmbeddingRequest = serde_json::from_str(json).unwrap();
+        match req.input {
+            EmbeddingInput::Batch(v) => {
+                assert_eq!(v.len(), 2);
+                assert_eq!(v[0], "Hello");
+                assert_eq!(v[1], "World");
+            }
+            _ => panic!("Expected Batch variant"),
+        }
+    }
+
+    #[test]
+    fn test_embedding_request_with_encoding_format() {
+        let json = r#"{"model": "test", "input": "hello", "encoding_format": "float"}"#;
+        let req: EmbeddingRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.encoding_format, Some("float".to_string()));
+    }
 }

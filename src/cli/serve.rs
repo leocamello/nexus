@@ -725,4 +725,86 @@ mod tests {
         let result = load_config_with_overrides(&args);
         assert!(result.is_err(), "Invalid TOML should produce an error");
     }
+
+    #[test]
+    fn test_init_tracing_content_logging_warning() {
+        let config = crate::config::LoggingConfig {
+            level: "info".to_string(),
+            format: crate::config::LogFormat::Pretty,
+            component_levels: Some(std::collections::HashMap::new()),
+            enable_content_logging: false,
+        };
+        let filter_str = crate::logging::build_filter_directives(&config);
+        assert!(filter_str.contains("info"));
+    }
+
+    #[test]
+    fn test_load_config_port_override() {
+        let args = ServeArgs {
+            port: Some(9999),
+            host: None,
+            log_level: None,
+            no_discovery: false,
+            no_health_check: false,
+            config: PathBuf::from("nonexistent.toml"),
+        };
+        let config = load_config_with_overrides(&args).unwrap();
+        assert_eq!(config.server.port, 9999);
+    }
+
+    #[test]
+    fn test_load_config_host_override() {
+        let args = ServeArgs {
+            port: None,
+            host: Some("127.0.0.1".to_string()),
+            log_level: None,
+            no_discovery: false,
+            no_health_check: false,
+            config: PathBuf::from("nonexistent.toml"),
+        };
+        let config = load_config_with_overrides(&args).unwrap();
+        assert_eq!(config.server.host, "127.0.0.1");
+    }
+
+    #[test]
+    fn test_load_config_no_discovery() {
+        let args = ServeArgs {
+            port: None,
+            host: None,
+            log_level: None,
+            no_discovery: true,
+            no_health_check: false,
+            config: PathBuf::from("nonexistent.toml"),
+        };
+        let config = load_config_with_overrides(&args).unwrap();
+        assert!(!config.discovery.enabled);
+    }
+
+    #[test]
+    fn test_load_config_no_health_check() {
+        let args = ServeArgs {
+            port: None,
+            host: None,
+            log_level: None,
+            no_discovery: false,
+            no_health_check: true,
+            config: PathBuf::from("nonexistent.toml"),
+        };
+        let config = load_config_with_overrides(&args).unwrap();
+        assert!(!config.health_check.enabled);
+    }
+
+    #[test]
+    fn test_load_config_log_level() {
+        let args = ServeArgs {
+            port: None,
+            host: None,
+            log_level: Some("debug".to_string()),
+            no_discovery: false,
+            no_health_check: false,
+            config: PathBuf::from("nonexistent.toml"),
+        };
+        let config = load_config_with_overrides(&args).unwrap();
+        assert_eq!(config.logging.level, "debug");
+    }
 }

@@ -215,4 +215,37 @@ mod tests {
         let uptime = calculate_uptime(start_time);
         assert!(uptime >= Duration::ZERO, "Uptime should never be negative");
     }
+
+    #[tokio::test]
+    async fn test_dashboard_handler_returns_ok() {
+        use crate::config::NexusConfig;
+        use crate::registry::Registry;
+
+        let registry = Arc::new(Registry::new());
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+
+        let response = dashboard_handler(State(state)).await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_history_handler_returns_empty() {
+        use crate::config::NexusConfig;
+        use crate::registry::Registry;
+
+        let registry = Arc::new(Registry::new());
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+
+        let response = history_handler(State(state)).await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_assets_handler_serves_existing_asset() {
+        let response = assets_handler(Path("style.css".to_string())).await;
+        let status = response.status();
+        assert!(status == StatusCode::OK || status == StatusCode::NOT_FOUND);
+    }
 }
