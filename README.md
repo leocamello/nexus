@@ -24,6 +24,9 @@ Nexus is a distributed LLM orchestrator that unifies heterogeneous inference bac
 - 🔒 **Privacy Zones** — Structural enforcement prevents data from reaching cloud backends
 - 💰 **Budget Management** — Token-aware cost tracking with automatic spend limits
 - 📊 **Real-time Dashboard** — Monitor backends, models, and requests in your browser
+- 🧠 **Quality Tracking** — Profiles backend response quality to inform routing decisions
+- 📐 **Embeddings API** — OpenAI-compatible `/v1/embeddings` with capability-aware routing
+- 📋 **Request Queuing** — Holds requests when backends are busy, with priority support
 
 ## Supported Backends
 
@@ -64,19 +67,20 @@ Point any OpenAI-compatible client to `http://localhost:8000/v1` — Claude Code
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────┐
-│           Nexus Orchestrator                │
-│  - Discovers backends via mDNS              │
-│  - Tracks model capabilities                │
-│  - Routes to best available backend         │
-│  - OpenAI-compatible API                    │
-└─────────────────────────────────────────────┘
-        │           │           │
-        ▼           ▼           ▼
-   ┌────────┐  ┌────────┐  ┌────────┐
-   │ Ollama │  │  vLLM  │  │  exo   │
-   │  7B    │  │  70B   │  │  32B   │
-   └────────┘  └────────┘  └────────┘
+┌──────────────────────────────────────────────────┐
+│              Nexus Orchestrator                   │
+│  - Discovers backends via mDNS                   │
+│  - Tracks model capabilities & quality           │
+│  - Routes to best available backend              │
+│  - Queues requests when backends are busy        │
+│  - OpenAI-compatible API + Embeddings            │
+└──────────────────────────────────────────────────┘
+        │           │           │           │
+        ▼           ▼           ▼           ▼
+   ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐
+   │ Ollama │  │  vLLM  │  │  exo   │  │ OpenAI │
+   │  7B    │  │  70B   │  │  32B   │  │ cloud  │
+   └────────┘  └────────┘  └────────┘  └────────┘
 ```
 
 ## Documentation

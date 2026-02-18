@@ -329,7 +329,7 @@ if !agent.profile().capabilities.embeddings {
 
 **Nexus Implementation**:
 - ✅ Iterates per-input for batches
-- ✅ Hardcoded to `all-minilm` model (TODO: make configurable)
+- ✅ Uses model name from request (configurable per-request)
 - ✅ Transforms response to OpenAI format
 - ℹ️ Sequential processing (could be parallelized)
 
@@ -417,11 +417,11 @@ if !agent.profile().capabilities.embeddings {
 - **Mitigation**: Backend reports actual tokens, can be monitored
 - **Status**: Accepted trade-off for performance (< 1ms routing)
 
-**Risk 3: Model Name Hardcoding**
-- **Impact**: OpenAI always uses `ada-002`, Ollama always uses `all-minilm`
-- **Likelihood**: High (not configurable in initial implementation)
-- **Mitigation**: Model name in request is cosmetic (backend overrides)
-- **Status**: Documented as future enhancement
+**Risk 3: Model Name Handling**
+- **Impact**: Each agent type forwards the model name from the request to its backend
+- **Likelihood**: Low (model name is now configurable per-request)
+- **Mitigation**: Agent implementations pass through the requested model name
+- **Status**: Resolved — model parameter forwarded correctly
 
 ### Security Considerations
 

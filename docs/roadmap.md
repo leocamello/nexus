@@ -13,7 +13,7 @@ Nexus is a control plane for heterogeneous LLM inference — it routes requests 
 | **v0.1** | Foundation | Registry, Health, Router, mDNS, CLI, Aliases, Fallbacks | ✅ Released |
 | **v0.2** | Observability | Prometheus metrics, Web Dashboard, Structured logging | ✅ Released |
 | **v0.3** | Cloud Hybrid | Cloud backends, Privacy zones, Capability tiers, Budget management | ✅ Released |
-| **v0.4** | Intelligence | Speculative router, Quality tracking, Embeddings, Queuing | 🚧 In Progress |
+| **v0.4** | Intelligence | Speculative router, Quality tracking, Embeddings, Queuing | ✅ Complete |
 | **v0.5** | Orchestration | Pre-warming, Model lifecycle, Multi-tenant, Rate limiting | Planned |
 | **v1.0** | Complete Product | Management UI — full web-based control plane | Planned |
 
@@ -40,10 +40,10 @@ Nexus is a control plane for heterogeneous LLM inference — it routes requests 
 | F13 | Privacy Zones & Capability Tiers | v0.3 | ✅ Complete | [specs/015-privacy-zones-capability-tiers](../specs/015-privacy-zones-capability-tiers/) |
 | F14 | Inference Budget Management | v0.3 | ✅ Complete | [specs/016-inference-budget-mgmt](../specs/016-inference-budget-mgmt/) |
 | — | **Quality + Queuing (Phase 2.5)** | **v0.4** | ✅ Complete | [specs/017-quality-tracking-embeddings-queuing](../specs/017-quality-tracking-embeddings-queuing/) |
-| F15 | Speculative Router | v0.4 | Planned | - |
-| F16 | Quality Tracking & Backend Profiling | v0.4 | ✅ Complete | [#173](https://github.com/leocamello/nexus/issues/173) |
-| F17 | Embeddings API | v0.4 | ✅ Complete | [#174](https://github.com/leocamello/nexus/issues/174) |
-| F18 | Request Queuing & Prioritization | v0.4 | ✅ Complete | [#176](https://github.com/leocamello/nexus/issues/176), [#177](https://github.com/leocamello/nexus/issues/177) |
+| F15 | Speculative Router | v0.4 | ✅ Complete | [specs/018-speculative-router](../specs/018-speculative-router/) |
+| F16 | Quality Tracking & Backend Profiling | v0.4 | ✅ Complete | [specs/019-quality-tracking](../specs/019-quality-tracking/) |
+| F17 | Embeddings API | v0.4 | ✅ Complete | [specs/020-embeddings-api](../specs/020-embeddings-api/) |
+| F18 | Request Queuing & Prioritization | v0.4 | ✅ Complete | [specs/021-request-queuing](../specs/021-request-queuing/) |
 | — | **Fleet Intelligence (Phase 3)** | **v0.5** | Planned | - |
 | F19 | Pre-warming & Fleet Intelligence | v0.5 | Planned | - |
 | F20 | Model Lifecycle Management | v0.5 | Planned | - |
@@ -71,15 +71,18 @@ Extended Nexus from a local-only gateway to a hybrid local+cloud control plane. 
 
 ### v0.4 (Phase 2.5) — Quality, Embeddings & Queuing
 
-Added intelligence features that make Nexus smarter about backend quality and request handling. Quality tracking ([#173](https://github.com/leocamello/nexus/issues/173)) profiles backend response quality — tracking success rates, error rates, and latency per model to inform routing decisions. The Embeddings API ([#174](https://github.com/leocamello/nexus/issues/174)) adds `/v1/embeddings` support with capability-aware routing to Ollama and OpenAI backends. Request queuing ([#176](https://github.com/leocamello/nexus/issues/176), [#177](https://github.com/leocamello/nexus/issues/177)) holds requests when all capable backends are at capacity instead of rejecting immediately, with priority support via the `X-Nexus-Priority` header.
+Added intelligence features that make Nexus smarter about backend quality and request handling. The speculative router ([specs/018-speculative-router](../specs/018-speculative-router/)) pre-analyzes request patterns and model history to predict the optimal backend before full payload inspection. Quality tracking ([specs/019-quality-tracking](../specs/019-quality-tracking/)) profiles backend response quality — tracking success rates, error rates, and latency per model to inform routing decisions. The Embeddings API ([specs/020-embeddings-api](../specs/020-embeddings-api/)) adds `/v1/embeddings` support with capability-aware routing to Ollama and OpenAI backends. Request queuing ([specs/021-request-queuing](../specs/021-request-queuing/)) holds requests when all capable backends are at capacity instead of rejecting immediately, with priority support via the `X-Nexus-Priority` header.
 
 ---
 
-## What's Next (v0.4 — remaining)
+## What's Next (v0.5 — Orchestration)
 
-The remaining **Intelligence** features for v0.4:
+The next phase focuses on **fleet-level intelligence and operational control**:
 
-- **Speculative Router (F15)** — Pre-analyze requests to predict optimal backend before payload inspection
+- **Pre-warming & Fleet Intelligence (F19)** — Predictive model loading based on usage patterns
+- **Model Lifecycle Management (F20)** — Load/unload/migrate models via API
+- **Multi-Tenant Support (F21)** — API keys and per-tenant quotas
+- **Rate Limiting (F22)** — Per-backend and per-tenant protection
 
 ---
 
