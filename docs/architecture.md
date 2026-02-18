@@ -11,6 +11,7 @@
 │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │ │
 │  │  │ /v1/chat/    │  │ /v1/models   │  │ /health              │  │ │
 │  │  │ completions  │  │ /v1/stats    │  │ /metrics             │  │ │
+│  │  │ /v1/embeds   │  │              │  │                      │  │ │
 │  │  └──────┬───────┘  └──────┬───────┘  └──────────┬───────────┘  │ │
 │  │                                                                  │ │
 │  │  ┌──────────────────────────────────────────────────────────┐   │ │
@@ -46,6 +47,10 @@
 │  │  │ Health Checker   │  │ mDNS Discovery                    │   │ │
 │  │  │ (30s interval)   │  │ (continuous)                      │   │ │
 │  │  └──────────────────┘  └──────────────────────────────────┘   │ │
+│  │  ┌──────────────────┐  ┌──────────────────────────────────┐   │ │
+│  │  │ Quality Tracker  │  │ Request Queue (drain loop)        │   │ │
+│  │  │ (30s interval)   │  │ (continuous)                      │   │ │
+│  │  └──────────────────┘  └──────────────────────────────────┘   │ │
 │  └──────────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────────┘
                                  │
@@ -76,6 +81,7 @@ pub mod health;
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/v1/chat/completions", post(chat::completions))
+        .route("/v1/embeddings", post(embeddings::create))
         .route("/v1/models", get(models::list))
         .route("/health", get(health::check))
         .route("/v1/stats", get(stats::handle))
@@ -90,6 +96,7 @@ pub fn router(state: AppState) -> Router {
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/v1/chat/completions` | POST | Chat completion (streaming or not) |
+| `/v1/embeddings` | POST | Generate embeddings (OpenAI-compatible) |
 | `/v1/models` | GET | List all available models (per-backend entries with `owned_by` = backend name) |
 | `/v1/stats` | GET | JSON stats: uptime, request counts, per-backend metrics |
 | `/metrics` | GET | Prometheus metrics (counters, histograms, gauges) |
@@ -431,6 +438,21 @@ Structured logging via `tracing` (`src/logging/`).
 **Per-request fields** captured via `#[instrument]`: `request_id`, `model`,
 `backend`, `backend_type`, `status`, `status_code`, `latency_ms`, `tokens_prompt`,
 `tokens_completion`, `tokens_total`, `stream`, `route_reason`, `retry_count`.
+
+### 11. Request Queue
+
+Bounded priority queue for holding requests when all backends are busy (`src/queue/`).
+
+| File | Purpose |
+|------|---------|
+| `mod.rs` | `RequestQueue` — CAS-based bounded enqueue, priority channels, drain loop |
+
+**Key behaviors:**
+- Atomic `compare_exchange` loop prevents TOCTOU race on queue depth
+- Dual priority channels (high/normal) with single drain loop
+- Configurable timeout with deadline tracking per request
+- Re-runs reconciler pipeline on drain to find newly-available backends
+- Queue depth exposed via Prometheus gauge (`nexus_queue_depth`)
 
 ---
 
@@ -858,8 +880,8 @@ Request
 └──────────┬───────────────────┘
            ▼
 ┌──────────────────────────────┐
-│  5. QualityReconciler        │  Reserved for future quality metrics
-│     (pass-through Phase 1)   │  (latency, accuracy, user ratings)
+│  5. QualityReconciler        │  Deprioritize backends with high error rates
+│                              │  and slow TTFT using rolling window metrics
 └──────────┬───────────────────┘
            ▼
 ┌──────────────────────────────┐
@@ -888,7 +910,7 @@ RequestAnalyzer:    resolved_model, candidate_agents
 PrivacyReconciler:  privacy_constraint, excluded_agents, rejection_reasons
 BudgetReconciler:   cost_estimate, budget_status, excluded_agents, rejection_reasons
 TierReconciler:     min_capability_tier, excluded_agents, rejection_reasons
-QualityReconciler:  (none — pass-through)
+QualityReconciler:  quality_scores, excluded_agents (high error rate), rejection_reasons
 SchedulerReconciler: candidate_agents (→ single winner), route_reason
 ```
 
@@ -1024,7 +1046,7 @@ Per-backend tokenizer for audit-grade token counting and budget management:
 └─────────────────────────────────────────────────────────┘
 ```
 
-### Speculative Router (v0.4)
+### Speculative Router (v0.4) — Implemented
 
 Zero-ML request-content routing via JSON payload inspection:
 

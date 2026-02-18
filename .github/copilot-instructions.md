@@ -20,8 +20,8 @@ You are an expert Rust developer building **Nexus**, a distributed LLM orchestra
 |---------|-------|--------|
 | v0.1 | Foundation — Registry, Health, Router, mDNS, CLI, Aliases, Fallbacks | ✅ Released |
 | v0.2 | Observability — Prometheus metrics, Web Dashboard, Structured logging | ✅ Released |
-| v0.3 | Cloud Hybrid — Cloud backends, Privacy zones, Budget management | Next |
-| v0.4 | Intelligence — Speculative router, Quality tracking, Embeddings, Queuing | Planned |
+| v0.3 | Cloud Hybrid — Cloud backends, Privacy zones, Budget management | ✅ Released |
+| v0.4 | Intelligence — Speculative router, Quality tracking, Embeddings, Queuing | ✅ Released |
 | v0.5 | Orchestration — Pre-warming, Model lifecycle, Multi-tenant, Rate limiting | Planned |
 | v1.0 | Complete Product — Management UI, full web-based control plane | Planned |
 
@@ -77,6 +77,7 @@ src/
 ├── health/       # Background health checker with backend-specific endpoints
 ├── logging/      # Structured logging middleware (JSON/pretty, per-component levels)
 ├── metrics/      # Prometheus metrics and JSON stats API (/metrics, /v1/stats)
+├── queue/        # Request queuing with priority support and configurable timeout
 ├── registry/     # In-memory backend/model registry (DashMap, source of truth)
 ├── routing/      # Intelligent request routing (strategies, scoring, requirements)
 ├── lib.rs        # Module declarations
@@ -88,6 +89,7 @@ src/
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/v1/chat/completions` | Chat completion (streaming and non-streaming) |
+| `POST` | `/v1/embeddings` | Generate embeddings (OpenAI-compatible) |
 | `GET` | `/v1/models` | List available models from healthy backends (per-backend entries) |
 | `GET` | `/v1/stats` | JSON stats: uptime, request counts, per-backend metrics |
 | `GET` | `/metrics` | Prometheus metrics (counters, histograms, gauges) |
@@ -120,6 +122,8 @@ src/
 | `StatsResponse` | `metrics/types.rs` | JSON response for `/v1/stats` with uptime, requests, backends, models |
 | `BackendStats` | `metrics/types.rs` | Per-backend stats: id, name, requests, latency, pending |
 | `WebSocketUpdate` | `dashboard/types.rs` | Real-time dashboard updates: backend status, request history |
+| `RequestQueue` | `queue/mod.rs` | Bounded priority queue with configurable timeout and drain loop |
+| `QueuedRequest` | `queue/mod.rs` | Pending request: oneshot sender, model, priority, deadline |
 
 ### Key Patterns
 

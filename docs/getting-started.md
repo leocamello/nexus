@@ -228,6 +228,23 @@ strategy = "smart"    # smart | round_robin | priority_only | random
 # monthly_limit_usd = 50.0
 # soft_limit_percent = 75              # At 75%: prefer local backends
 # hard_limit_action = "block_cloud"    # At 100%: warn | block_cloud | block_all
+
+# --- Quality Tracking ---
+
+# [quality]
+# enabled = true
+# window_1h = 3600                     # Rolling window for 1-hour metrics (seconds)
+# window_24h = 86400                   # Rolling window for 24-hour metrics (seconds)
+# update_interval = 30                 # How often to recompute quality scores (seconds)
+# error_rate_threshold = 0.5           # Exclude backends with error rate above this
+
+# --- Request Queuing ---
+
+# [queue]
+# enabled = true
+# max_queue_size = 100                 # Maximum queued requests before rejecting
+# default_timeout_seconds = 30         # How long to wait before 503
+# priority_header = "X-Nexus-Priority" # Header for request priority (high | normal)
 ```
 
 ### Environment Variables
