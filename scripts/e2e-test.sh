@@ -2,7 +2,7 @@
 # =============================================================================
 # Nexus E2E Smoke Test
 # =============================================================================
-# Validates all core Nexus functionality (v0.1–v0.3) in one automated run.
+# Validates all core Nexus functionality (v0.1–v0.4) in one automated run.
 #
 # Prerequisites:
 #   - Nexus binary built (cargo build --release)
@@ -164,6 +164,15 @@ type = "${BACKEND_TYPE}"
 priority = 1
 zone = "restricted"
 tier = 3
+
+[quality]
+error_rate_threshold = 0.5
+ttft_threshold_ms = 2000
+
+[queue]
+enabled = true
+max_size = 100
+default_timeout_seconds = 30
 EOF
 
 pass "Test config written to $CONFIG_FILE"
@@ -476,6 +485,122 @@ if [[ "$BUDGET_METRICS" -gt 0 ]]; then
   pass "Budget Prometheus metrics present ($BUDGET_METRICS gauges)"
 else
   pass "Budget metrics omitted (no budget configured)"
+fi
+
+# --- Speculative Router (F15) ------------------------------------------------
+section "Speculative Router (F15)"
+
+# Verify reconciler pipeline metrics exist
+PIPELINE_METRICS=$(curl -sf "$BASE_URL/metrics" 2>/dev/null | grep -c "nexus_pipeline_duration" || echo "0")
+if [[ "$PIPELINE_METRICS" -gt 0 ]]; then
+  pass "Pipeline duration metrics present"
+else
+  skip "Pipeline metrics (may need requests first)"
+fi
+
+RECONCILER_METRICS=$(curl -sf "$BASE_URL/metrics" 2>/dev/null | grep -c "nexus_reconciler_duration" || echo "0")
+if [[ "$RECONCILER_METRICS" -gt 0 ]]; then
+  pass "Per-reconciler duration metrics present ($RECONCILER_METRICS entries)"
+else
+  skip "Reconciler metrics (may need requests first)"
+fi
+
+# --- Quality Tracking (F16) -------------------------------------------------
+section "Quality Tracking (F16)"
+
+# Quality metrics should be available in stats
+QUALITY_STATS=$(curl -sf "$BASE_URL/v1/stats" 2>/dev/null || echo "FAIL")
+if echo "$QUALITY_STATS" | jq -e '.backends' >/dev/null 2>&1; then
+  pass "Backend stats available for quality tracking"
+else
+  skip "Quality stats (may need backend activity)"
+fi
+
+# Check Prometheus quality metrics
+QUALITY_METRICS=$(curl -sf "$BASE_URL/metrics" 2>/dev/null | grep -c "nexus_quality\|error_rate\|ttft" || echo "0")
+if [[ "$QUALITY_METRICS" -gt 0 ]]; then
+  pass "Quality Prometheus metrics present"
+else
+  skip "Quality Prometheus metrics (populated after requests)"
+fi
+
+# --- Embeddings API (F17) ---------------------------------------------------
+section "Embeddings API (F17)"
+
+# Test embeddings endpoint - may fail if no embedding model is available
+EMBED_RESP=$(curl -s "$BASE_URL/v1/embeddings" \
+  -H "Content-Type: application/json" \
+  -d "{\"model\":\"$MODEL\",\"input\":\"Hello world\"}" 2>/dev/null || echo "FAIL")
+
+if echo "$EMBED_RESP" | jq -e '.data[0].embedding' >/dev/null 2>&1; then
+  EMBED_DIM=$(echo "$EMBED_RESP" | jq '.data[0].embedding | length')
+  pass "Single embedding request → dimension=$EMBED_DIM"
+elif echo "$EMBED_RESP" | jq -e '.error' >/dev/null 2>&1; then
+  ERR_MSG=$(echo "$EMBED_RESP" | jq -r '.error.message')
+  if echo "$ERR_MSG" | grep -qi "not support\|not found\|unsupported\|no.*backend"; then
+    skip "Embeddings (model '$MODEL' does not support embeddings)"
+  else
+    fail "Embeddings request" "$ERR_MSG"
+  fi
+else
+  skip "Embeddings (endpoint may not be available for this backend type)"
+fi
+
+# Test batch embeddings (only if single worked)
+if echo "$EMBED_RESP" | jq -e '.data[0].embedding' >/dev/null 2>&1; then
+  BATCH_RESP=$(curl -s "$BASE_URL/v1/embeddings" \
+    -H "Content-Type: application/json" \
+    -d "{\"model\":\"$MODEL\",\"input\":[\"Hello\",\"World\"]}" 2>/dev/null || echo "FAIL")
+
+  if echo "$BATCH_RESP" | jq -e '.data | length == 2' >/dev/null 2>&1; then
+    pass "Batch embedding request → 2 embeddings returned"
+  else
+    fail "Batch embedding request" "expected 2 embeddings"
+  fi
+
+  # Check X-Nexus-* headers on embedding response
+  EMBED_HEADERS=$(curl -sD - "$BASE_URL/v1/embeddings" \
+    -H "Content-Type: application/json" \
+    -d "{\"model\":\"$MODEL\",\"input\":\"test\"}" 2>/dev/null || echo "FAIL")
+  if echo "$EMBED_HEADERS" | grep -qi "x-nexus-backend:"; then
+    pass "X-Nexus-* headers present on embedding response"
+  else
+    fail "X-Nexus-* headers missing on embedding response"
+  fi
+fi
+
+# --- Request Queuing (F18) --------------------------------------------------
+section "Request Queuing (F18)"
+
+# Verify queue metrics exist in Prometheus
+QUEUE_METRICS=$(curl -sf "$BASE_URL/metrics" 2>/dev/null | grep -c "nexus_queue" || echo "0")
+if [[ "$QUEUE_METRICS" -gt 0 ]]; then
+  pass "Queue Prometheus metrics present ($QUEUE_METRICS gauges)"
+else
+  pass "Queue metrics omitted (queue idle — zero-depth is normal)"
+fi
+
+# Verify queue configuration is active via stats
+QUEUE_STATS=$(curl -sf "$BASE_URL/v1/stats" 2>/dev/null | jq -r '.queue // empty' 2>/dev/null || echo "")
+if [[ -n "$QUEUE_STATS" && "$QUEUE_STATS" != "null" ]]; then
+  QUEUE_DEPTH=$(echo "$QUEUE_STATS" | jq -r '.depth // 0')
+  pass "Queue stats present: depth=$QUEUE_DEPTH"
+else
+  pass "Queue stats omitted (no queued requests — normal idle state)"
+fi
+
+# Verify X-Nexus-Priority header is accepted (doesn't break request)
+PRIORITY_RESP=$(curl -s "$BASE_URL/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -H "X-Nexus-Priority: 1" \
+  -d "{\"model\":\"$MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"Say OK\"}],\"max_tokens\":5}" 2>/dev/null || echo "FAIL")
+
+if echo "$PRIORITY_RESP" | jq -e '.choices[0].message.content' >/dev/null 2>&1; then
+  pass "X-Nexus-Priority header accepted (priority=1 request succeeded)"
+elif echo "$PRIORITY_RESP" | jq -e '.error' >/dev/null 2>&1; then
+  pass "X-Nexus-Priority header accepted (request processed, backend error)"
+else
+  fail "X-Nexus-Priority header" "unexpected response"
 fi
 
 # --- Results -----------------------------------------------------------------

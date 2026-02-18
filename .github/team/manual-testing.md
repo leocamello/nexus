@@ -23,7 +23,7 @@ alias nexus="./target/release/nexus"
 
 # Verify installation
 nexus --version
-# nexus-orchestrator 0.3.0
+# nexus-orchestrator 0.4.0
 
 # If using Ollama, ensure it's running with at least one model
 ollama serve &              # or: systemctl start ollama
@@ -54,6 +54,10 @@ ollama list                 # verify models are available
 | 13 | [Control Plane](#13-control-plane--reconciler-pipeline-phase-2) | Reconciler pipeline, zero-config behavior |
 | 14 | [Privacy Zones & Tiers](#14-privacy-zones--capability-tiers-f13) | Zone enforcement, strict/flexible modes |
 | 15 | [Budget Management](#15-inference-budget-management-f14) | Spending limits, budget stats, hard limit behavior |
+| 16 | [Speculative Router](#16-speculative-router-f15) | Request analysis, candidate pre-filtering |
+| 17 | [Quality Tracking](#17-quality-tracking--backend-profiling-f16) | Rolling metrics, degraded backend handling |
+| 18 | [Embeddings API](#18-embeddings-api-f17) | OpenAI-compatible embeddings endpoint |
+| 19 | [Request Queuing](#19-request-queuing--prioritization-f18) | Priority queue, timeout behavior |
 | — | [E2E Test Script](#e2e-test-script) | Automated smoke test |
 | — | [Troubleshooting](#troubleshooting) | Common issues and solutions |
 
@@ -1590,9 +1594,362 @@ cargo test --test budget_tracking_test
 
 ---
 
+## 16. Speculative Router (F15)
+
+The Speculative Router is Nexus's intelligent routing pipeline — it analyzes incoming requests, extracts requirements (vision, tools, context length), and pre-filters candidates before scoring. It operates transparently; users don't interact with it directly, but it powers every routing decision.
+
+### 16.1 Enable Trace-Level Routing Logs
+
+To see the speculative router in action, enable trace-level logging for the routing module:
+
+```bash
+RUST_LOG=nexus::routing=trace nexus serve
+```
+
+### 16.2 Verify Capability-Aware Filtering
+
+Send a request with specific requirements and observe how the router filters backends:
+
+```bash
+# Request requiring vision capability
+curl -s http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "llava",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {"type": "text", "text": "Describe this image"},
+          {"type": "image_url", "image_url": {"url": "https://example.com/photo.jpg"}}
+        ]
+      }
+    ]
+  }' | jq .
+```
+
+In the trace logs, you should see the router:
+
+1. **Analyzing** the request to extract requirements (vision: true)
+2. **Pre-filtering** candidates to only vision-capable backends
+3. **Scoring** remaining candidates by load, latency, and priority
+
+```bash
+# Request requiring tool use
+curl -s http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "llama3.2",
+    "messages": [{"role": "user", "content": "What is the weather?"}],
+    "tools": [{"type": "function", "function": {"name": "get_weather", "parameters": {}}}]
+  }' | jq .
+```
+
+**Expected trace output** (in the server terminal):
+
+```
+TRACE nexus::routing: request analysis: model=llama3.2 vision=false tools=true
+TRACE nexus::routing: pre-filter: 3 candidates → 2 after capability match
+TRACE nexus::routing: scoring: backend=ollama-1 score=0.85, backend=ollama-2 score=0.72
+```
+
+### 16.3 Pipeline Metrics in Prometheus
+
+The reconciler pipeline exposes timing metrics:
+
+```bash
+curl -s http://localhost:8000/metrics | grep -E "nexus_reconciler|nexus_pipeline"
+```
+
+**Expected**:
+```
+nexus_reconciler_duration_seconds{stage="analyzer"} ...
+nexus_reconciler_duration_seconds{stage="privacy"} ...
+nexus_reconciler_duration_seconds{stage="budget"} ...
+nexus_reconciler_duration_seconds{stage="scheduler"} ...
+nexus_pipeline_duration_seconds_sum ...
+nexus_pipeline_duration_seconds_count ...
+```
+
+The total pipeline duration should be **< 1ms** for typical requests.
+
+### 16.4 Run Automated Tests
+
+```bash
+# Speculative router tests
+cargo test speculative
+
+# Reconciler pipeline tests
+cargo test reconciler_pipeline
+```
+
+---
+
+## 17. Quality Tracking & Backend Profiling (F16)
+
+Quality tracking monitors backend health beyond simple up/down checks. It tracks rolling error rates, time-to-first-token (TTFT), and automatically deprioritizes degraded backends.
+
+### 17.1 Configuration
+
+Add a `[quality]` section to your config file:
+
+```toml
+[quality]
+error_rate_threshold = 0.5
+ttft_threshold_ms = 2000
+```
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `error_rate_threshold` | `0.5` | Error rate (0.0–1.0) above which a backend is marked degraded |
+| `ttft_threshold_ms` | `2000` | Time-to-first-token threshold in ms; exceeding this marks a backend as slow |
+
+```bash
+nexus serve --config /tmp/nexus-quality-test.toml
+```
+
+### 17.2 Quality Metrics in Stats
+
+```bash
+curl -s http://localhost:8000/v1/stats | jq '.quality // .backends'
+```
+
+**Expected** (when quality tracking is active):
+```json
+{
+  "backends": [
+    {
+      "id": "ollama-local",
+      "status": "healthy",
+      "error_rate": 0.02,
+      "avg_ttft_ms": 450,
+      "quality_status": "normal"
+    }
+  ]
+}
+```
+
+Quality status values: `normal`, `degraded`, `unhealthy`.
+
+### 17.3 Degraded Backend Behavior
+
+When a backend exceeds the error rate or TTFT thresholds, it is automatically deprioritized in routing decisions. The backend remains available but receives fewer requests:
+
+```bash
+# After a backend becomes degraded, observe routing changes
+curl -s http://localhost:8000/v1/stats | jq '.backends[] | select(.quality_status == "degraded")'
+```
+
+Degraded backends recover automatically when their rolling metrics improve below the thresholds.
+
+### 17.4 Quality Metrics in Prometheus
+
+```bash
+curl -s http://localhost:8000/metrics | grep nexus_quality
+```
+
+**Expected**:
+```
+nexus_quality_error_rate{backend="ollama-local"} 0.02
+nexus_quality_ttft_ms{backend="ollama-local"} 450
+nexus_quality_status{backend="ollama-local",status="normal"} 1
+```
+
+### 17.5 Run Automated Tests
+
+```bash
+# Quality tracking tests
+cargo test quality
+```
+
+---
+
+## 18. Embeddings API (F17)
+
+Nexus exposes an OpenAI-compatible embeddings endpoint at `POST /v1/embeddings`. It routes embedding requests to capable backends and returns standardized responses.
+
+### 18.1 Single Embedding Request
+
+> **Note**: Replace `MODEL` with your embedding-capable model (e.g., `nomic-embed-text`, `text-embedding-ada-002`).
+
+```bash
+curl -s http://localhost:8000/v1/embeddings \
+  -H "Content-Type: application/json" \
+  -d '{"model":"MODEL","input":"Hello world"}' | jq .
+```
+
+**Expected** (OpenAI-compatible response):
+```json
+{
+  "object": "list",
+  "data": [
+    {
+      "object": "embedding",
+      "index": 0,
+      "embedding": [0.0023, -0.0091, 0.0152, "..."]
+    }
+  ],
+  "model": "MODEL",
+  "usage": {
+    "prompt_tokens": 2,
+    "total_tokens": 2
+  }
+}
+```
+
+### 18.2 Batch Embedding Request
+
+```bash
+curl -s http://localhost:8000/v1/embeddings \
+  -H "Content-Type: application/json" \
+  -d '{"model":"MODEL","input":["Hello","World"]}' | jq .
+```
+
+**Expected**: The `data` array contains one embedding object per input, each with a sequential `index`.
+
+### 18.3 X-Nexus-* Headers on Embedding Responses
+
+```bash
+curl -sD - http://localhost:8000/v1/embeddings \
+  -H "Content-Type: application/json" \
+  -d '{"model":"MODEL","input":"Hello world"}' \
+  2>&1 | grep -i "x-nexus"
+```
+
+**Expected**:
+```
+x-nexus-backend: ollama-local
+x-nexus-served-by: nexus
+```
+
+### 18.4 Embedding Models in Model List
+
+Embedding-capable models appear in the `/v1/models` endpoint:
+
+```bash
+curl -s http://localhost:8000/v1/models | jq '.data[] | select(.id | contains("embed"))'
+```
+
+**Expected**: The model entry includes embedding capability metadata.
+
+### 18.5 Run Automated Tests
+
+```bash
+# Embeddings API tests
+cargo test embeddings
+```
+
+---
+
+## 19. Request Queuing & Prioritization (F18)
+
+When all backends are busy, Nexus queues incoming requests instead of returning an immediate 503. Requests are dequeued by priority and dispatched as backend capacity becomes available.
+
+### 19.1 Configuration
+
+Add a `[queue]` section to your config file:
+
+```toml
+[queue]
+enabled = true
+max_size = 100
+default_timeout_seconds = 30
+```
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `true` | Enable/disable request queuing |
+| `max_size` | `100` | Maximum number of requests in the queue |
+| `default_timeout_seconds` | `30` | How long a request waits in the queue before timing out |
+
+```bash
+nexus serve --config /tmp/nexus-queue-test.toml
+```
+
+### 19.2 Priority Header
+
+Set request priority using the `X-Nexus-Priority` header (1 = critical, 5 = best-effort):
+
+```bash
+# High-priority request
+curl -s http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "X-Nexus-Priority: 1" \
+  -d '{"model":"llama3.2","messages":[{"role":"user","content":"Urgent request"}]}' | jq .
+
+# Best-effort request
+curl -s http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "X-Nexus-Priority: 5" \
+  -d '{"model":"llama3.2","messages":[{"role":"user","content":"Low priority task"}]}' | jq .
+```
+
+When the queue has multiple waiting requests, higher-priority requests (lower number) are dispatched first.
+
+### 19.3 Timeout Behavior
+
+When a queued request exceeds `default_timeout_seconds`, Nexus returns an actionable 503 with an estimated wait time:
+
+```json
+{
+  "error": {
+    "message": "Request timed out waiting for available backend",
+    "type": "service_unavailable",
+    "code": "service_unavailable"
+  },
+  "context": {
+    "queue_depth": 12,
+    "eta_seconds": 15,
+    "priority": 3
+  }
+}
+```
+
+### 19.4 Queue Depth in Prometheus
+
+```bash
+curl -s http://localhost:8000/metrics | grep nexus_queue
+```
+
+**Expected**:
+```
+nexus_queue_depth 0
+nexus_queue_max_size 100
+nexus_queue_timeouts_total 0
+nexus_queue_enqueued_total 42
+nexus_queue_dequeued_total 42
+```
+
+### 19.5 Queue Stats in `/v1/stats`
+
+```bash
+curl -s http://localhost:8000/v1/stats | jq '.queue'
+```
+
+**Expected** (when queuing is enabled):
+```json
+{
+  "enabled": true,
+  "depth": 0,
+  "max_size": 100,
+  "enqueued_total": 42,
+  "dequeued_total": 42,
+  "timeouts_total": 0
+}
+```
+
+### 19.6 Run Automated Tests
+
+```bash
+# Queue and prioritization tests
+cargo test queue
+```
+
+---
+
 ## E2E Test Script
 
-An automated smoke test is available at `scripts/e2e-test.sh`. It validates all core functionality in one run, including v0.3 features (X-Nexus-* headers, privacy zones, budget stats).
+An automated smoke test is available at `scripts/e2e-test.sh`. It validates all core functionality in one run, including v0.1–v0.4 features (X-Nexus-* headers, privacy zones, budget stats, embeddings, quality tracking, request queuing).
 
 ### Run It
 
@@ -1703,6 +2060,10 @@ rm -f /tmp/nexus.{bash,zsh,fish}
 | Control Plane | Reconciler pipeline, scheduling, request analysis | < 1ms pipeline, actionable 503s |
 | F13: Privacy & Tiers | Privacy zones, tier enforcement, strict/flexible | Zone-based filtering, no silent downgrades |
 | F14: Budget Mgmt | Spending limits, budget stats, hard limit block | Budget status in /v1/stats, 503 on limit |
+| F15: Speculative Router | Trace-level routing logs, pipeline metrics | < 1ms pipeline, capability matching |
+| F16: Quality Tracking | Quality metrics, degraded backend behavior | Auto-deprioritization, rolling stats |
+| F17: Embeddings API | `/v1/embeddings`, batch, X-Nexus-* headers | OpenAI-compatible response format |
+| F18: Request Queuing | Priority header, queue depth, timeout 503 | Bounded queue, actionable timeouts |
 
 **Automated test suite**: `cargo test`
 
