@@ -159,7 +159,7 @@ All research questions resolved:
 
 **Status**: ✅ Implemented  
 **Source Files**:
-- `src/queue/mod.rs` (595 lines) - Core queue implementation
+- `src/queue/mod.rs` (632 lines) - Core queue implementation
 - `src/config/queue.rs` (59 lines) - Configuration
 - `src/api/completions.rs` - Integration (enqueue on RoutingError::Queue)
 - `tests/queue_test.rs` - Integration tests

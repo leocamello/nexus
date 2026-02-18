@@ -272,7 +272,7 @@ The `Retry-After` header indicates the suggested wait time before retrying.
 
 ### Key Files (for reference)
 
-- `src/queue/mod.rs` (595 lines): Core queue implementation with 14 unit tests
+- `src/queue/mod.rs` (632 lines): Core queue implementation with 14 unit tests
 - `src/config/queue.rs` (58 lines): Configuration structure
 - `src/routing/reconciler/decision.rs`: RoutingDecision::Queue variant
 - `src/api/completions.rs` (lines 409-450): API integration and priority parsing

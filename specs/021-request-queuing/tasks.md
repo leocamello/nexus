@@ -186,7 +186,7 @@
 ### Files Created/Modified
 
 **Created**:
-- `src/queue/mod.rs` (595 lines) - Main queue implementation + 14 unit tests
+- `src/queue/mod.rs` (632 lines) - Main queue implementation + 14 unit tests
 - `src/config/queue.rs` (58 lines) - Configuration structs
 - `tests/queue_test.rs` (169 lines) - 2 integration tests
 
@@ -250,7 +250,7 @@ max_wait_seconds = 30
 ### Total Implementation
 
 - **Total Tasks**: 47 tasks
-- **Lines of Code**: 822 lines (595 queue + 58 config + 169 tests)
+- **Lines of Code**: 859 lines (632 queue + 58 config + 169 tests)
 - **Test Count**: 16 tests (14 unit + 2 integration)
 - **Files Created**: 3 new files
 - **Files Modified**: 4 existing files
