@@ -1575,6 +1575,69 @@ mod tests {
         assert!(!resp.headers().contains_key("x-nexus-cost-estimated"));
     }
 
+    #[tokio::test]
+    async fn test_inject_budget_headers_hard_limit() {
+        use crate::registry::{BackendType, DiscoverySource};
+        use crate::routing::reconciler::intent::BudgetStatus;
+
+        let backend = Backend::new(
+            "b1".to_string(),
+            "B1".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        let routing_result = crate::routing::RoutingResult {
+            backend: Arc::new(backend),
+            actual_model: "test-model".to_string(),
+            route_reason: "test".to_string(),
+            fallback_used: false,
+            cost_estimated: Some(0.12),
+            budget_status: BudgetStatus::HardLimit,
+            budget_utilization: Some(100.0),
+            budget_remaining: Some(0.0),
+        };
+
+        let mut resp =
+            axum::response::IntoResponse::into_response(axum::Json(serde_json::json!({})));
+        inject_budget_headers(&mut resp, &routing_result);
+
+        assert_eq!(
+            resp.headers()
+                .get("x-nexus-budget-status")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "HardLimit"
+        );
+        assert_eq!(
+            resp.headers()
+                .get("x-nexus-budget-utilization")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "100.00"
+        );
+        assert_eq!(
+            resp.headers()
+                .get("x-nexus-budget-remaining")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "0.00"
+        );
+        assert_eq!(
+            resp.headers()
+                .get("x-nexus-cost-estimated")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "0.1200"
+        );
+    }
+
     #[test]
     fn test_create_error_chunk_has_error_content() {
         let chunk = create_error_chunk("something went wrong");
@@ -2612,6 +2675,263 @@ mod tests {
     #[test]
     fn test_route_reason_fallback_string() {
         let reason = determine_route_reason("fallback_used", false, 0);
+        assert_eq!(reason, RouteReason::Failover);
+    }
+
+    #[tokio::test]
+    async fn test_streaming_success_with_agent() {
+        use crate::agent::types::{AgentCapabilities, AgentProfile, PrivacyZone};
+        use crate::agent::{
+            AgentError, HealthStatus, InferenceAgent, ModelCapability, StreamChunk,
+        };
+        use crate::api::AppState;
+        use crate::config::NexusConfig;
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource, Model, Registry};
+        use async_trait::async_trait;
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use futures_util::stream::BoxStream;
+        use tower::Service;
+
+        struct StreamAgent;
+
+        #[async_trait]
+        impl InferenceAgent for StreamAgent {
+            fn id(&self) -> &str {
+                "stream-agent"
+            }
+            fn name(&self) -> &str {
+                "Stream Agent"
+            }
+            fn profile(&self) -> AgentProfile {
+                AgentProfile {
+                    backend_type: "ollama".to_string(),
+                    version: None,
+                    privacy_zone: PrivacyZone::Restricted,
+                    capabilities: AgentCapabilities::default(),
+                    capability_tier: Some(1),
+                }
+            }
+            async fn health_check(&self) -> Result<HealthStatus, AgentError> {
+                Ok(HealthStatus::Healthy { model_count: 1 })
+            }
+            async fn list_models(&self) -> Result<Vec<ModelCapability>, AgentError> {
+                Ok(vec![])
+            }
+            async fn chat_completion(
+                &self,
+                _req: ChatCompletionRequest,
+                _h: Option<&HeaderMap>,
+            ) -> Result<ChatCompletionResponse, AgentError> {
+                Err(AgentError::Unsupported("non-streaming"))
+            }
+            async fn chat_completion_stream(
+                &self,
+                _req: ChatCompletionRequest,
+                _h: Option<&HeaderMap>,
+            ) -> Result<BoxStream<'static, Result<StreamChunk, AgentError>>, AgentError>
+            {
+                use futures_util::stream;
+                let chunks = vec![
+                    Ok(StreamChunk {
+                        data: r#"{"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}"#.to_string(),
+                    }),
+                    Ok(StreamChunk {
+                        data: "[DONE]".to_string(),
+                    }),
+                ];
+                Ok(Box::pin(stream::iter(chunks)))
+            }
+        }
+
+        let registry = Arc::new(Registry::new());
+        let backend = Backend::new(
+            "stream-agent".to_string(),
+            "StreamAgent".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        let agent: Arc<dyn InferenceAgent> = Arc::new(StreamAgent);
+        registry.add_backend_with_agent(backend, agent).unwrap();
+        registry
+            .update_status("stream-agent", BackendStatus::Healthy, None)
+            .unwrap();
+        registry
+            .update_models(
+                "stream-agent",
+                vec![Model {
+                    id: "stream-test".to_string(),
+                    name: "stream-test".to_string(),
+                    context_length: 4096,
+                    supports_vision: false,
+                    supports_tools: false,
+                    supports_json_mode: false,
+                    max_output_tokens: None,
+                }],
+            )
+            .unwrap();
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+        let mut app = crate::api::create_router(state);
+
+        let body = serde_json::json!({
+            "model": "stream-test",
+            "messages": [{"role": "user", "content": "hello"}],
+            "stream": true
+        });
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
+
+        let response = app.call(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Verify X-Nexus headers on streaming response
+        assert!(response.headers().contains_key("x-nexus-backend"));
+        assert_eq!(
+            response.headers().get("x-nexus-backend").unwrap(),
+            "stream-agent"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_streaming_agent_error_yields_error_chunk() {
+        use crate::agent::types::{AgentCapabilities, AgentProfile, PrivacyZone};
+        use crate::agent::{
+            AgentError, HealthStatus, InferenceAgent, ModelCapability, StreamChunk,
+        };
+        use crate::api::AppState;
+        use crate::config::NexusConfig;
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource, Model, Registry};
+        use async_trait::async_trait;
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use futures_util::stream::BoxStream;
+        use tower::Service;
+
+        struct FailStreamAgent;
+
+        #[async_trait]
+        impl InferenceAgent for FailStreamAgent {
+            fn id(&self) -> &str {
+                "fail-stream"
+            }
+            fn name(&self) -> &str {
+                "Fail Stream"
+            }
+            fn profile(&self) -> AgentProfile {
+                AgentProfile {
+                    backend_type: "ollama".to_string(),
+                    version: None,
+                    privacy_zone: PrivacyZone::Restricted,
+                    capabilities: AgentCapabilities::default(),
+                    capability_tier: None,
+                }
+            }
+            async fn health_check(&self) -> Result<HealthStatus, AgentError> {
+                Ok(HealthStatus::Healthy { model_count: 1 })
+            }
+            async fn list_models(&self) -> Result<Vec<ModelCapability>, AgentError> {
+                Ok(vec![])
+            }
+            async fn chat_completion(
+                &self,
+                _req: ChatCompletionRequest,
+                _h: Option<&HeaderMap>,
+            ) -> Result<ChatCompletionResponse, AgentError> {
+                Err(AgentError::Unsupported("non-streaming"))
+            }
+            async fn chat_completion_stream(
+                &self,
+                _req: ChatCompletionRequest,
+                _h: Option<&HeaderMap>,
+            ) -> Result<BoxStream<'static, Result<StreamChunk, AgentError>>, AgentError>
+            {
+                Err(AgentError::Network("connection refused".to_string()))
+            }
+        }
+
+        let registry = Arc::new(Registry::new());
+        let backend = Backend::new(
+            "fail-stream".to_string(),
+            "FailStream".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        let agent: Arc<dyn InferenceAgent> = Arc::new(FailStreamAgent);
+        registry.add_backend_with_agent(backend, agent).unwrap();
+        registry
+            .update_status("fail-stream", BackendStatus::Healthy, None)
+            .unwrap();
+        registry
+            .update_models(
+                "fail-stream",
+                vec![Model {
+                    id: "fail-stream-model".to_string(),
+                    name: "fail-stream-model".to_string(),
+                    context_length: 4096,
+                    supports_vision: false,
+                    supports_tools: false,
+                    supports_json_mode: false,
+                    max_output_tokens: None,
+                }],
+            )
+            .unwrap();
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+        let mut app = crate::api::create_router(state);
+
+        let body = serde_json::json!({
+            "model": "fail-stream-model",
+            "messages": [{"role": "user", "content": "hi"}],
+            "stream": true
+        });
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
+
+        let response = app.call(request).await.unwrap();
+        // The streaming response starts as 200 (SSE protocol)
+        // The error is inside the SSE stream as an error chunk
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Read the body to verify error chunk is present
+        let body = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let body_str = String::from_utf8_lossy(&body);
+        assert!(
+            body_str.contains("Error") || body_str.contains("error"),
+            "Expected error in stream body, got: {}",
+            &body_str[..std::cmp::min(200, body_str.len())]
+        );
+    }
+
+    #[test]
+    fn test_route_reason_privacy_string() {
+        let reason = determine_route_reason("privacy_zone_match", false, 0);
+        assert_eq!(reason, RouteReason::PrivacyRequirement);
+    }
+
+    #[test]
+    fn test_route_reason_retry_count_failover() {
+        let reason = determine_route_reason("highest_score:b1:0.95", false, 1);
         assert_eq!(reason, RouteReason::Failover);
     }
 }

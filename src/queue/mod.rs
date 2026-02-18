@@ -711,6 +711,131 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_process_queued_request_success_with_agent() {
+        use crate::agent::types::{AgentCapabilities, AgentProfile, PrivacyZone};
+        use crate::agent::{
+            AgentError, HealthStatus, InferenceAgent, ModelCapability, StreamChunk,
+        };
+        use crate::api::types::{
+            ChatCompletionResponse, ChatMessage, Choice, MessageContent, Usage,
+        };
+        use crate::config::NexusConfig;
+        use crate::registry::{Backend, BackendType, DiscoverySource, Registry};
+        use async_trait::async_trait;
+        use axum::http::HeaderMap;
+        use futures_util::stream::BoxStream;
+
+        struct QueueSuccessAgent;
+
+        #[async_trait]
+        impl InferenceAgent for QueueSuccessAgent {
+            fn id(&self) -> &str {
+                "queue-agent"
+            }
+            fn name(&self) -> &str {
+                "Queue Agent"
+            }
+            fn profile(&self) -> AgentProfile {
+                AgentProfile {
+                    backend_type: "ollama".to_string(),
+                    version: None,
+                    privacy_zone: PrivacyZone::Restricted,
+                    capabilities: AgentCapabilities::default(),
+                    capability_tier: Some(1),
+                }
+            }
+            async fn health_check(&self) -> Result<HealthStatus, AgentError> {
+                Ok(HealthStatus::Healthy { model_count: 1 })
+            }
+            async fn list_models(&self) -> Result<Vec<ModelCapability>, AgentError> {
+                Ok(vec![])
+            }
+            async fn chat_completion(
+                &self,
+                _req: ChatCompletionRequest,
+                _h: Option<&HeaderMap>,
+            ) -> Result<ChatCompletionResponse, AgentError> {
+                Ok(ChatCompletionResponse {
+                    id: "queue-cmpl".to_string(),
+                    object: "chat.completion".to_string(),
+                    created: 1234567890,
+                    model: "llama3:8b".to_string(),
+                    choices: vec![Choice {
+                        index: 0,
+                        message: ChatMessage {
+                            role: "assistant".to_string(),
+                            content: MessageContent::Text {
+                                content: "Queued response".to_string(),
+                            },
+                            name: None,
+                            function_call: None,
+                        },
+                        finish_reason: Some("stop".to_string()),
+                    }],
+                    usage: Some(Usage {
+                        prompt_tokens: 5,
+                        completion_tokens: 3,
+                        total_tokens: 8,
+                    }),
+                    extra: std::collections::HashMap::new(),
+                })
+            }
+            async fn chat_completion_stream(
+                &self,
+                _req: ChatCompletionRequest,
+                _h: Option<&HeaderMap>,
+            ) -> Result<BoxStream<'static, Result<StreamChunk, AgentError>>, AgentError>
+            {
+                Err(AgentError::Unsupported("streaming"))
+            }
+        }
+
+        let registry = Arc::new(Registry::new());
+        let backend = Backend::new(
+            "queue-agent".to_string(),
+            "Queue Agent Backend".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        let agent: Arc<dyn InferenceAgent> = Arc::new(QueueSuccessAgent);
+        registry.add_backend_with_agent(backend, agent).unwrap();
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(crate::api::AppState::new(Arc::clone(&registry), config));
+
+        let backend_arc = registry
+            .get_all_backends()
+            .into_iter()
+            .find(|b| b.id == "queue-agent")
+            .unwrap();
+        let routing_result = crate::routing::RoutingResult {
+            backend: Arc::new(backend_arc),
+            actual_model: "llama3:8b".to_string(),
+            fallback_used: false,
+            route_reason: "test".to_string(),
+            cost_estimated: None,
+            budget_status: crate::routing::reconciler::intent::BudgetStatus::Normal,
+            budget_utilization: None,
+            budget_remaining: None,
+        };
+
+        let request = make_request();
+        let result = process_queued_request(&state, &routing_result, &request).await;
+        assert!(result.is_ok(), "should succeed with agent");
+        let response = result.unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["id"], "queue-cmpl");
+    }
+
+    #[tokio::test]
     async fn test_process_queued_request_agent_not_found() {
         use crate::config::NexusConfig;
         use crate::registry::{Backend, BackendType, DiscoverySource, Registry};

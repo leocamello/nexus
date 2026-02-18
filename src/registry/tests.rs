@@ -1756,3 +1756,301 @@ fn test_registry_find_by_mdns_instance_not_found() {
     let registry = Registry::new();
     assert!(registry.find_by_mdns_instance("nonexistent").is_none());
 }
+
+// ── Agent registry methods (T023-T026) ──────────────────────────────
+
+#[test]
+fn test_add_backend_with_agent_and_get_agent() {
+    use crate::agent::types::{AgentCapabilities, AgentProfile, PrivacyZone};
+    use crate::agent::{AgentError, HealthStatus, InferenceAgent, ModelCapability, StreamChunk};
+    use crate::api::types::{ChatCompletionRequest, ChatCompletionResponse};
+    use async_trait::async_trait;
+    use axum::http::HeaderMap;
+    use futures_util::stream::BoxStream;
+    use std::sync::Arc;
+
+    struct DummyAgent;
+
+    #[async_trait]
+    impl InferenceAgent for DummyAgent {
+        fn id(&self) -> &str {
+            "dummy"
+        }
+        fn name(&self) -> &str {
+            "Dummy"
+        }
+        fn profile(&self) -> AgentProfile {
+            AgentProfile {
+                backend_type: "ollama".to_string(),
+                version: None,
+                privacy_zone: PrivacyZone::Restricted,
+                capabilities: AgentCapabilities::default(),
+                capability_tier: Some(1),
+            }
+        }
+        async fn health_check(&self) -> Result<HealthStatus, AgentError> {
+            Ok(HealthStatus::Healthy { model_count: 1 })
+        }
+        async fn list_models(&self) -> Result<Vec<ModelCapability>, AgentError> {
+            Ok(vec![])
+        }
+        async fn chat_completion(
+            &self,
+            _req: ChatCompletionRequest,
+            _h: Option<&HeaderMap>,
+        ) -> Result<ChatCompletionResponse, AgentError> {
+            Err(AgentError::Unsupported("chat_completion"))
+        }
+        async fn chat_completion_stream(
+            &self,
+            _req: ChatCompletionRequest,
+            _h: Option<&HeaderMap>,
+        ) -> Result<BoxStream<'static, Result<StreamChunk, AgentError>>, AgentError> {
+            Err(AgentError::Unsupported("streaming"))
+        }
+    }
+
+    let registry = Registry::new();
+    let backend = Backend::new(
+        "dummy".to_string(),
+        "Dummy".to_string(),
+        "http://localhost:11434".to_string(),
+        BackendType::Ollama,
+        vec![Model {
+            id: "model-a".to_string(),
+            name: "model-a".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+        }],
+        DiscoverySource::Static,
+        HashMap::new(),
+    );
+
+    let agent: Arc<dyn InferenceAgent> = Arc::new(DummyAgent);
+    registry.add_backend_with_agent(backend, agent).unwrap();
+
+    // get_agent should return the agent
+    let retrieved = registry.get_agent("dummy");
+    assert!(retrieved.is_some());
+    assert_eq!(retrieved.unwrap().id(), "dummy");
+
+    // get_agent for unknown returns None
+    assert!(registry.get_agent("nonexistent").is_none());
+
+    // get_all_agents returns all registered agents
+    let all = registry.get_all_agents();
+    assert_eq!(all.len(), 1);
+    assert_eq!(all[0].id(), "dummy");
+
+    // model index should be populated
+    let backends = registry.get_backends_for_model("model-a");
+    assert_eq!(backends.len(), 1);
+}
+
+#[test]
+fn test_add_backend_with_agent_duplicate_error() {
+    use crate::agent::types::{AgentCapabilities, AgentProfile, PrivacyZone};
+    use crate::agent::{AgentError, HealthStatus, InferenceAgent, ModelCapability, StreamChunk};
+    use crate::api::types::{ChatCompletionRequest, ChatCompletionResponse};
+    use async_trait::async_trait;
+    use axum::http::HeaderMap;
+    use futures_util::stream::BoxStream;
+    use std::sync::Arc;
+
+    struct DummyAgent2;
+
+    #[async_trait]
+    impl InferenceAgent for DummyAgent2 {
+        fn id(&self) -> &str {
+            "dup"
+        }
+        fn name(&self) -> &str {
+            "Dup"
+        }
+        fn profile(&self) -> AgentProfile {
+            AgentProfile {
+                backend_type: "ollama".to_string(),
+                version: None,
+                privacy_zone: PrivacyZone::Restricted,
+                capabilities: AgentCapabilities::default(),
+                capability_tier: None,
+            }
+        }
+        async fn health_check(&self) -> Result<HealthStatus, AgentError> {
+            Ok(HealthStatus::Unhealthy)
+        }
+        async fn list_models(&self) -> Result<Vec<ModelCapability>, AgentError> {
+            Ok(vec![])
+        }
+        async fn chat_completion(
+            &self,
+            _req: ChatCompletionRequest,
+            _h: Option<&HeaderMap>,
+        ) -> Result<ChatCompletionResponse, AgentError> {
+            Err(AgentError::Unsupported("chat_completion"))
+        }
+        async fn chat_completion_stream(
+            &self,
+            _req: ChatCompletionRequest,
+            _h: Option<&HeaderMap>,
+        ) -> Result<BoxStream<'static, Result<StreamChunk, AgentError>>, AgentError> {
+            Err(AgentError::Unsupported("streaming"))
+        }
+    }
+
+    let registry = Registry::new();
+    let backend1 = Backend::new(
+        "dup".to_string(),
+        "Dup".to_string(),
+        "http://localhost:1".to_string(),
+        BackendType::Ollama,
+        vec![],
+        DiscoverySource::Static,
+        HashMap::new(),
+    );
+    let backend2 = Backend::new(
+        "dup".to_string(),
+        "Dup2".to_string(),
+        "http://localhost:2".to_string(),
+        BackendType::Ollama,
+        vec![],
+        DiscoverySource::Static,
+        HashMap::new(),
+    );
+
+    let agent1: Arc<dyn InferenceAgent> = Arc::new(DummyAgent2);
+    let agent2: Arc<dyn InferenceAgent> = Arc::new(DummyAgent2);
+
+    registry.add_backend_with_agent(backend1, agent1).unwrap();
+    let result = registry.add_backend_with_agent(backend2, agent2);
+    assert!(matches!(result, Err(RegistryError::DuplicateBackend(_))));
+}
+
+#[test]
+fn test_remove_backend_also_removes_agent() {
+    use crate::agent::types::{AgentCapabilities, AgentProfile, PrivacyZone};
+    use crate::agent::{AgentError, HealthStatus, InferenceAgent, ModelCapability, StreamChunk};
+    use crate::api::types::{ChatCompletionRequest, ChatCompletionResponse};
+    use async_trait::async_trait;
+    use axum::http::HeaderMap;
+    use futures_util::stream::BoxStream;
+    use std::sync::Arc;
+
+    struct DummyAgent3;
+
+    #[async_trait]
+    impl InferenceAgent for DummyAgent3 {
+        fn id(&self) -> &str {
+            "rm-agent"
+        }
+        fn name(&self) -> &str {
+            "RM"
+        }
+        fn profile(&self) -> AgentProfile {
+            AgentProfile {
+                backend_type: "ollama".to_string(),
+                version: None,
+                privacy_zone: PrivacyZone::Restricted,
+                capabilities: AgentCapabilities::default(),
+                capability_tier: None,
+            }
+        }
+        async fn health_check(&self) -> Result<HealthStatus, AgentError> {
+            Ok(HealthStatus::Unhealthy)
+        }
+        async fn list_models(&self) -> Result<Vec<ModelCapability>, AgentError> {
+            Ok(vec![])
+        }
+        async fn chat_completion(
+            &self,
+            _req: ChatCompletionRequest,
+            _h: Option<&HeaderMap>,
+        ) -> Result<ChatCompletionResponse, AgentError> {
+            Err(AgentError::Unsupported("chat_completion"))
+        }
+        async fn chat_completion_stream(
+            &self,
+            _req: ChatCompletionRequest,
+            _h: Option<&HeaderMap>,
+        ) -> Result<BoxStream<'static, Result<StreamChunk, AgentError>>, AgentError> {
+            Err(AgentError::Unsupported("streaming"))
+        }
+    }
+
+    let registry = Registry::new();
+    let backend = Backend::new(
+        "rm-agent".to_string(),
+        "RM".to_string(),
+        "http://localhost:1".to_string(),
+        BackendType::Ollama,
+        vec![],
+        DiscoverySource::Static,
+        HashMap::new(),
+    );
+    let agent: Arc<dyn InferenceAgent> = Arc::new(DummyAgent3);
+    registry.add_backend_with_agent(backend, agent).unwrap();
+
+    assert!(registry.get_agent("rm-agent").is_some());
+    registry.remove_backend("rm-agent").unwrap();
+    assert!(registry.get_agent("rm-agent").is_none());
+    assert_eq!(registry.get_all_agents().len(), 0);
+}
+
+#[test]
+fn test_increment_total_requests() {
+    let registry = Registry::new();
+    let backend = Backend::new(
+        "total-req".to_string(),
+        "TotalReq".to_string(),
+        "http://localhost:1".to_string(),
+        BackendType::Ollama,
+        vec![],
+        DiscoverySource::Static,
+        HashMap::new(),
+    );
+    registry.add_backend(backend).unwrap();
+
+    let v1 = registry.increment_total_requests("total-req").unwrap();
+    assert_eq!(v1, 1);
+    let v2 = registry.increment_total_requests("total-req").unwrap();
+    assert_eq!(v2, 2);
+
+    // Nonexistent backend
+    let err = registry.increment_total_requests("nonexistent");
+    assert!(matches!(err, Err(RegistryError::BackendNotFound(_))));
+}
+
+#[test]
+fn test_remove_backend_cleans_up_model_index_completely() {
+    let registry = Registry::new();
+    let backend = Backend::new(
+        "rm-model-idx".to_string(),
+        "RM".to_string(),
+        "http://localhost:1".to_string(),
+        BackendType::Ollama,
+        vec![Model {
+            id: "unique-model".to_string(),
+            name: "unique-model".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+        }],
+        DiscoverySource::Static,
+        HashMap::new(),
+    );
+    registry.add_backend(backend).unwrap();
+
+    // Model should be in index
+    assert_eq!(registry.get_backends_for_model("unique-model").len(), 1);
+    assert_eq!(registry.model_count(), 1);
+
+    // Remove backend — model index should be cleaned up
+    registry.remove_backend("rm-model-idx").unwrap();
+    assert_eq!(registry.get_backends_for_model("unique-model").len(), 0);
+    assert_eq!(registry.model_count(), 0);
+}

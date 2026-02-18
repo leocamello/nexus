@@ -374,4 +374,100 @@ mod tests {
             );
         }
     }
+
+    #[tokio::test]
+    async fn test_dashboard_handler_with_backends_and_models() {
+        use crate::config::NexusConfig;
+        use crate::registry::{
+            Backend, BackendStatus, BackendType, DiscoverySource, Model, Registry,
+        };
+
+        let registry = Arc::new(Registry::new());
+
+        // Add a healthy backend with models
+        let backend = Backend::new(
+            "dash-backend".to_string(),
+            "DashBackend".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        registry.add_backend(backend).unwrap();
+        registry
+            .update_status("dash-backend", BackendStatus::Healthy, None)
+            .unwrap();
+        registry
+            .update_models(
+                "dash-backend",
+                vec![
+                    Model {
+                        id: "llama3:8b".to_string(),
+                        name: "llama3:8b".to_string(),
+                        context_length: 8192,
+                        supports_vision: false,
+                        supports_tools: true,
+                        supports_json_mode: true,
+                        max_output_tokens: None,
+                    },
+                    Model {
+                        id: "codellama:7b".to_string(),
+                        name: "codellama:7b".to_string(),
+                        context_length: 16384,
+                        supports_vision: false,
+                        supports_tools: false,
+                        supports_json_mode: false,
+                        max_output_tokens: Some(4096),
+                    },
+                ],
+            )
+            .unwrap();
+
+        // Add an unhealthy backend (should not appear in models)
+        let backend2 = Backend::new(
+            "dash-unhealthy".to_string(),
+            "DashUnhealthy".to_string(),
+            "http://localhost:99999".to_string(),
+            BackendType::Generic,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        registry.add_backend(backend2).unwrap();
+        registry
+            .update_status("dash-unhealthy", BackendStatus::Unhealthy, None)
+            .unwrap();
+        registry
+            .update_models(
+                "dash-unhealthy",
+                vec![Model {
+                    id: "hidden-model".to_string(),
+                    name: "hidden-model".to_string(),
+                    context_length: 4096,
+                    supports_vision: false,
+                    supports_tools: false,
+                    supports_json_mode: false,
+                    max_output_tokens: None,
+                }],
+            )
+            .unwrap();
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+
+        let response = dashboard_handler(State(state)).await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Verify the HTML contains initial data with our backends
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let html = String::from_utf8(body.to_vec()).unwrap();
+        assert!(html.contains("llama3:8b"), "HTML should contain model name");
+        assert!(
+            html.contains("DashBackend"),
+            "HTML should contain backend name"
+        );
+    }
 }
