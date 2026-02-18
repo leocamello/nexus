@@ -105,14 +105,22 @@ impl RequestQueue {
             return Err(QueueError::Disabled);
         }
 
-        let current = self.depth.load(Ordering::SeqCst);
-        if current >= self.config.max_size as usize {
-            return Err(QueueError::Full {
-                max_size: self.config.max_size,
-            });
+        // CAS loop to atomically check-and-increment depth, preventing TOCTOU race
+        loop {
+            let current = self.depth.load(Ordering::SeqCst);
+            if current >= self.config.max_size as usize {
+                return Err(QueueError::Full {
+                    max_size: self.config.max_size,
+                });
+            }
+            if self
+                .depth
+                .compare_exchange(current, current + 1, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+            {
+                break;
+            }
         }
-
-        self.depth.fetch_add(1, Ordering::SeqCst);
         metrics::gauge!("nexus_queue_depth").set(self.depth() as f64);
 
         let tx = match request.priority {
@@ -200,7 +208,9 @@ pub async fn queue_drain_loop(
                         queue.config().max_wait_seconds
                     );
 
-                    // Check timeout
+                    // Drain-side timeout: skip requests already expired before processing.
+                    // The handler also has its own timeout guard (tokio::time::timeout on
+                    // the oneshot rx), so a request may time out on either side.
                     if queued.enqueued_at.elapsed() > max_wait {
                         tracing::warn!(
                             priority = ?queued.priority,
@@ -591,5 +601,32 @@ mod tests {
         assert_eq!(Priority::from_header("urgent"), Priority::Normal);
         assert_eq!(Priority::from_header("low"), Priority::Normal);
         assert_eq!(Priority::from_header("123"), Priority::Normal);
+    }
+
+    // ========================================================================
+    // Concurrent enqueue: CAS loop prevents depth exceeding max_size
+    // ========================================================================
+
+    #[tokio::test]
+    async fn concurrent_enqueue_respects_max_size() {
+        let queue = Arc::new(RequestQueue::new(make_config(10, 30)));
+        let mut handles = vec![];
+
+        for _ in 0..50 {
+            let q = Arc::clone(&queue);
+            handles.push(tokio::spawn(async move {
+                let (req, _rx) = make_queued(Priority::Normal);
+                q.enqueue(req)
+            }));
+        }
+
+        let results: Vec<_> = futures::future::join_all(handles).await;
+        let successes = results
+            .iter()
+            .filter(|r| r.as_ref().unwrap().is_ok())
+            .count();
+
+        assert_eq!(successes, 10, "Exactly max_size requests should succeed");
+        assert_eq!(queue.depth(), 10);
     }
 }
