@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-02-18
+
+### Added
+- **Speculative Router (F15)**: Request analysis and candidate pre-filtering
+  - `RequestAnalyzer` inspects payload to extract model, vision, tools, and context requirements
+  - Alias resolution with max 3-level chaining and circular detection
+  - Candidate population from registry model-to-backend index
+  - Sub-millisecond request analysis (< 0.5ms p95)
+- **Quality Tracking & Backend Profiling (F16)**: Rolling-window performance profiles
+  - Per-model+backend statistics: error rate, TTFT, success rate (1h and 24h windows)
+  - `QualityReconciler` deprioritizes degraded backends (error_rate > 20%, TTFT > 2000ms)
+  - Background `quality_reconciliation_loop` computes metrics every 30s
+  - `AgentSchedulingProfile` with error_rate_1h, avg_ttft_ms, success_rate_24h
+  - Quality metrics exposed via Prometheus and `/v1/stats`
+- **Embeddings API (F17)**: OpenAI-compatible embeddings endpoint
+  - `POST /v1/embeddings` routes to capable backends through reconciler pipeline
+  - Batch embedding support (multiple inputs in single request)
+  - `OllamaAgent`: forwards to `/api/embed` with format translation
+  - `OpenAIAgent` / `LMStudioAgent`: forwards to `/v1/embeddings`
+  - Embedding capability tracked in registry model metadata
+  - `X-Nexus-*` headers on all embedding responses
+- **Request Queuing & Prioritization (F18)**: Bounded queue for busy backends
+  - `RoutingDecision::Queue` variant in reconciler pipeline
+  - Priority levels via `X-Nexus-Priority` header (1=critical, 5=best-effort)
+  - Configurable max queue size and timeout (default: 100 items, 30s)
+  - Queue drain loop re-runs reconciler pipeline for queued requests
+  - Oldest low-priority requests dropped first when queue is full
+  - Timeout produces actionable 503 with `eta_seconds`
+  - Queue depth exposed via Prometheus (`nexus_queue_depth`) and `/v1/stats`
+  - TOML configuration: `[queue]` section with enabled, max_size, default_timeout_seconds
+- **Red Team Phase**: Added adversarial review phase to Feature Development Lifecycle
+  - Architectural & pattern compliance checks
+  - Adversarial attack vector analysis
+  - Spec integrity verification
+  - Test coverage audit
+  - Four-tier verdict system (PASS, CONDITIONAL PASS, FAIL-IMPLEMENTATION, FAIL-SPECIFICATION)
+
+### Changed
+- Test coverage expanded from 76% to 89% (1490 tests, +612 from v0.3.0)
+- Feature Development Lifecycle expanded to 5 phases (added Red Team Phase before Merge)
+- Documentation restructured for consistency across all spec artifacts (F15-F18)
+- Version bumped to 0.4.0
+
+### Fixed
+- TOCTOU race condition in queue `enqueue()` — replaced load+check with `compare_exchange` CAS loop
+- Unbounded memory in quality tracking — capped request history to 10,000 entries
+- `RwLock` panic potential in quality tracker — replaced with `DashMap` for lock-free access
+- Dead TOML config for quality settings — wired `[quality]` config to reconciler
+
 ## [0.3.0] - 2026-02-17
 
 ### Added
@@ -145,7 +194,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Configurable fallback chains per model
   - `X-Nexus-Fallback-Model` response header for transparency
 
-[Unreleased]: https://github.com/leocamello/nexus/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/leocamello/nexus/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/leocamello/nexus/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/leocamello/nexus/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/leocamello/nexus/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/leocamello/nexus/releases/tag/v0.1.0
