@@ -210,7 +210,11 @@ pub trait InferenceAgent: Send + Sync + 'static {
     ///
     /// Default implementation returns `Unsupported`. Override in OpenAIAgent
     /// and backends that support /v1/embeddings endpoint.
-    async fn embeddings(&self, _input: Vec<String>) -> Result<Vec<Vec<f32>>, AgentError> {
+    async fn embeddings(
+        &self,
+        _model: &str,
+        _input: Vec<String>,
+    ) -> Result<Vec<Vec<f32>>, AgentError> {
         Err(AgentError::Unsupported("embeddings"))
     }
 
@@ -401,7 +405,7 @@ mod tests {
     #[tokio::test]
     async fn embeddings_returns_unsupported() {
         let agent = MockAgent;
-        let err = agent.embeddings(vec![]).await.unwrap_err();
+        let err = agent.embeddings("test-model", vec![]).await.unwrap_err();
         assert!(matches!(err, AgentError::Unsupported("embeddings")));
     }
 

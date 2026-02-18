@@ -1,5 +1,6 @@
 //! Embeddings endpoint handler (F17: Embeddings API).
 
+use crate::api::headers::{NexusTransparentHeaders, RouteReason};
 use crate::api::{ApiError, AppState};
 use crate::routing::RequestRequirements;
 use axum::{
@@ -63,6 +64,9 @@ pub struct EmbeddingResponse {
     pub usage: EmbeddingUsage,
 }
 
+/// Maximum batch size for embedding requests (matches OpenAI's limit).
+const MAX_EMBEDDING_BATCH_SIZE: usize = 2048;
+
 /// POST /v1/embeddings — Handle embedding requests.
 #[instrument(
     skip(state, _headers, request),
@@ -78,6 +82,14 @@ pub async fn handle(
     let input_texts = request.input.into_vec();
     if input_texts.is_empty() {
         return Err(ApiError::bad_request("Input must not be empty"));
+    }
+
+    if input_texts.len() > MAX_EMBEDDING_BATCH_SIZE {
+        return Err(ApiError::bad_request(&format!(
+            "Batch size {} exceeds maximum of {}",
+            input_texts.len(),
+            MAX_EMBEDDING_BATCH_SIZE
+        )));
     }
 
     // Estimate tokens for routing
@@ -124,11 +136,19 @@ pub async fn handle(
         )));
     }
 
+    // Track pending request for load-aware routing
+    let _ = state.registry.increment_pending(&backend.id);
+
     // Delegate to agent.embeddings()
     let vectors = agent
-        .embeddings(input_texts.clone())
+        .embeddings(&request.model, input_texts)
         .await
-        .map_err(ApiError::from_agent_error)?;
+        .map_err(|e| {
+            let _ = state.registry.decrement_pending(&backend.id);
+            ApiError::from_agent_error(e)
+        })?;
+
+    let _ = state.registry.decrement_pending(&backend.id);
 
     // Build OpenAI-compatible response
     let data: Vec<EmbeddingObject> = vectors
@@ -152,7 +172,20 @@ pub async fn handle(
         },
     };
 
-    Ok(Json(response).into_response())
+    let mut resp = Json(response).into_response();
+
+    // Inject X-Nexus-* transparent headers (Constitution Principle III)
+    let privacy_zone = agent.profile().privacy_zone;
+    let nexus_headers = NexusTransparentHeaders::new(
+        backend.id.clone(),
+        backend.backend_type,
+        RouteReason::CapabilityMatch,
+        privacy_zone,
+        routing_result.cost_estimated,
+    );
+    nexus_headers.inject_into_response(&mut resp);
+
+    Ok(resp)
 }
 
 #[cfg(test)]

@@ -355,11 +355,15 @@ impl InferenceAgent for OpenAIAgent {
     }
 
     /// Generate embeddings via OpenAI's POST /v1/embeddings endpoint.
-    async fn embeddings(&self, input: Vec<String>) -> Result<Vec<Vec<f32>>, AgentError> {
+    async fn embeddings(
+        &self,
+        model: &str,
+        input: Vec<String>,
+    ) -> Result<Vec<Vec<f32>>, AgentError> {
         let url = format!("{}/v1/embeddings", self.base_url);
 
         let body = serde_json::json!({
-            "model": "text-embedding-ada-002",
+            "model": model,
             "input": input,
         });
 

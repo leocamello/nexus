@@ -289,13 +289,17 @@ impl InferenceAgent for OllamaAgent {
     }
 
     /// Generate embeddings via Ollama's POST /api/embed endpoint.
-    async fn embeddings(&self, input: Vec<String>) -> Result<Vec<Vec<f32>>, AgentError> {
+    async fn embeddings(
+        &self,
+        model: &str,
+        input: Vec<String>,
+    ) -> Result<Vec<Vec<f32>>, AgentError> {
         let mut results = Vec::with_capacity(input.len());
 
         for text in &input {
             let url = format!("{}/api/embed", self.base_url);
             let body = serde_json::json!({
-                "model": "all-minilm",
+                "model": model,
                 "input": text,
             });
 

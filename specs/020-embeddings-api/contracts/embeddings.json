@@ -1,0 +1,337 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Embeddings API",
+    "description": "OpenAI-compatible embeddings endpoint for Nexus",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:7777/v1",
+      "description": "Local Nexus server"
+    }
+  ],
+  "paths": {
+    "/embeddings": {
+      "post": {
+        "summary": "Create embeddings",
+        "description": "Generate vector representations of input text using specified model. Supports both single string and batch array inputs.",
+        "operationId": "createEmbedding",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmbeddingRequest"
+              },
+              "examples": {
+                "single": {
+                  "summary": "Single text input",
+                  "value": {
+                    "model": "text-embedding-ada-002",
+                    "input": "The quick brown fox jumps over the lazy dog"
+                  }
+                },
+                "batch": {
+                  "summary": "Batch input (array of texts)",
+                  "value": {
+                    "model": "text-embedding-ada-002",
+                    "input": [
+                      "First text to embed",
+                      "Second text to embed",
+                      "Third text to embed"
+                    ]
+                  }
+                },
+                "with_encoding_format": {
+                  "summary": "With encoding format (optional)",
+                  "value": {
+                    "model": "text-embedding-ada-002",
+                    "input": "Sample text",
+                    "encoding_format": "float"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response with embedding vectors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmbeddingResponse"
+                },
+                "examples": {
+                  "single": {
+                    "summary": "Single embedding result",
+                    "value": {
+                      "object": "list",
+                      "data": [
+                        {
+                          "object": "embedding",
+                          "embedding": [0.0023, -0.0091, 0.0062],
+                          "index": 0
+                        }
+                      ],
+                      "model": "text-embedding-ada-002",
+                      "usage": {
+                        "prompt_tokens": 9,
+                        "total_tokens": 9
+                      }
+                    }
+                  },
+                  "batch": {
+                    "summary": "Batch embedding results",
+                    "value": {
+                      "object": "list",
+                      "data": [
+                        {
+                          "object": "embedding",
+                          "embedding": [0.0023, -0.0091, 0.0062],
+                          "index": 0
+                        },
+                        {
+                          "object": "embedding",
+                          "embedding": [0.0034, -0.0012, 0.0078],
+                          "index": 1
+                        },
+                        {
+                          "object": "embedding",
+                          "embedding": [0.0045, -0.0023, 0.0089],
+                          "index": 2
+                        }
+                      ],
+                      "model": "text-embedding-ada-002",
+                      "usage": {
+                        "prompt_tokens": 15,
+                        "total_tokens": 15
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request (e.g., empty input)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Input must not be empty",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Model not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Model 'nonexistent-model' not found",
+                    "type": "invalid_request_error",
+                    "code": "model_not_found"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity (e.g., invalid JSON)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "Invalid JSON in request body",
+                    "type": "invalid_request_error"
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad gateway (agent not registered or backend error)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "No agent registered for backend 'openai-1'",
+                    "type": "bad_gateway"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable (no capable backends)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "message": "No healthy backend available for model 'text-embedding-ada-002'",
+                    "type": "service_unavailable"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "EmbeddingRequest": {
+        "type": "object",
+        "required": ["model", "input"],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "ID of the model to use. Examples: 'text-embedding-ada-002', 'text-embedding-3-small', 'all-minilm'",
+            "example": "text-embedding-ada-002"
+          },
+          "input": {
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "Single text to embed",
+                "example": "The quick brown fox"
+              },
+              {
+                "type": "array",
+                "description": "Array of texts to embed (batch processing)",
+                "items": {
+                  "type": "string"
+                },
+                "example": ["First text", "Second text"]
+              }
+            ]
+          },
+          "encoding_format": {
+            "type": "string",
+            "description": "Format for returned embeddings (optional, default: float). Note: Currently parsed but not enforced - always returns float.",
+            "enum": ["float", "base64"],
+            "default": "float",
+            "example": "float"
+          }
+        }
+      },
+      "EmbeddingResponse": {
+        "type": "object",
+        "required": ["object", "data", "model", "usage"],
+        "properties": {
+          "object": {
+            "type": "string",
+            "description": "Always 'list'",
+            "enum": ["list"],
+            "example": "list"
+          },
+          "data": {
+            "type": "array",
+            "description": "Array of embedding objects, one per input",
+            "items": {
+              "$ref": "#/components/schemas/EmbeddingObject"
+            }
+          },
+          "model": {
+            "type": "string",
+            "description": "Model used for generation",
+            "example": "text-embedding-ada-002"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/EmbeddingUsage"
+          }
+        }
+      },
+      "EmbeddingObject": {
+        "type": "object",
+        "required": ["object", "embedding", "index"],
+        "properties": {
+          "object": {
+            "type": "string",
+            "description": "Always 'embedding'",
+            "enum": ["embedding"],
+            "example": "embedding"
+          },
+          "embedding": {
+            "type": "array",
+            "description": "Embedding vector (array of floats). Dimensions vary by model: ada-002 (1536), 3-small (512-1536), all-minilm (384)",
+            "items": {
+              "type": "number",
+              "format": "float"
+            },
+            "example": [0.0023, -0.0091, 0.0062]
+          },
+          "index": {
+            "type": "integer",
+            "description": "Position in the input array (0-based)",
+            "example": 0
+          }
+        }
+      },
+      "EmbeddingUsage": {
+        "type": "object",
+        "required": ["prompt_tokens", "total_tokens"],
+        "properties": {
+          "prompt_tokens": {
+            "type": "integer",
+            "description": "Number of tokens in the input. Estimated as chars/4 for routing; may differ from actual tokenization.",
+            "example": 9
+          },
+          "total_tokens": {
+            "type": "integer",
+            "description": "Total tokens consumed (equals prompt_tokens for embeddings - no completion tokens)",
+            "example": 9
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["message", "type"],
+            "properties": {
+              "message": {
+                "type": "string",
+                "description": "Human-readable error message",
+                "example": "Model 'nonexistent-model' not found"
+              },
+              "type": {
+                "type": "string",
+                "description": "Error category",
+                "example": "invalid_request_error"
+              },
+              "code": {
+                "type": "string",
+                "description": "Machine-readable error code (optional)",
+                "example": "model_not_found"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
