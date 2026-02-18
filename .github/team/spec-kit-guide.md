@@ -545,17 +545,17 @@ Completed items (✅) are grouped first, followed by the work ahead in dependenc
 | 10 | F10 | Web Dashboard | v0.2 ✅ | F09 | [Link](#f10-web-dashboard) |
 | 11 | F11 | Structured Request Logging | v0.2 ✅ | F01 | [Link](#f11-structured-request-logging) |
 | | | | | | |
-| 12 | — | **NII Extraction (Phase 1)** | **v0.3** | F02, F03, F06 | [Link](#phase-1-nii-extraction-prerequisite-for-v03) |
-| 13 | F12 | Cloud Backend Support | v0.3 | Phase 1 | [Link](#f12-cloud-backend-support) |
-| 14 | — | **Control Plane (Phase 2)** | **v0.3** | Phase 1, F12 | [Link](#phase-2-control-plane-prerequisite-for-f13f14) |
-| 15 | F13 | Privacy Zones & Capability Tiers | v0.3 | Phase 2 | [Link](#f13-privacy-zones--capability-tiers) |
-| 16 | F14 | Inference Budget Management | v0.3 | Phase 2 | [Link](#f14-inference-budget-management) |
+| 12 | — | **NII Extraction (Phase 1)** | **v0.3 ✅** | F02, F03, F06 | [Link](#phase-1-nii-extraction-prerequisite-for-v03) |
+| 13 | F12 | Cloud Backend Support | v0.3 ✅ | Phase 1 | [Link](#f12-cloud-backend-support) |
+| 14 | — | **Control Plane (Phase 2)** | **v0.3 ✅** | Phase 1, F12 | [Link](#phase-2-control-plane-prerequisite-for-f13f14) |
+| 15 | F13 | Privacy Zones & Capability Tiers | v0.3 ✅ | Phase 2 | [Link](#f13-privacy-zones--capability-tiers) |
+| 16 | F14 | Inference Budget Management | v0.3 ✅ | Phase 2 | [Link](#f14-inference-budget-management) |
 | | | | | | |
-| 17 | — | **Quality + Queuing (Phase 2.5)** | **v0.4** | Phase 2 | [Link](#phase-25-quality--queuing-enables-f15f18) |
-| 18 | F15 | Speculative Router | v0.4 | Phase 2.5 | [Link](#f15-speculative-router) |
-| 19 | F16 | Quality Tracking & Backend Profiling | v0.4 | Phase 2.5 | [Link](#f16-quality-tracking--backend-profiling) |
-| 20 | F17 | Embeddings API | v0.4 | Phase 1, Phase 2.5 | [Link](#f17-embeddings-api) |
-| 21 | F18 | Request Queuing & Prioritization | v0.4 | Phase 2.5 | [Link](#f18-request-queuing--prioritization) |
+| 17 | — | **Quality + Queuing (Phase 2.5)** | **v0.4 ✅** | Phase 2 | [Link](#phase-25-quality--queuing-enables-f15f18) |
+| 18 | F15 | Speculative Router | v0.4 ✅ | Phase 2.5 | [Link](#f15-speculative-router) |
+| 19 | F16 | Quality Tracking & Backend Profiling | v0.4 ✅ | Phase 2.5 | [Link](#f16-quality-tracking--backend-profiling) |
+| 20 | F17 | Embeddings API | v0.4 ✅ | Phase 1, Phase 2.5 | [Link](#f17-embeddings-api) |
+| 21 | F18 | Request Queuing & Prioritization | v0.4 ✅ | Phase 2.5 | [Link](#f18-request-queuing--prioritization) |
 | | | | | | |
 | 22 | — | **Fleet Intelligence (Phase 3)** | **v0.5** | Phase 2.5, F16 | [Link](#phase-3-fleet-intelligence-enables-f19f20) |
 | 23 | F19 | Pre-warming & Fleet Intelligence | v0.5 | Phase 3, F16 | [Link](#f19-pre-warming--fleet-intelligence) |
