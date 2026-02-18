@@ -836,4 +836,68 @@ mod tests {
             msg
         );
     }
+
+    #[tokio::test]
+    async fn test_handle_embedding_no_agent_registered() {
+        use crate::api::{create_router, AppState};
+        use crate::config::NexusConfig;
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource, Model, Registry};
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use std::sync::Arc;
+        use tower::Service;
+
+        let registry = Arc::new(Registry::new());
+        // Add backend WITHOUT agent
+        let backend = crate::registry::Backend::new(
+            "no-agent-emb".to_string(),
+            "No Agent Emb".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        registry.add_backend(backend).unwrap();
+        registry
+            .update_status("no-agent-emb", BackendStatus::Healthy, None)
+            .unwrap();
+        registry
+            .update_models(
+                "no-agent-emb",
+                vec![Model {
+                    id: "emb-model".to_string(),
+                    name: "emb-model".to_string(),
+                    context_length: 4096,
+                    supports_vision: false,
+                    supports_tools: false,
+                    supports_json_mode: false,
+                    max_output_tokens: None,
+                }],
+            )
+            .unwrap();
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+        let mut app = create_router(state);
+
+        let body = serde_json::json!({
+            "model": "emb-model",
+            "input": "hello"
+        });
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/v1/embeddings")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
+
+        let response = app.call(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+
+        let json = body_json(response).await;
+        let msg = json["error"]["message"].as_str().unwrap();
+        assert!(msg.contains("No agent registered"), "msg was: {}", msg);
+    }
 }

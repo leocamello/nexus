@@ -1292,6 +1292,22 @@ mod tests {
         assert!(model.supports_vision);
     }
 
+    #[test]
+    fn test_name_heuristics_context_8k() {
+        let mut model = ModelCapability {
+            id: "mistral-8k".to_string(),
+            name: "mistral-8k".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        OllamaAgent::apply_name_heuristics(&mut model);
+        assert_eq!(model.context_length, 8192);
+    }
+
     #[tokio::test]
     async fn test_chat_completion_stream_data_chunks() {
         use futures_util::stream::StreamExt;

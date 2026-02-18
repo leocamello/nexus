@@ -53,3 +53,60 @@ pub fn build_filter_directives(config: &crate::config::LoggingConfig) -> String 
 
     filter_str
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::LoggingConfig;
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_build_filter_directives_base_only() {
+        let config = LoggingConfig {
+            level: "warn".to_string(),
+            component_levels: None,
+            ..Default::default()
+        };
+        assert_eq!(build_filter_directives(&config), "warn");
+    }
+
+    #[test]
+    fn test_build_filter_directives_with_components() {
+        let mut levels = HashMap::new();
+        levels.insert("routing".to_string(), "debug".to_string());
+        let config = LoggingConfig {
+            level: "info".to_string(),
+            component_levels: Some(levels),
+            ..Default::default()
+        };
+        let result = build_filter_directives(&config);
+        assert!(result.starts_with("info"));
+        assert!(result.contains("nexus::routing=debug"));
+    }
+
+    #[test]
+    fn test_build_filter_directives_multiple_components() {
+        let mut levels = HashMap::new();
+        levels.insert("api".to_string(), "trace".to_string());
+        levels.insert("health".to_string(), "warn".to_string());
+        let config = LoggingConfig {
+            level: "info".to_string(),
+            component_levels: Some(levels),
+            ..Default::default()
+        };
+        let result = build_filter_directives(&config);
+        assert!(result.starts_with("info"));
+        assert!(result.contains("nexus::api=trace"));
+        assert!(result.contains("nexus::health=warn"));
+    }
+
+    #[test]
+    fn test_build_filter_directives_empty_components() {
+        let config = LoggingConfig {
+            level: "debug".to_string(),
+            component_levels: Some(HashMap::new()),
+            ..Default::default()
+        };
+        assert_eq!(build_filter_directives(&config), "debug");
+    }
+}

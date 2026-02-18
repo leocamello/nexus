@@ -1670,6 +1670,106 @@ mod tests {
     }
 
     #[test]
+    fn test_available_models_with_populated_backends() {
+        use crate::config::NexusConfig;
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource, Model, Registry};
+
+        let registry = Arc::new(Registry::new());
+        let backend = Backend::new(
+            "pop-backend".to_string(),
+            "Populated".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        registry.add_backend(backend).unwrap();
+        registry
+            .update_status("pop-backend", BackendStatus::Healthy, None)
+            .unwrap();
+        registry
+            .update_models(
+                "pop-backend",
+                vec![
+                    Model {
+                        id: "model-a".to_string(),
+                        name: "model-a".to_string(),
+                        context_length: 4096,
+                        supports_vision: false,
+                        supports_tools: false,
+                        supports_json_mode: false,
+                        max_output_tokens: None,
+                    },
+                    Model {
+                        id: "model-b".to_string(),
+                        name: "model-b".to_string(),
+                        context_length: 8192,
+                        supports_vision: true,
+                        supports_tools: false,
+                        supports_json_mode: false,
+                        max_output_tokens: None,
+                    },
+                ],
+            )
+            .unwrap();
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+
+        let models = available_models(&state);
+        assert_eq!(models.len(), 2);
+        assert!(models.contains(&"model-a".to_string()));
+        assert!(models.contains(&"model-b".to_string()));
+
+        let backends = available_backend_names(&state);
+        assert_eq!(backends.len(), 1);
+        assert!(backends.contains(&"pop-backend".to_string()));
+    }
+
+    #[test]
+    fn test_available_backend_names_excludes_unhealthy() {
+        use crate::config::NexusConfig;
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource, Registry};
+
+        let registry = Arc::new(Registry::new());
+        let healthy = Backend::new(
+            "healthy-1".to_string(),
+            "Healthy".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        let unhealthy = Backend::new(
+            "unhealthy-1".to_string(),
+            "Unhealthy".to_string(),
+            "http://localhost:11435".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        registry.add_backend(healthy).unwrap();
+        registry.add_backend(unhealthy).unwrap();
+        registry
+            .update_status("healthy-1", BackendStatus::Healthy, None)
+            .unwrap();
+        registry
+            .update_status("unhealthy-1", BackendStatus::Unhealthy, None)
+            .unwrap();
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+
+        let backends = available_backend_names(&state);
+        assert_eq!(backends.len(), 1);
+        assert!(backends.contains(&"healthy-1".to_string()));
+        assert!(!backends.contains(&"unhealthy-1".to_string()));
+    }
+
+    #[test]
     fn test_record_request_completion_increments_and_broadcasts() {
         use crate::config::NexusConfig;
         use crate::registry::{BackendType, DiscoverySource, Registry};

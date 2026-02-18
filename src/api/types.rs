@@ -696,4 +696,37 @@ mod tests {
         assert_eq!(api_err.error.code.as_deref(), Some("bad_gateway"));
         assert!(api_err.error.message.contains("Invalid backend response"));
     }
+
+    #[test]
+    fn test_from_agent_error_upstream_4xx_not_404() {
+        let agent_err = crate::agent::AgentError::Upstream {
+            status: 429,
+            message: "Rate limit exceeded".to_string(),
+        };
+        let api_err = ApiError::from_agent_error(agent_err);
+        assert_eq!(api_err.error.code.as_deref(), Some("invalid_request_error"));
+        assert!(api_err.error.message.contains("429"));
+        assert_eq!(api_err.into_response().status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn test_from_agent_error_unsupported() {
+        let agent_err = crate::agent::AgentError::Unsupported("embeddings");
+        let api_err = ApiError::from_agent_error(agent_err);
+        assert_eq!(api_err.error.code.as_deref(), Some("service_unavailable"));
+        assert!(api_err.error.message.contains("not supported"));
+        assert_eq!(
+            api_err.into_response().status(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+    }
+
+    #[test]
+    fn test_from_agent_error_configuration() {
+        let agent_err = crate::agent::AgentError::Configuration("missing API key".to_string());
+        let api_err = ApiError::from_agent_error(agent_err);
+        assert_eq!(api_err.error.code.as_deref(), Some("bad_gateway"));
+        assert!(api_err.error.message.contains("configuration error"));
+        assert_eq!(api_err.into_response().status(), StatusCode::BAD_GATEWAY);
+    }
 }
