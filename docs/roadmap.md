@@ -13,7 +13,7 @@ Nexus is a control plane for heterogeneous LLM inference — it routes requests 
 | **v0.1** | Foundation | Registry, Health, Router, mDNS, CLI, Aliases, Fallbacks | ✅ Released |
 | **v0.2** | Observability | Prometheus metrics, Web Dashboard, Structured logging | ✅ Released |
 | **v0.3** | Cloud Hybrid | Cloud backends, Privacy zones, Capability tiers, Budget management | ✅ Released |
-| **v0.4** | Intelligence | Speculative router, Quality tracking, Embeddings, Queuing | ✅ Complete |
+| **v0.4** | Intelligence | Speculative router, Quality tracking, Embeddings, Queuing | ✅ Released |
 | **v0.5** | Orchestration | Pre-warming, Model lifecycle, Multi-tenant, Rate limiting | Planned |
 | **v1.0** | Complete Product | Management UI — full web-based control plane | Planned |
 

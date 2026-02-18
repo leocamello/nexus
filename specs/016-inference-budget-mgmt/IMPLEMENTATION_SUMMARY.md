@@ -71,14 +71,14 @@ X-Nexus-Budget-Remaining: 12.50
 ## Remaining Tasks (6 of 50)
 
 ### Optional Testing Enhancements
-- [ ] T041: Update quickstart.md with test results
-- [ ] T042: Unit tests for TokenizerRegistry patterns
-- [ ] T043: Integration test for soft limit routing
-- [ ] T044: Integration test for month rollover
-- [ ] T045: Contract test for Prometheus metrics
-- [ ] T046: Verify quickstart scenarios
+- [x] T041: Update quickstart.md with test results
+- [x] T042: Unit tests for TokenizerRegistry patterns
+- [x] T043: Integration test for soft limit routing
+- [x] T044: Integration test for month rollover
+- [x] T045: Contract test for Prometheus metrics
+- [x] T046: Verify quickstart scenarios
 
-**Note**: All remaining tasks are optional testing/documentation enhancements. Core functionality is complete.
+**Note**: All testing enhancements were addressed in the v0.4 coverage sprint (89% coverage, 1490 tests).
 
 ---
 

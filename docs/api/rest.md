@@ -188,7 +188,7 @@ System health check with backend and model counts.
 ```json
 {
   "status": "healthy",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "uptime_seconds": 3600,
   "backends": { "total": 3, "healthy": 2, "unhealthy": 1 },
   "models": { "total": 5 }

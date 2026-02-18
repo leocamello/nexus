@@ -291,8 +291,8 @@ Run `/speckit.implement` to execute tasks in dependency order.
 - [x] Phase 1: Quickstart complete (quickstart.md)
 - [x] Constitution gates verified (all pass)
 - [x] Agent context updated (.github/agents/copilot-instructions.md)
-- [ ] Phase 2: Tasks generation (run `/speckit.tasks`)
-- [ ] Phase 3: Implementation (run `/speckit.implement`)
+- [x] Phase 2: Tasks generation (run `/speckit.tasks`)
+- [x] Phase 3: Implementation (run `/speckit.implement`)
 
 ---
 

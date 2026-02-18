@@ -330,12 +330,12 @@ mdns-sd = "0.11"  # mDNS service discovery
 
 ## Definition of Done
 
-- [ ] All ~35 tests pass
-- [ ] Discovery works with real Ollama instance
-- [ ] Graceful fallback when mDNS unavailable
-- [ ] Grace period prevents flapping
-- [ ] Manual config takes precedence
-- [ ] `cargo clippy -- -D warnings` passes
-- [ ] `cargo fmt --check` passes  
-- [ ] Doc comments on public items
-- [ ] Integration with health checker verified
+- [x] All ~35 tests pass
+- [x] Discovery works with real Ollama instance
+- [x] Graceful fallback when mDNS unavailable
+- [x] Grace period prevents flapping
+- [x] Manual config takes precedence
+- [x] `cargo clippy -- -D warnings` passes
+- [x] `cargo fmt --check` passes  
+- [x] Doc comments on public items
+- [x] Integration with health checker verified

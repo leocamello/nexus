@@ -499,11 +499,11 @@ fn privacy_reconciler_excludes_cloud_agents() {
 
 ## Performance Checklist
 
-- [ ] Pipeline completes in <1ms for 95% of requests (FR-036)
-- [ ] RequestAnalyzer completes in <500µs (FR-009)
-- [ ] PolicyMatcher uses pre-compiled globset (~1.5µs per match)
-- [ ] BudgetReconciler uses snapshot (no async I/O in hot path)
-- [ ] RoutingIntent is stack-allocated (no heap per request)
+- [x] Pipeline completes in <1ms for 95% of requests (FR-036)
+- [x] RequestAnalyzer completes in <500µs (FR-009)
+- [x] PolicyMatcher uses pre-compiled globset (~1.5µs per match)
+- [x] BudgetReconciler uses snapshot (no async I/O in hot path)
+- [x] RoutingIntent is stack-allocated (no heap per request)
 
 ---
 

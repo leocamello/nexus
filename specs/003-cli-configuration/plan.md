@@ -702,13 +702,13 @@ fn test_help_shows_commands() {
 
 ## Definition of Done
 
-- [ ] All 56 tests pass
-- [ ] `cargo clippy` reports no warnings
-- [ ] `cargo fmt --check` passes
-- [ ] `nexus --help` shows all commands
-- [ ] `nexus serve` starts server
-- [ ] `nexus config init` generates valid config
-- [ ] Config precedence works: CLI > env > file > defaults
-- [ ] JSON output is valid for all commands
-- [ ] Exit code 1 on errors with helpful messages
-- [ ] Graceful shutdown on SIGINT
+- [x] All 56 tests pass
+- [x] `cargo clippy` reports no warnings
+- [x] `cargo fmt --check` passes
+- [x] `nexus --help` shows all commands
+- [x] `nexus serve` starts server
+- [x] `nexus config init` generates valid config
+- [x] Config precedence works: CLI > env > file > defaults
+- [x] JSON output is valid for all commands
+- [x] Exit code 1 on errors with helpful messages
+- [x] Graceful shutdown on SIGINT

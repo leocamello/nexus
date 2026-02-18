@@ -573,41 +573,41 @@ async fn test_privacy_zone_prevents_cross_zone_routing() {
 - [x] Verify AgentProfile has privacy_zone/capability_tier
 - [x] Verify RoutingIntent has constraint fields
 - [x] Verify RejectionReason structure
-- [ ] Fix BackendConfig.effective_tier() default (3 → 1)
+- [x] Fix BackendConfig.effective_tier() default (3 → 1)
 
 ### Phase 2: Router Pipeline Wiring
-- [ ] Instantiate PrivacyReconciler in Router::new()
-- [ ] Instantiate TierReconciler in Router::new()
-- [ ] Build reconciler pipeline: Privacy → Budget → Tier → Quality → Scheduler
-- [ ] Pass PolicyMatcher to Privacy/Tier reconcilers
-- [ ] Verify pipeline order matches spec
+- [x] Instantiate PrivacyReconciler in Router::new()
+- [x] Instantiate TierReconciler in Router::new()
+- [x] Build reconciler pipeline: Privacy → Budget → Tier → Quality → Scheduler
+- [x] Pass PolicyMatcher to Privacy/Tier reconcilers
+- [x] Verify pipeline order matches spec
 
 ### Phase 3: Header Parsing
-- [ ] Add extract_tier_mode() helper in completions.rs
-- [ ] Parse X-Nexus-Strict header
-- [ ] Parse X-Nexus-Flexible header
-- [ ] Set tier_enforcement_mode on RoutingIntent
-- [ ] Handle conflicting headers (strict wins)
+- [x] Add extract_tier_mode() helper in completions.rs
+- [x] Parse X-Nexus-Strict header
+- [x] Parse X-Nexus-Flexible header
+- [x] Set tier_enforcement_mode on RoutingIntent
+- [x] Handle conflicting headers (strict wins)
 
 ### Phase 4: Error Context
-- [ ] Add privacy_zone_required to ActionableErrorContext
-- [ ] Add required_tier to ActionableErrorContext
-- [ ] Add rejection_reasons to ActionableErrorContext
-- [ ] Flow RoutingIntent.rejection_reasons → ActionableErrorContext
-- [ ] Update 503 response builder
+- [x] Add privacy_zone_required to ActionableErrorContext
+- [x] Add required_tier to ActionableErrorContext
+- [x] Add rejection_reasons to ActionableErrorContext
+- [x] Flow RoutingIntent.rejection_reasons → ActionableErrorContext
+- [x] Update 503 response builder
 
 ### Phase 5: Response Headers
-- [ ] Verify Backend has profile with privacy_zone
-- [ ] Verify NexusTransparentHeaders populated from backend.profile
-- [ ] Test X-Nexus-Privacy-Zone header in responses
+- [x] Verify Backend has profile with privacy_zone
+- [x] Verify NexusTransparentHeaders populated from backend.profile
+- [x] Test X-Nexus-Privacy-Zone header in responses
 
 ### Phase 6: Integration Tests
-- [ ] Create tests/privacy_tier_integration_test.rs
-- [ ] Test cross-zone failover prevention
-- [ ] Test tier downgrade prevention
-- [ ] Test header parsing
-- [ ] Test error context
-- [ ] Test response headers
+- [x] Create tests/privacy_tier_integration_test.rs
+- [x] Test cross-zone failover prevention
+- [x] Test tier downgrade prevention
+- [x] Test header parsing
+- [x] Test error context
+- [x] Test response headers
 
 ---
 

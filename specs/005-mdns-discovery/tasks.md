@@ -601,9 +601,6 @@ impl MdnsDiscovery {
 - [X] Disabled config returns immediately
 - [X] Responds to cancellation token
 - [X] All 3 tests pass
-- [ ] Disabled config returns immediately
-- [ ] Responds to cancellation token
-- [ ] All 3 tests pass
 
 **Test Command**: `cargo test mdns_discovery`
 
@@ -1036,7 +1033,7 @@ impl MdnsDiscovery {
 - [X] Converts ServiceEvent::ServiceRemoved to DiscoveryEvent::ServiceRemoved
 - [X] Cleanup task runs every 10 seconds
 - [X] Responds to cancellation token for shutdown
-- [ ] Integration tests pass (when not ignored)
+- [x] Integration tests pass (when not ignored)
 
 **Test Command**: `cargo test -- --ignored` (for integration tests)
 
@@ -1114,7 +1111,7 @@ if let Some(handle) = discovery_handle {
 - [X] All public items have doc comments
 - [X] README documents mDNS discovery feature
 - [X] nexus.example.toml has complete discovery config
-- [ ] FEATURES.md shows F05 as complete
+- [x] FEATURES.md shows F05 as complete
 - [X] `cargo clippy -- -D warnings` passes
 - [X] `cargo fmt --check` passes
 - [X] `cargo doc` generates without warnings
@@ -1126,7 +1123,7 @@ if let Some(handle) = discovery_handle {
 ## Definition of Done
 
 - [X] All ~35 tests pass (29 discovery tests + registry tests)
-- [ ] Discovery works with real Ollama instance on network (requires manual testing)
+- [x] Discovery works with real Ollama instance on network (requires manual testing)
 - [X] Graceful fallback when mDNS unavailable
 - [X] Grace period prevents flapping
 - [X] Manual config takes precedence over discovered

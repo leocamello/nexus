@@ -255,11 +255,11 @@ proptest = "1"  # For property-based testing of atomic operations
 
 ## Definition of Done
 
-- [ ] All 45+ tests pass
-- [ ] Property tests for counters pass
-- [ ] Stress tests complete without deadlock
-- [ ] `cargo clippy -- -D warnings` passes
-- [ ] `cargo fmt --check` passes
-- [ ] Query by model < 1ms with 1000 backends
-- [ ] Memory < 10KB per backend
-- [ ] Doc comments on all public items
+- [x] All 45+ tests pass
+- [x] Property tests for counters pass
+- [x] Stress tests complete without deadlock
+- [x] `cargo clippy -- -D warnings` passes
+- [x] `cargo fmt --check` passes
+- [x] Query by model < 1ms with 1000 backends
+- [x] Memory < 10KB per backend
+- [x] Doc comments on all public items

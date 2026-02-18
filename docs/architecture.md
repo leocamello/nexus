@@ -778,12 +778,10 @@ WantedBy=multi-user.target
 
 ## Security Considerations
 
-### v0.1 (Current)
+### v0.1–v0.4 (Current)
 - No authentication (trusted network assumed)
 - API key passthrough to backends
 - No TLS termination (use reverse proxy)
-
-### v0.3+ (Planned)
 - Privacy zones: structural enforcement of data boundaries
 - Cloud API keys loaded from environment variables, never in config files
 - Nexus-Transparent Protocol headers reveal routing decisions (not sensitive data)
@@ -796,13 +794,13 @@ WantedBy=multi-user.target
 
 ---
 
-## Future Architecture (v0.3-v0.5)
+## Architecture Evolution (v0.3–v0.5)
 
-> **Reference:** RFC-001 v2 ("Nexus Platform Architecture — From Monolithic Router to Controller/Agent Platform") defines the full architectural evolution. This section summarizes the key elements.
+> **Reference:** RFC-001 v2 ("Nexus Platform Architecture — From Monolithic Router to Controller/Agent Platform") defines the full architectural evolution. This section documents the implemented and planned elements.
 
 The v0.3+ architecture adopts the **Kubernetes Controller pattern** — decoupling the Control Plane (policy decisions) from the Data Plane (backend communication) using a standardized interface — while preserving the "Zero Config" and "Single Binary" constraints.
 
-### Nexus Inference Interface (NII) — v0.3
+### Nexus Inference Interface (NII) — v0.3 ✅
 
 Every backend implements the `InferenceAgent` Rust trait, eliminating type-specific branching:
 
@@ -831,7 +829,7 @@ pub trait InferenceAgent: Send + Sync + 'static {
 
 **Built-in agents:** OllamaAgent, OpenAIAgent, LMStudioAgent, VLLMAgent, GenericOpenAIAgent.
 
-### Control Plane — Reconciler Pipeline (v0.3)
+### Control Plane — Reconciler Pipeline (v0.3) ✅
 
 Replaces the imperative `Router::select_backend()` with independent reconcilers that annotate a shared `RoutingIntent`. Each reconciler only **adds** constraints — never removes them — ensuring order-independence and composability.
 
@@ -974,7 +972,7 @@ impl Reconciler for YourReconciler {
       Ollama:11434   api.openai.com  LM Studio    vLLM/exo/llama.cpp
 ```
 
-### Nexus-Transparent Protocol (v0.3)
+### Nexus-Transparent Protocol (v0.3) ✅
 
 Every proxied response includes `X-Nexus-*` HTTP headers for routing observability. Headers are additive — they never modify the OpenAI-compatible JSON response body.
 
@@ -1006,7 +1004,7 @@ Error responses extend the OpenAI error envelope with an optional `context` obje
 }
 ```
 
-### Privacy Zone Enforcement (v0.3)
+### Privacy Zone Enforcement (v0.3) ✅
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -1027,7 +1025,7 @@ Error responses extend the OpenAI error envelope with an optional `context` obje
 └──────────────────────────────────────────────────────────┘
 ```
 
-### Tokenizer Registry (v0.3)
+### Tokenizer Registry (v0.3) ✅
 
 Per-backend tokenizer for audit-grade token counting and budget management:
 
@@ -1046,7 +1044,7 @@ Per-backend tokenizer for audit-grade token counting and budget management:
 └─────────────────────────────────────────────────────────┘
 ```
 
-### Speculative Router (v0.4) — Implemented
+### Speculative Router (v0.4) ✅
 
 Zero-ML request-content routing via JSON payload inspection:
 

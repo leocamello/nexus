@@ -239,12 +239,12 @@ This plan is complete when:
 - [x] Technical Context filled with concrete values (no NEEDS CLARIFICATION)
 - [x] Constitution Check evaluated with all gates passing
 - [x] Project Structure defined with actual paths
-- [ ] Research questions identified and documented
-- [ ] Phase 0 research.md generated with all decisions
-- [ ] Phase 1 data-model.md generated with entities
-- [ ] Phase 1 contracts/ generated with format examples
-- [ ] Phase 1 quickstart.md generated with developer guide
-- [ ] Agent context updated with new technologies
+- [x] Research questions identified and documented
+- [x] Phase 0 research.md generated with all decisions
+- [x] Phase 1 data-model.md generated with entities
+- [x] Phase 1 contracts/ generated with format examples
+- [x] Phase 1 quickstart.md generated with developer guide
+- [x] Agent context updated with new technologies
 
 ---
 

@@ -501,12 +501,12 @@ let agent = create_agent(&config, client)?;
 
 When migrating a module to use agents:
 
-- [ ] Replace `match backend_type {}` with agent trait calls
-- [ ] Update function signatures to accept `Arc<dyn InferenceAgent>` or backend ID
-- [ ] Convert errors: `AgentError` → `ApiError` / `HealthCheckError`
-- [ ] Add unit tests with mock HTTP backends
-- [ ] Verify existing integration tests still pass
-- [ ] Update documentation and examples
+- [x] Replace `match backend_type {}` with agent trait calls
+- [x] Update function signatures to accept `Arc<dyn InferenceAgent>` or backend ID
+- [x] Convert errors: `AgentError` → `ApiError` / `HealthCheckError`
+- [x] Add unit tests with mock HTTP backends
+- [x] Verify existing integration tests still pass
+- [x] Update documentation and examples
 
 ---
 
