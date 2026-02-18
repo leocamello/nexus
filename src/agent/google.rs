@@ -1702,4 +1702,350 @@ mod tests {
         }
         mock.assert_async().await;
     }
+
+    #[tokio::test]
+    async fn test_chat_completion_non_streaming_api_error() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock(
+                "POST",
+                "/v1beta/models/gemini-1.5-pro:generateContent?key=test-key-123",
+            )
+            .with_status(400)
+            .with_body(r#"{"error":{"message":"Invalid request"}}"#)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "test-key-123".to_string());
+        let request = ChatCompletionRequest {
+            model: "gemini-1.5-pro".to_string(),
+            messages: vec![ChatMessage {
+                role: "user".to_string(),
+                content: MessageContent::Text {
+                    content: "Hello".to_string(),
+                },
+                name: None,
+                function_call: None,
+            }],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+
+        let result = agent.chat_completion(request, None).await;
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("Expected error"),
+        };
+        match err {
+            AgentError::Upstream { status, .. } => assert_eq!(status, 400),
+            other => panic!("Expected Upstream error, got: {:?}", other),
+        }
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_non_streaming_network_error() {
+        let agent = test_agent(
+            "http://invalid-host-that-does-not-exist:9999".to_string(),
+            "test-key".to_string(),
+        );
+        let request = ChatCompletionRequest {
+            model: "gemini-1.5-pro".to_string(),
+            messages: vec![ChatMessage {
+                role: "user".to_string(),
+                content: MessageContent::Text {
+                    content: "Hello".to_string(),
+                },
+                name: None,
+                function_call: None,
+            }],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+
+        let result = agent.chat_completion(request, None).await;
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("Expected error"),
+        };
+        assert!(
+            matches!(err, AgentError::Network(_) | AgentError::Timeout(_)),
+            "Expected Network or Timeout error, got: {:?}",
+            err
+        );
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_non_streaming_invalid_json() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock(
+                "POST",
+                "/v1beta/models/gemini-1.5-pro:generateContent?key=test-key-123",
+            )
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body("not valid json")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "test-key-123".to_string());
+        let request = ChatCompletionRequest {
+            model: "gemini-1.5-pro".to_string(),
+            messages: vec![ChatMessage {
+                role: "user".to_string(),
+                content: MessageContent::Text {
+                    content: "Hello".to_string(),
+                },
+                name: None,
+                function_call: None,
+            }],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+
+        let result = agent.chat_completion(request, None).await;
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("Expected error"),
+        };
+        assert!(
+            matches!(err, AgentError::InvalidResponse(_)),
+            "Expected InvalidResponse error, got: {:?}",
+            err
+        );
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_health_check_failure() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v1beta/models?key=bad-key")
+            .with_status(403)
+            .with_body(r#"{"error":"forbidden"}"#)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "bad-key".to_string());
+        let status = agent.health_check().await.unwrap();
+
+        mock.assert_async().await;
+        assert_eq!(status, HealthStatus::Unhealthy);
+    }
+
+    #[tokio::test]
+    async fn test_health_check_network_error() {
+        let agent = test_agent(
+            "http://invalid-host-that-does-not-exist:9999".to_string(),
+            "test-key".to_string(),
+        );
+        let result = agent.health_check().await;
+
+        assert!(matches!(result, Err(AgentError::Network(_))));
+    }
+
+    #[test]
+    fn test_translate_response_usage_metadata_partial_none_fields() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let response = GoogleResponse {
+            candidates: vec![GoogleCandidate {
+                content: GoogleContent {
+                    role: "model".to_string(),
+                    parts: vec![GooglePart {
+                        text: "Hi".to_string(),
+                    }],
+                },
+                finish_reason: Some("STOP".to_string()),
+            }],
+            usage_metadata: Some(GoogleUsageMetadata {
+                prompt_token_count: None,
+                candidates_token_count: None,
+                total_token_count: None,
+            }),
+        };
+
+        let translated = agent.translate_response(response, "gemini-1.5-pro");
+
+        // None fields default to 0
+        let usage = translated.usage.unwrap();
+        assert_eq!(usage.prompt_tokens, 0);
+        assert_eq!(usage.completion_tokens, 0);
+        assert_eq!(usage.total_tokens, 0);
+    }
+
+    #[test]
+    fn test_translate_response_finish_reason_none() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let response = GoogleResponse {
+            candidates: vec![GoogleCandidate {
+                content: GoogleContent {
+                    role: "model".to_string(),
+                    parts: vec![GooglePart {
+                        text: "hello".to_string(),
+                    }],
+                },
+                finish_reason: None,
+            }],
+            usage_metadata: None,
+        };
+
+        let translated = agent.translate_response(response, "gemini-1.5-pro");
+
+        // None finish_reason defaults to "stop"
+        assert_eq!(
+            translated.choices[0].finish_reason,
+            Some("stop".to_string())
+        );
+    }
+
+    #[test]
+    fn test_translate_stream_chunk_multiple_parts() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let data = r#"{"candidates":[{"content":{"role":"model","parts":[{"text":"Hello "},{"text":"world"}]}}]}"#;
+
+        let result = agent.translate_stream_chunk(data, "gemini-1.5-pro");
+        assert!(result.is_some());
+        let chunk = result.unwrap();
+        let json: serde_json::Value =
+            serde_json::from_str(chunk.trim_start_matches("data: ").trim()).unwrap();
+        assert_eq!(json["choices"][0]["delta"]["content"], "Hello world");
+    }
+
+    #[test]
+    fn test_translate_stream_chunk_empty_candidates() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let data = r#"{"candidates":[]}"#;
+
+        let result = agent.translate_stream_chunk(data, "gemini-1.5-pro");
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_health_check_invalid_json() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v1beta/models?key=test-key")
+            .with_status(200)
+            .with_body("not valid json")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "test-key".to_string());
+        let result = agent.health_check().await;
+
+        mock.assert_async().await;
+        assert!(matches!(result, Err(AgentError::InvalidResponse(_))));
+    }
+
+    #[tokio::test]
+    async fn test_list_models_invalid_json() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v1beta/models?key=test-key")
+            .with_status(200)
+            .with_body("not json")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "test-key".to_string());
+        let result = agent.list_models().await;
+
+        mock.assert_async().await;
+        assert!(matches!(result, Err(AgentError::InvalidResponse(_))));
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_invalid_json() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock(
+                "POST",
+                "/v1beta/models/gemini-1.5-pro:generateContent?key=test-key",
+            )
+            .with_status(200)
+            .with_body("not valid json")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "test-key".to_string());
+        let request = make_request(vec![msg("user", "Hi")], "gemini-1.5-pro");
+
+        let result = agent.chat_completion(request, None).await;
+        mock.assert_async().await;
+        assert!(matches!(result, Err(AgentError::InvalidResponse(_))));
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_stream_network_error() {
+        let agent = test_agent(
+            "http://invalid-host-that-does-not-exist:9999".to_string(),
+            "test-key".to_string(),
+        );
+        let request = make_request(vec![msg("user", "Hi")], "gemini-1.5-pro");
+
+        let result = agent.chat_completion_stream(request, None).await;
+        assert!(matches!(
+            result,
+            Err(AgentError::Network(_) | AgentError::Timeout(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_list_models_network_error() {
+        let agent = test_agent(
+            "http://invalid-host-that-does-not-exist:9999".to_string(),
+            "test-key".to_string(),
+        );
+        let result = agent.list_models().await;
+        assert!(matches!(
+            result,
+            Err(AgentError::Network(_) | AgentError::Timeout(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_list_models_api_error() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v1beta/models?key=bad-key")
+            .with_status(401)
+            .with_body(r#"{"error":"unauthorized"}"#)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "bad-key".to_string());
+        let result = agent.list_models().await;
+
+        mock.assert_async().await;
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("Expected error"),
+        };
+        match err {
+            AgentError::Upstream { status, .. } => assert_eq!(status, 401),
+            other => panic!("Expected Upstream error, got: {:?}", other),
+        }
+    }
 }

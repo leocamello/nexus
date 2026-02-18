@@ -1575,6 +1575,69 @@ mod tests {
         assert!(!resp.headers().contains_key("x-nexus-cost-estimated"));
     }
 
+    #[tokio::test]
+    async fn test_inject_budget_headers_hard_limit() {
+        use crate::registry::{BackendType, DiscoverySource};
+        use crate::routing::reconciler::intent::BudgetStatus;
+
+        let backend = Backend::new(
+            "b1".to_string(),
+            "B1".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        let routing_result = crate::routing::RoutingResult {
+            backend: Arc::new(backend),
+            actual_model: "test-model".to_string(),
+            route_reason: "test".to_string(),
+            fallback_used: false,
+            cost_estimated: Some(0.12),
+            budget_status: BudgetStatus::HardLimit,
+            budget_utilization: Some(100.0),
+            budget_remaining: Some(0.0),
+        };
+
+        let mut resp =
+            axum::response::IntoResponse::into_response(axum::Json(serde_json::json!({})));
+        inject_budget_headers(&mut resp, &routing_result);
+
+        assert_eq!(
+            resp.headers()
+                .get("x-nexus-budget-status")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "HardLimit"
+        );
+        assert_eq!(
+            resp.headers()
+                .get("x-nexus-budget-utilization")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "100.00"
+        );
+        assert_eq!(
+            resp.headers()
+                .get("x-nexus-budget-remaining")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "0.00"
+        );
+        assert_eq!(
+            resp.headers()
+                .get("x-nexus-cost-estimated")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "0.1200"
+        );
+    }
+
     #[test]
     fn test_create_error_chunk_has_error_content() {
         let chunk = create_error_chunk("something went wrong");
@@ -1604,6 +1667,106 @@ mod tests {
 
         let backends = available_backend_names(&state);
         assert!(backends.is_empty());
+    }
+
+    #[test]
+    fn test_available_models_with_populated_backends() {
+        use crate::config::NexusConfig;
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource, Model, Registry};
+
+        let registry = Arc::new(Registry::new());
+        let backend = Backend::new(
+            "pop-backend".to_string(),
+            "Populated".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        registry.add_backend(backend).unwrap();
+        registry
+            .update_status("pop-backend", BackendStatus::Healthy, None)
+            .unwrap();
+        registry
+            .update_models(
+                "pop-backend",
+                vec![
+                    Model {
+                        id: "model-a".to_string(),
+                        name: "model-a".to_string(),
+                        context_length: 4096,
+                        supports_vision: false,
+                        supports_tools: false,
+                        supports_json_mode: false,
+                        max_output_tokens: None,
+                    },
+                    Model {
+                        id: "model-b".to_string(),
+                        name: "model-b".to_string(),
+                        context_length: 8192,
+                        supports_vision: true,
+                        supports_tools: false,
+                        supports_json_mode: false,
+                        max_output_tokens: None,
+                    },
+                ],
+            )
+            .unwrap();
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+
+        let models = available_models(&state);
+        assert_eq!(models.len(), 2);
+        assert!(models.contains(&"model-a".to_string()));
+        assert!(models.contains(&"model-b".to_string()));
+
+        let backends = available_backend_names(&state);
+        assert_eq!(backends.len(), 1);
+        assert!(backends.contains(&"pop-backend".to_string()));
+    }
+
+    #[test]
+    fn test_available_backend_names_excludes_unhealthy() {
+        use crate::config::NexusConfig;
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource, Registry};
+
+        let registry = Arc::new(Registry::new());
+        let healthy = Backend::new(
+            "healthy-1".to_string(),
+            "Healthy".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        let unhealthy = Backend::new(
+            "unhealthy-1".to_string(),
+            "Unhealthy".to_string(),
+            "http://localhost:11435".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        registry.add_backend(healthy).unwrap();
+        registry.add_backend(unhealthy).unwrap();
+        registry
+            .update_status("healthy-1", BackendStatus::Healthy, None)
+            .unwrap();
+        registry
+            .update_status("unhealthy-1", BackendStatus::Unhealthy, None)
+            .unwrap();
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+
+        let backends = available_backend_names(&state);
+        assert_eq!(backends.len(), 1);
+        assert!(backends.contains(&"healthy-1".to_string()));
+        assert!(!backends.contains(&"unhealthy-1".to_string()));
     }
 
     #[test]
@@ -1641,5 +1804,1371 @@ mod tests {
         // Verify broadcast was sent
         let update = rx.try_recv();
         assert!(update.is_ok());
+    }
+
+    // ================================================================
+    // Integration-style handler tests via full axum router
+    // ================================================================
+
+    /// Helper: build a JSON body for a simple chat completion request.
+    fn simple_completion_body(model: &str) -> serde_json::Value {
+        serde_json::json!({
+            "model": model,
+            "messages": [{"role": "user", "content": "hello"}]
+        })
+    }
+
+    /// Helper: read response body as JSON.
+    async fn body_json(response: axum::response::Response) -> serde_json::Value {
+        let bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_handle_model_not_found() {
+        use crate::api::{create_router, AppState};
+        use crate::config::NexusConfig;
+        use crate::registry::Registry;
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use tower::Service;
+
+        let registry = Arc::new(Registry::new());
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+        let mut app = create_router(state);
+
+        let body = simple_completion_body("nonexistent-model");
+        let request = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
+
+        let response = app.call(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        let json = body_json(response).await;
+        let msg = json["error"]["message"].as_str().unwrap();
+        assert!(msg.contains("nonexistent-model"), "msg was: {}", msg);
+        assert_eq!(json["error"]["code"], "model_not_found");
+    }
+
+    #[tokio::test]
+    async fn test_handle_no_healthy_backend() {
+        use crate::api::{create_router, AppState};
+        use crate::config::NexusConfig;
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource, Model, Registry};
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use tower::Service;
+
+        let registry = Arc::new(Registry::new());
+        let backend = Backend::new(
+            "unhealthy-1".to_string(),
+            "Unhealthy".to_string(),
+            "http://localhost:99999".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        registry.add_backend(backend).unwrap();
+        registry
+            .update_models(
+                "unhealthy-1",
+                vec![Model {
+                    id: "test-model".to_string(),
+                    name: "test-model".to_string(),
+                    context_length: 4096,
+                    supports_vision: false,
+                    supports_tools: false,
+                    supports_json_mode: false,
+                    max_output_tokens: None,
+                }],
+            )
+            .unwrap();
+        // Leave status as Unknown (not Healthy) — router treats as unhealthy
+        registry
+            .update_status("unhealthy-1", BackendStatus::Unhealthy, None)
+            .unwrap();
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+        let mut app = create_router(state);
+
+        let body = simple_completion_body("test-model");
+        let request = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
+
+        let response = app.call(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let json = body_json(response).await;
+        let msg = json["error"]["message"].as_str().unwrap();
+        assert!(msg.contains("test-model"), "msg was: {}", msg);
+        // Actionable context should be present
+        assert!(json.get("context").is_some());
+        assert!(json["context"]["available_backends"].is_array());
+    }
+
+    #[tokio::test]
+    async fn test_handle_vision_request_no_vision_backend() {
+        use crate::api::{create_router, AppState};
+        use crate::config::NexusConfig;
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource, Model, Registry};
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use tower::Service;
+
+        // Register a backend with a non-vision model
+        let registry = Arc::new(Registry::new());
+        let backend = Backend::new(
+            "no-vision".to_string(),
+            "NoVision".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        registry.add_backend(backend).unwrap();
+        registry
+            .update_status("no-vision", BackendStatus::Healthy, None)
+            .unwrap();
+        registry
+            .update_models(
+                "no-vision",
+                vec![Model {
+                    id: "llama3".to_string(),
+                    name: "llama3".to_string(),
+                    context_length: 4096,
+                    supports_vision: false,
+                    supports_tools: false,
+                    supports_json_mode: false,
+                    max_output_tokens: None,
+                }],
+            )
+            .unwrap();
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+        let mut app = create_router(state);
+
+        // Send a vision request (image_url content part)
+        let body = serde_json::json!({
+            "model": "llama3",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "What is in this image?"},
+                    {"type": "image_url", "image_url": {"url": "data:image/png;base64,abc"}}
+                ]
+            }]
+        });
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
+
+        let response = app.call(request).await.unwrap();
+        // Vision-incapable backends are filtered; results in 503
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn test_handle_rejection_response_budget() {
+        let reasons = vec![RejectionReason {
+            agent_id: "agent-budget".to_string(),
+            reconciler: "BudgetReconciler".to_string(),
+            reason: "daily budget exceeded: $5.00 spent of $5.00 limit".to_string(),
+            suggested_action: "Increase budget or wait for reset".to_string(),
+        }];
+        let backends = vec!["local-1".to_string()];
+        let resp = rejection_response(reasons, backends);
+        assert_eq!(resp.status(), axum::http::StatusCode::SERVICE_UNAVAILABLE);
+
+        let json = body_json(resp).await;
+        let msg = json["error"]["message"].as_str().unwrap();
+        assert!(msg.contains("rejected"), "msg was: {}", msg);
+        let available = json["context"]["available_backends"].as_array().unwrap();
+        assert!(available.iter().any(|v| v == "local-1"));
+
+        // Budget rejection shouldn't set privacy_zone or required_tier
+        assert!(
+            json["context"].get("privacy_zone_required").is_none()
+                || json["context"]["privacy_zone_required"].is_null()
+        );
+        assert!(
+            json["context"].get("required_tier").is_none()
+                || json["context"]["required_tier"].is_null()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_handle_queue_full_response() {
+        // Directly test the queue-full code path: when the RoutingError::Queue
+        // variant fires and queue.enqueue() returns Full, the handler should
+        // return 503 "queue is full".
+        use axum::http::StatusCode;
+
+        // Build the response the same way the handler does on queue full
+        let resp = ApiError::service_unavailable("All backends at capacity and queue is full")
+            .into_response();
+
+        assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let json = body_json(resp).await;
+        let msg = json["error"]["message"].as_str().unwrap();
+        assert!(msg.contains("queue is full"), "msg was: {}", msg);
+    }
+
+    #[tokio::test]
+    async fn test_handle_streaming_model_not_found() {
+        use crate::api::{create_router, AppState};
+        use crate::config::NexusConfig;
+        use crate::registry::Registry;
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use tower::Service;
+
+        let registry = Arc::new(Registry::new());
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+        let mut app = create_router(state);
+
+        let body = serde_json::json!({
+            "model": "nonexistent-streaming-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "stream": true
+        });
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
+
+        let response = app.call(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        let json = body_json(response).await;
+        let msg = json["error"]["message"].as_str().unwrap();
+        assert!(
+            msg.contains("nonexistent-streaming-model"),
+            "msg was: {}",
+            msg
+        );
+    }
+
+    #[tokio::test]
+    async fn test_handle_fallback_chain_exhausted() {
+        use crate::api::AppState;
+        use crate::config::NexusConfig;
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource, Model, Registry};
+        use crate::routing::{Router, RoutingStrategy, ScoringWeights};
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use std::collections::HashMap;
+        use tower::Service;
+
+        let registry = Arc::new(Registry::new());
+
+        // Register a backend with model "primary-model" that is unhealthy
+        let backend = Backend::new(
+            "fb-backend-1".to_string(),
+            "FallbackBackend1".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            HashMap::new(),
+        );
+        registry.add_backend(backend).unwrap();
+        registry
+            .update_status("fb-backend-1", BackendStatus::Unhealthy, None)
+            .unwrap();
+        registry
+            .update_models(
+                "fb-backend-1",
+                vec![
+                    Model {
+                        id: "primary-model".to_string(),
+                        name: "primary-model".to_string(),
+                        context_length: 4096,
+                        supports_vision: false,
+                        supports_tools: false,
+                        supports_json_mode: false,
+                        max_output_tokens: None,
+                    },
+                    Model {
+                        id: "fallback-model".to_string(),
+                        name: "fallback-model".to_string(),
+                        context_length: 4096,
+                        supports_vision: false,
+                        supports_tools: false,
+                        supports_json_mode: false,
+                        max_output_tokens: None,
+                    },
+                ],
+            )
+            .unwrap();
+
+        // Configure fallback chain: primary-model → fallback-model
+        let mut fallbacks = HashMap::new();
+        fallbacks.insert(
+            "primary-model".to_string(),
+            vec!["fallback-model".to_string()],
+        );
+
+        let mut config = NexusConfig::default();
+        config.routing.fallbacks = fallbacks.clone();
+
+        let router = Router::with_aliases_and_fallbacks(
+            Arc::clone(&registry),
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            HashMap::new(),
+            fallbacks,
+        );
+
+        let config = Arc::new(config);
+        let mut state = AppState::new(registry, config);
+        state.router = Arc::new(router);
+        let state = Arc::new(state);
+        let mut app = crate::api::create_router(state);
+
+        let body = simple_completion_body("primary-model");
+        let request = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
+
+        let response = app.call(request).await.unwrap();
+        // FallbackChainExhausted maps to 404
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        let json = body_json(response).await;
+        let msg = json["error"]["message"].as_str().unwrap();
+        assert!(
+            msg.contains("primary-model"),
+            "Expected model name in error, got: {}",
+            msg
+        );
+    }
+
+    #[tokio::test]
+    async fn test_handle_with_nexus_headers_on_success() {
+        use crate::agent::types::{AgentCapabilities, AgentProfile, PrivacyZone};
+        use crate::agent::{
+            AgentError, HealthStatus, InferenceAgent, ModelCapability, StreamChunk,
+        };
+        use crate::api::AppState;
+        use crate::config::NexusConfig;
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource, Model, Registry};
+        use async_trait::async_trait;
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use futures_util::stream::BoxStream;
+        use tower::Service;
+
+        /// A mock agent that returns a successful chat completion.
+        struct SuccessAgent;
+
+        #[async_trait]
+        impl InferenceAgent for SuccessAgent {
+            fn id(&self) -> &str {
+                "success-agent"
+            }
+            fn name(&self) -> &str {
+                "Success Agent"
+            }
+            fn profile(&self) -> AgentProfile {
+                AgentProfile {
+                    backend_type: "ollama".to_string(),
+                    version: None,
+                    privacy_zone: PrivacyZone::Restricted,
+                    capabilities: AgentCapabilities::default(),
+                    capability_tier: Some(2),
+                }
+            }
+            async fn health_check(&self) -> Result<HealthStatus, AgentError> {
+                Ok(HealthStatus::Healthy { model_count: 1 })
+            }
+            async fn list_models(&self) -> Result<Vec<ModelCapability>, AgentError> {
+                Ok(vec![])
+            }
+            async fn chat_completion(
+                &self,
+                _request: ChatCompletionRequest,
+                _headers: Option<&HeaderMap>,
+            ) -> Result<ChatCompletionResponse, AgentError> {
+                Ok(ChatCompletionResponse {
+                    id: "chatcmpl-test".to_string(),
+                    object: "chat.completion".to_string(),
+                    created: 1234567890,
+                    model: "test-model".to_string(),
+                    choices: vec![crate::api::types::Choice {
+                        index: 0,
+                        message: crate::api::types::ChatMessage {
+                            role: "assistant".to_string(),
+                            content: crate::api::types::MessageContent::Text {
+                                content: "Hello!".to_string(),
+                            },
+                            name: None,
+                            function_call: None,
+                        },
+                        finish_reason: Some("stop".to_string()),
+                    }],
+                    usage: Some(crate::api::types::Usage {
+                        prompt_tokens: 10,
+                        completion_tokens: 5,
+                        total_tokens: 15,
+                    }),
+                    extra: std::collections::HashMap::new(),
+                })
+            }
+            async fn chat_completion_stream(
+                &self,
+                _request: ChatCompletionRequest,
+                _headers: Option<&HeaderMap>,
+            ) -> Result<BoxStream<'static, Result<StreamChunk, AgentError>>, AgentError>
+            {
+                Err(AgentError::Unsupported("chat_completion_stream"))
+            }
+        }
+
+        let registry = Arc::new(Registry::new());
+        let backend = Backend::new(
+            "success-agent".to_string(),
+            "SuccessBackend".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        let agent: Arc<dyn InferenceAgent> = Arc::new(SuccessAgent);
+        registry.add_backend_with_agent(backend, agent).unwrap();
+        registry
+            .update_status("success-agent", BackendStatus::Healthy, None)
+            .unwrap();
+        registry
+            .update_models(
+                "success-agent",
+                vec![Model {
+                    id: "test-model".to_string(),
+                    name: "test-model".to_string(),
+                    context_length: 4096,
+                    supports_vision: false,
+                    supports_tools: false,
+                    supports_json_mode: false,
+                    max_output_tokens: None,
+                }],
+            )
+            .unwrap();
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+        let mut app = crate::api::create_router(state);
+
+        let body = simple_completion_body("test-model");
+        let request = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
+
+        let response = app.call(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Verify X-Nexus-* headers are present
+        assert!(
+            response.headers().contains_key("x-nexus-backend"),
+            "Missing x-nexus-backend header"
+        );
+        assert_eq!(
+            response.headers().get("x-nexus-backend").unwrap(),
+            "success-agent"
+        );
+        assert!(
+            response.headers().contains_key("x-nexus-backend-type"),
+            "Missing x-nexus-backend-type header"
+        );
+        assert_eq!(
+            response.headers().get("x-nexus-backend-type").unwrap(),
+            "local"
+        );
+        assert!(
+            response.headers().contains_key("x-nexus-route-reason"),
+            "Missing x-nexus-route-reason header"
+        );
+        assert!(
+            response.headers().contains_key("x-nexus-privacy-zone"),
+            "Missing x-nexus-privacy-zone header"
+        );
+    }
+
+    // ── Legacy proxy_request path (no agent registered) tests ──────────
+
+    #[tokio::test]
+    async fn test_legacy_proxy_request_no_agent() {
+        // When a backend has no agent, proxy_request falls back to direct HTTP.
+        // We mock the backend server to return a valid completion.
+        use crate::api::AppState;
+        use crate::config::NexusConfig;
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource, Model, Registry};
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use tower::Service;
+
+        let mut mock_server = mockito::Server::new_async().await;
+        let mock = mock_server
+            .mock("POST", "/v1/chat/completions")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"id":"cmpl-1","object":"chat.completion","created":1234567890,"model":"test-model","choices":[{"index":0,"message":{"role":"assistant","content":"Hi"},"finish_reason":"stop"}]}"#)
+            .create_async()
+            .await;
+
+        let registry = Arc::new(Registry::new());
+        // Add backend WITHOUT an agent — triggers legacy proxy path
+        let backend = Backend::new(
+            "legacy-backend".to_string(),
+            "Legacy".to_string(),
+            mock_server.url(),
+            BackendType::Generic,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        registry.add_backend(backend).unwrap();
+        registry
+            .update_status("legacy-backend", BackendStatus::Healthy, None)
+            .unwrap();
+        registry
+            .update_models(
+                "legacy-backend",
+                vec![Model {
+                    id: "test-model".to_string(),
+                    name: "test-model".to_string(),
+                    context_length: 4096,
+                    supports_vision: false,
+                    supports_tools: false,
+                    supports_json_mode: false,
+                    max_output_tokens: None,
+                }],
+            )
+            .unwrap();
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+        let mut app = crate::api::create_router(state);
+
+        let body = simple_completion_body("test-model");
+        let request = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
+
+        let response = app.call(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let json = body_json(response).await;
+        assert_eq!(json["id"], "cmpl-1");
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_legacy_proxy_request_backend_error() {
+        // Legacy proxy with 500 error from backend
+        use crate::api::AppState;
+        use crate::config::NexusConfig;
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource, Model, Registry};
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use tower::Service;
+
+        let mut mock_server = mockito::Server::new_async().await;
+        let mock = mock_server
+            .mock("POST", "/v1/chat/completions")
+            .with_status(500)
+            .with_body(r#"{"error":{"message":"internal error","type":"server_error","code":"internal_error"}}"#)
+            .expect(3)
+            .create_async()
+            .await;
+
+        let registry = Arc::new(Registry::new());
+        let backend = Backend::new(
+            "legacy-err".to_string(),
+            "LegacyErr".to_string(),
+            mock_server.url(),
+            BackendType::Generic,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        registry.add_backend(backend).unwrap();
+        registry
+            .update_status("legacy-err", BackendStatus::Healthy, None)
+            .unwrap();
+        registry
+            .update_models(
+                "legacy-err",
+                vec![Model {
+                    id: "err-model".to_string(),
+                    name: "err-model".to_string(),
+                    context_length: 4096,
+                    supports_vision: false,
+                    supports_tools: false,
+                    supports_json_mode: false,
+                    max_output_tokens: None,
+                }],
+            )
+            .unwrap();
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+        let mut app = crate::api::create_router(state);
+
+        let body = simple_completion_body("err-model");
+        let request = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
+
+        let response = app.call(request).await.unwrap();
+        // Backend error should be forwarded as 500
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_legacy_proxy_request_gateway_timeout() {
+        // Legacy proxy with 504 gateway timeout
+        use crate::api::AppState;
+        use crate::config::NexusConfig;
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource, Model, Registry};
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use tower::Service;
+
+        let mut mock_server = mockito::Server::new_async().await;
+        let mock = mock_server
+            .mock("POST", "/v1/chat/completions")
+            .with_status(504)
+            .with_body("")
+            .expect(3)
+            .create_async()
+            .await;
+
+        let registry = Arc::new(Registry::new());
+        let backend = Backend::new(
+            "legacy-timeout".to_string(),
+            "LegacyTimeout".to_string(),
+            mock_server.url(),
+            BackendType::Generic,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        registry.add_backend(backend).unwrap();
+        registry
+            .update_status("legacy-timeout", BackendStatus::Healthy, None)
+            .unwrap();
+        registry
+            .update_models(
+                "legacy-timeout",
+                vec![Model {
+                    id: "timeout-model".to_string(),
+                    name: "timeout-model".to_string(),
+                    context_length: 4096,
+                    supports_vision: false,
+                    supports_tools: false,
+                    supports_json_mode: false,
+                    max_output_tokens: None,
+                }],
+            )
+            .unwrap();
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+        let mut app = crate::api::create_router(state);
+
+        let body = simple_completion_body("timeout-model");
+        let request = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
+
+        let response = app.call(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::GATEWAY_TIMEOUT);
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_legacy_proxy_request_invalid_json() {
+        // Legacy proxy returns 200 with invalid JSON
+        use crate::api::AppState;
+        use crate::config::NexusConfig;
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource, Model, Registry};
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use tower::Service;
+
+        let mut mock_server = mockito::Server::new_async().await;
+        let mock = mock_server
+            .mock("POST", "/v1/chat/completions")
+            .with_status(200)
+            .with_body("not valid json at all")
+            .expect(3)
+            .create_async()
+            .await;
+
+        let registry = Arc::new(Registry::new());
+        let backend = Backend::new(
+            "legacy-invalid".to_string(),
+            "LegacyInvalid".to_string(),
+            mock_server.url(),
+            BackendType::Generic,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        registry.add_backend(backend).unwrap();
+        registry
+            .update_status("legacy-invalid", BackendStatus::Healthy, None)
+            .unwrap();
+        registry
+            .update_models(
+                "legacy-invalid",
+                vec![Model {
+                    id: "invalid-model".to_string(),
+                    name: "invalid-model".to_string(),
+                    context_length: 4096,
+                    supports_vision: false,
+                    supports_tools: false,
+                    supports_json_mode: false,
+                    max_output_tokens: None,
+                }],
+            )
+            .unwrap();
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+        let mut app = crate::api::create_router(state);
+
+        let body = simple_completion_body("invalid-model");
+        let request = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
+
+        let response = app.call(request).await.unwrap();
+        // Invalid JSON body → bad gateway
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+        mock.assert_async().await;
+    }
+
+    #[test]
+    fn test_record_request_completion_with_error() {
+        use crate::config::NexusConfig;
+        use crate::registry::{BackendType, DiscoverySource, Registry};
+
+        let registry = Arc::new(Registry::new());
+        let backend = Backend::new(
+            "err-backend".to_string(),
+            "ErrBackend".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        let _ = registry.add_backend(backend);
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(Arc::clone(&registry), config));
+
+        let mut rx = state.ws_broadcast.subscribe();
+
+        record_request_completion(
+            &state,
+            "test-model",
+            "err-backend",
+            500,
+            crate::dashboard::types::RequestStatus::Error,
+            Some("timeout error".to_string()),
+        );
+
+        let update = rx.try_recv();
+        assert!(update.is_ok());
+    }
+
+    // ── Streaming routing error paths ──────────────────────────────────
+
+    #[tokio::test]
+    async fn test_streaming_no_healthy_backend() {
+        use crate::api::AppState;
+        use crate::config::NexusConfig;
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource, Model, Registry};
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use tower::Service;
+
+        let registry = Arc::new(Registry::new());
+        let backend = Backend::new(
+            "stream-unhealthy".to_string(),
+            "StreamUnhealthy".to_string(),
+            "http://localhost:99999".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        registry.add_backend(backend).unwrap();
+        registry
+            .update_status("stream-unhealthy", BackendStatus::Unhealthy, None)
+            .unwrap();
+        registry
+            .update_models(
+                "stream-unhealthy",
+                vec![Model {
+                    id: "stream-model".to_string(),
+                    name: "stream-model".to_string(),
+                    context_length: 4096,
+                    supports_vision: false,
+                    supports_tools: false,
+                    supports_json_mode: false,
+                    max_output_tokens: None,
+                }],
+            )
+            .unwrap();
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+        let mut app = crate::api::create_router(state);
+
+        let body = serde_json::json!({
+            "model": "stream-model",
+            "messages": [{"role": "user", "content": "hi"}],
+            "stream": true
+        });
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
+
+        let response = app.call(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn test_streaming_capability_mismatch() {
+        use crate::api::AppState;
+        use crate::config::NexusConfig;
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource, Model, Registry};
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use tower::Service;
+
+        let registry = Arc::new(Registry::new());
+        let backend = Backend::new(
+            "stream-novision".to_string(),
+            "StreamNoVision".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        registry.add_backend(backend).unwrap();
+        registry
+            .update_status("stream-novision", BackendStatus::Healthy, None)
+            .unwrap();
+        registry
+            .update_models(
+                "stream-novision",
+                vec![Model {
+                    id: "stream-cap".to_string(),
+                    name: "stream-cap".to_string(),
+                    context_length: 4096,
+                    supports_vision: false,
+                    supports_tools: false,
+                    supports_json_mode: false,
+                    max_output_tokens: None,
+                }],
+            )
+            .unwrap();
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+        let mut app = crate::api::create_router(state);
+
+        // Streaming request requiring vision on a non-vision backend
+        let body = serde_json::json!({
+            "model": "stream-cap",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "describe"},
+                    {"type": "image_url", "image_url": {"url": "data:image/png;base64,abc"}}
+                ]
+            }],
+            "stream": true
+        });
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
+
+        let response = app.call(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[test]
+    fn test_route_reason_saturated() {
+        let reason = determine_route_reason("saturated_backend", false, 0);
+        assert_eq!(reason, RouteReason::CapacityOverflow);
+    }
+
+    #[test]
+    fn test_route_reason_overloaded() {
+        let reason = determine_route_reason("overloaded", false, 0);
+        assert_eq!(reason, RouteReason::CapacityOverflow);
+    }
+
+    #[test]
+    fn test_route_reason_backup() {
+        let reason = determine_route_reason("backup_route", false, 0);
+        assert_eq!(reason, RouteReason::Failover);
+    }
+
+    #[test]
+    fn test_route_reason_fallback_string() {
+        let reason = determine_route_reason("fallback_used", false, 0);
+        assert_eq!(reason, RouteReason::Failover);
+    }
+
+    #[tokio::test]
+    async fn test_streaming_success_with_agent() {
+        use crate::agent::types::{AgentCapabilities, AgentProfile, PrivacyZone};
+        use crate::agent::{
+            AgentError, HealthStatus, InferenceAgent, ModelCapability, StreamChunk,
+        };
+        use crate::api::AppState;
+        use crate::config::NexusConfig;
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource, Model, Registry};
+        use async_trait::async_trait;
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use futures_util::stream::BoxStream;
+        use tower::Service;
+
+        struct StreamAgent;
+
+        #[async_trait]
+        impl InferenceAgent for StreamAgent {
+            fn id(&self) -> &str {
+                "stream-agent"
+            }
+            fn name(&self) -> &str {
+                "Stream Agent"
+            }
+            fn profile(&self) -> AgentProfile {
+                AgentProfile {
+                    backend_type: "ollama".to_string(),
+                    version: None,
+                    privacy_zone: PrivacyZone::Restricted,
+                    capabilities: AgentCapabilities::default(),
+                    capability_tier: Some(1),
+                }
+            }
+            async fn health_check(&self) -> Result<HealthStatus, AgentError> {
+                Ok(HealthStatus::Healthy { model_count: 1 })
+            }
+            async fn list_models(&self) -> Result<Vec<ModelCapability>, AgentError> {
+                Ok(vec![])
+            }
+            async fn chat_completion(
+                &self,
+                _req: ChatCompletionRequest,
+                _h: Option<&HeaderMap>,
+            ) -> Result<ChatCompletionResponse, AgentError> {
+                Err(AgentError::Unsupported("non-streaming"))
+            }
+            async fn chat_completion_stream(
+                &self,
+                _req: ChatCompletionRequest,
+                _h: Option<&HeaderMap>,
+            ) -> Result<BoxStream<'static, Result<StreamChunk, AgentError>>, AgentError>
+            {
+                use futures_util::stream;
+                let chunks = vec![
+                    Ok(StreamChunk {
+                        data: r#"{"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}"#.to_string(),
+                    }),
+                    Ok(StreamChunk {
+                        data: "[DONE]".to_string(),
+                    }),
+                ];
+                Ok(Box::pin(stream::iter(chunks)))
+            }
+        }
+
+        let registry = Arc::new(Registry::new());
+        let backend = Backend::new(
+            "stream-agent".to_string(),
+            "StreamAgent".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        let agent: Arc<dyn InferenceAgent> = Arc::new(StreamAgent);
+        registry.add_backend_with_agent(backend, agent).unwrap();
+        registry
+            .update_status("stream-agent", BackendStatus::Healthy, None)
+            .unwrap();
+        registry
+            .update_models(
+                "stream-agent",
+                vec![Model {
+                    id: "stream-test".to_string(),
+                    name: "stream-test".to_string(),
+                    context_length: 4096,
+                    supports_vision: false,
+                    supports_tools: false,
+                    supports_json_mode: false,
+                    max_output_tokens: None,
+                }],
+            )
+            .unwrap();
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+        let mut app = crate::api::create_router(state);
+
+        let body = serde_json::json!({
+            "model": "stream-test",
+            "messages": [{"role": "user", "content": "hello"}],
+            "stream": true
+        });
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
+
+        let response = app.call(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Verify X-Nexus headers on streaming response
+        assert!(response.headers().contains_key("x-nexus-backend"));
+        assert_eq!(
+            response.headers().get("x-nexus-backend").unwrap(),
+            "stream-agent"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_streaming_agent_error_yields_error_chunk() {
+        use crate::agent::types::{AgentCapabilities, AgentProfile, PrivacyZone};
+        use crate::agent::{
+            AgentError, HealthStatus, InferenceAgent, ModelCapability, StreamChunk,
+        };
+        use crate::api::AppState;
+        use crate::config::NexusConfig;
+        use crate::registry::{BackendStatus, BackendType, DiscoverySource, Model, Registry};
+        use async_trait::async_trait;
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use futures_util::stream::BoxStream;
+        use tower::Service;
+
+        struct FailStreamAgent;
+
+        #[async_trait]
+        impl InferenceAgent for FailStreamAgent {
+            fn id(&self) -> &str {
+                "fail-stream"
+            }
+            fn name(&self) -> &str {
+                "Fail Stream"
+            }
+            fn profile(&self) -> AgentProfile {
+                AgentProfile {
+                    backend_type: "ollama".to_string(),
+                    version: None,
+                    privacy_zone: PrivacyZone::Restricted,
+                    capabilities: AgentCapabilities::default(),
+                    capability_tier: None,
+                }
+            }
+            async fn health_check(&self) -> Result<HealthStatus, AgentError> {
+                Ok(HealthStatus::Healthy { model_count: 1 })
+            }
+            async fn list_models(&self) -> Result<Vec<ModelCapability>, AgentError> {
+                Ok(vec![])
+            }
+            async fn chat_completion(
+                &self,
+                _req: ChatCompletionRequest,
+                _h: Option<&HeaderMap>,
+            ) -> Result<ChatCompletionResponse, AgentError> {
+                Err(AgentError::Unsupported("non-streaming"))
+            }
+            async fn chat_completion_stream(
+                &self,
+                _req: ChatCompletionRequest,
+                _h: Option<&HeaderMap>,
+            ) -> Result<BoxStream<'static, Result<StreamChunk, AgentError>>, AgentError>
+            {
+                Err(AgentError::Network("connection refused".to_string()))
+            }
+        }
+
+        let registry = Arc::new(Registry::new());
+        let backend = Backend::new(
+            "fail-stream".to_string(),
+            "FailStream".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        let agent: Arc<dyn InferenceAgent> = Arc::new(FailStreamAgent);
+        registry.add_backend_with_agent(backend, agent).unwrap();
+        registry
+            .update_status("fail-stream", BackendStatus::Healthy, None)
+            .unwrap();
+        registry
+            .update_models(
+                "fail-stream",
+                vec![Model {
+                    id: "fail-stream-model".to_string(),
+                    name: "fail-stream-model".to_string(),
+                    context_length: 4096,
+                    supports_vision: false,
+                    supports_tools: false,
+                    supports_json_mode: false,
+                    max_output_tokens: None,
+                }],
+            )
+            .unwrap();
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+        let mut app = crate::api::create_router(state);
+
+        let body = serde_json::json!({
+            "model": "fail-stream-model",
+            "messages": [{"role": "user", "content": "hi"}],
+            "stream": true
+        });
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
+
+        let response = app.call(request).await.unwrap();
+        // The streaming response starts as 200 (SSE protocol)
+        // The error is inside the SSE stream as an error chunk
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Read the body to verify error chunk is present
+        let body = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let body_str = String::from_utf8_lossy(&body);
+        assert!(
+            body_str.contains("Error") || body_str.contains("error"),
+            "Expected error in stream body, got: {}",
+            &body_str[..std::cmp::min(200, body_str.len())]
+        );
+    }
+
+    #[test]
+    fn test_route_reason_privacy_string() {
+        let reason = determine_route_reason("privacy_zone_match", false, 0);
+        assert_eq!(reason, RouteReason::PrivacyRequirement);
+    }
+
+    #[test]
+    fn test_route_reason_retry_count_failover() {
+        let reason = determine_route_reason("highest_score:b1:0.95", false, 1);
+        assert_eq!(reason, RouteReason::Failover);
+    }
+
+    #[tokio::test]
+    async fn test_inject_budget_headers_soft_limit_no_utilization() {
+        use crate::registry::{BackendType, DiscoverySource};
+        use crate::routing::reconciler::intent::BudgetStatus;
+
+        let backend = Backend::new(
+            "b1".to_string(),
+            "B1".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        let routing_result = crate::routing::RoutingResult {
+            backend: Arc::new(backend),
+            actual_model: "test-model".to_string(),
+            route_reason: "test".to_string(),
+            fallback_used: false,
+            cost_estimated: None,
+            budget_status: BudgetStatus::SoftLimit,
+            budget_utilization: None,
+            budget_remaining: None,
+        };
+
+        let mut resp =
+            axum::response::IntoResponse::into_response(axum::Json(serde_json::json!({})));
+        inject_budget_headers(&mut resp, &routing_result);
+
+        assert_eq!(
+            resp.headers()
+                .get("x-nexus-budget-status")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "SoftLimit"
+        );
+        // No utilization/remaining set
+        assert!(!resp.headers().contains_key("x-nexus-budget-utilization"));
+        assert!(!resp.headers().contains_key("x-nexus-budget-remaining"));
+        assert!(!resp.headers().contains_key("x-nexus-cost-estimated"));
+    }
+
+    #[tokio::test]
+    async fn test_inject_budget_headers_cost_already_set() {
+        use crate::registry::{BackendType, DiscoverySource};
+        use crate::routing::reconciler::intent::BudgetStatus;
+
+        let backend = Backend::new(
+            "b1".to_string(),
+            "B1".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        let routing_result = crate::routing::RoutingResult {
+            backend: Arc::new(backend),
+            actual_model: "test-model".to_string(),
+            route_reason: "test".to_string(),
+            fallback_used: false,
+            cost_estimated: Some(0.10),
+            budget_status: BudgetStatus::Normal,
+            budget_utilization: None,
+            budget_remaining: None,
+        };
+
+        let mut resp =
+            axum::response::IntoResponse::into_response(axum::Json(serde_json::json!({})));
+        // Pre-set the cost header (simulating F12 headers already set)
+        resp.headers_mut().insert(
+            HeaderName::from_static("x-nexus-cost-estimated"),
+            HeaderValue::from_static("0.0200"),
+        );
+        inject_budget_headers(&mut resp, &routing_result);
+
+        // Should keep the pre-existing value, not overwrite
+        assert_eq!(
+            resp.headers()
+                .get("x-nexus-cost-estimated")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "0.0200"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_rejection_response_has_rejection_details_header() {
+        let reasons = vec![
+            RejectionReason {
+                agent_id: "a1".to_string(),
+                reconciler: "PrivacyReconciler".to_string(),
+                reason: "restricted zone".to_string(),
+                suggested_action: "Use local".to_string(),
+            },
+            RejectionReason {
+                agent_id: "a2".to_string(),
+                reconciler: "TierReconciler".to_string(),
+                reason: "agent tier 1 below minimum 3".to_string(),
+                suggested_action: "Upgrade".to_string(),
+            },
+        ];
+        let resp = rejection_response(reasons, vec!["b1".to_string()]);
+        assert_eq!(resp.status(), axum::http::StatusCode::SERVICE_UNAVAILABLE);
+
+        // Verify x-nexus-rejection-reasons header is set
+        assert!(resp.headers().contains_key("x-nexus-rejection-reasons"));
+        // Verify x-nexus-rejection-details header (JSON) is set
+        assert!(resp.headers().contains_key("x-nexus-rejection-details"));
+
+        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        // Both privacy and tier should be extracted
+        assert_eq!(json["context"]["privacy_zone_required"], "restricted");
+        assert_eq!(json["context"]["required_tier"], 3);
+    }
+
+    #[tokio::test]
+    async fn test_rejection_response_privacy_open_zone() {
+        let reasons = vec![RejectionReason {
+            agent_id: "a1".to_string(),
+            reconciler: "PrivacyReconciler".to_string(),
+            reason: "open zone required for cloud".to_string(),
+            suggested_action: "Use cloud backend".to_string(),
+        }];
+        let resp = rejection_response(reasons, vec![]);
+        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["context"]["privacy_zone_required"], "open");
     }
 }

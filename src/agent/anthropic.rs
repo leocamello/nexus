@@ -1576,4 +1576,265 @@ mod tests {
         let _ = stream.next().await;
         mock.assert_async().await;
     }
+
+    #[tokio::test]
+    async fn test_chat_completion_non_streaming_api_error() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/messages")
+            .with_status(429)
+            .with_body(r#"{"error":{"type":"rate_limit_error","message":"Too many requests"}}"#)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "sk-ant-test".to_string());
+        let request = make_request(vec![msg("user", "Hello")], "claude-3-opus-20240229");
+
+        let result = agent.chat_completion(request, None).await;
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("Expected error"),
+        };
+        match err {
+            AgentError::Upstream { status, .. } => assert_eq!(status, 429),
+            other => panic!("Expected Upstream error, got: {:?}", other),
+        }
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_non_streaming_network_error() {
+        let agent = test_agent(
+            "http://invalid-host-that-does-not-exist:9999".to_string(),
+            "sk-ant-test".to_string(),
+        );
+        let request = make_request(vec![msg("user", "Hello")], "claude-3-opus-20240229");
+
+        let result = agent.chat_completion(request, None).await;
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("Expected error"),
+        };
+        assert!(
+            matches!(err, AgentError::Network(_) | AgentError::Timeout(_)),
+            "Expected Network or Timeout error, got: {:?}",
+            err
+        );
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_non_streaming_invalid_json() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/messages")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body("not valid json")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "sk-ant-test".to_string());
+        let request = make_request(vec![msg("user", "Hello")], "claude-3-opus-20240229");
+
+        let result = agent.chat_completion(request, None).await;
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("Expected error"),
+        };
+        assert!(
+            matches!(err, AgentError::InvalidResponse(_)),
+            "Expected InvalidResponse error, got: {:?}",
+            err
+        );
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_health_check_failure() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/messages")
+            .with_status(401)
+            .with_body(r#"{"error":"unauthorized"}"#)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "bad-key".to_string());
+        let status = agent.health_check().await.unwrap();
+
+        mock.assert_async().await;
+        assert_eq!(status, HealthStatus::Unhealthy);
+    }
+
+    #[tokio::test]
+    async fn test_health_check_network_error() {
+        let agent = test_agent(
+            "http://invalid-host-that-does-not-exist:9999".to_string(),
+            "sk-ant-test".to_string(),
+        );
+        let result = agent.health_check().await;
+
+        assert!(matches!(result, Err(AgentError::Network(_))));
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_non_streaming_auth_header_override() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/messages")
+            .match_header("x-api-key", "override-key")
+            .with_status(200)
+            .with_body(
+                r#"{"id":"msg_789","type":"message","role":"assistant","content":[{"type":"text","text":"OK"}],"model":"claude-3-opus-20240229","stop_reason":"end_turn","usage":{"input_tokens":5,"output_tokens":2}}"#,
+            )
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "default-key".to_string());
+        let request = make_request(vec![msg("user", "Hi")], "claude-3-opus-20240229");
+        let mut headers = HeaderMap::new();
+        headers.insert("x-api-key", "override-key".parse().unwrap());
+        let response = agent
+            .chat_completion(request, Some(&headers))
+            .await
+            .unwrap();
+
+        assert_eq!(response.id, "msg_789");
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_upstream_error() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/messages")
+            .with_status(429)
+            .with_body(r#"{"type":"error","error":{"type":"rate_limit_error","message":"Too many requests"}}"#)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "sk-ant-test".to_string());
+        let request = make_request(vec![msg("user", "Hi")], "claude-3-opus");
+        let result = agent.chat_completion(request, None).await;
+
+        mock.assert_async().await;
+        assert!(matches!(
+            result,
+            Err(AgentError::Upstream { status: 429, .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_invalid_json_response() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/messages")
+            .with_status(200)
+            .with_body("not json")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "sk-ant-test".to_string());
+        let request = make_request(vec![msg("user", "Hi")], "claude-3-opus");
+        let result = agent.chat_completion(request, None).await;
+
+        mock.assert_async().await;
+        assert!(matches!(result, Err(AgentError::InvalidResponse(_))));
+    }
+
+    #[test]
+    fn test_translate_response_stop_sequence_reason() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let response = AnthropicResponse {
+            id: "msg_stop".to_string(),
+            r#type: "message".to_string(),
+            role: "assistant".to_string(),
+            content: vec![ContentBlock {
+                r#type: "text".to_string(),
+                text: Some("stopped".to_string()),
+            }],
+            model: "claude-3-opus-20240229".to_string(),
+            stop_reason: Some("stop_sequence".to_string()),
+            usage: AnthropicUsage {
+                input_tokens: 5,
+                output_tokens: 3,
+            },
+        };
+        let translated = agent.translate_response(response);
+        assert_eq!(
+            translated.choices[0].finish_reason,
+            Some("stop".to_string())
+        );
+    }
+
+    #[test]
+    fn test_translate_response_none_stop_reason_default() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let response = AnthropicResponse {
+            id: "msg_none".to_string(),
+            r#type: "message".to_string(),
+            role: "assistant".to_string(),
+            content: vec![ContentBlock {
+                r#type: "text".to_string(),
+                text: Some("partial".to_string()),
+            }],
+            model: "claude-3-opus-20240229".to_string(),
+            stop_reason: None,
+            usage: AnthropicUsage {
+                input_tokens: 5,
+                output_tokens: 3,
+            },
+        };
+        let translated = agent.translate_response(response);
+        // None stop_reason falls through to "stop" default
+        assert_eq!(
+            translated.choices[0].finish_reason,
+            Some("stop".to_string())
+        );
+    }
+
+    #[test]
+    fn test_translate_stream_chunk_content_block_delta_non_text() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let data = r#"{"delta":{"type":"input_json_delta","partial_json":"{}"}}"#;
+        let result = agent.translate_stream_chunk("content_block_delta", data);
+        // Non-text delta type should return None
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_translate_stream_chunk_message_delta_max_tokens_stop() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let data = r#"{"delta":{"stop_reason":"max_tokens"}}"#;
+        let result = agent.translate_stream_chunk("message_delta", data);
+        assert!(result.is_some());
+        let chunk = result.unwrap();
+        let json: serde_json::Value =
+            serde_json::from_str(chunk.trim_start_matches("data: ").trim()).unwrap();
+        assert_eq!(json["choices"][0]["finish_reason"], "length");
+    }
+
+    #[test]
+    fn test_translate_stream_chunk_invalid_message_start_json() {
+        let agent = test_agent("http://localhost".to_string(), "key".to_string());
+        let result = agent.translate_stream_chunk("message_start", "not valid json");
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_health_check_unhealthy() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/messages")
+            .with_status(401)
+            .with_body(r#"{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}"#)
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), "bad-key".to_string());
+        let status = agent.health_check().await.unwrap();
+
+        mock.assert_async().await;
+        assert_eq!(status, HealthStatus::Unhealthy);
+    }
 }

@@ -798,4 +798,280 @@ mod tests {
         // With equal priority/load/latency atomics, either could win.
         assert_eq!(intent.candidate_agents.len(), 1);
     }
+
+    #[test]
+    fn random_strategy_selects_one() {
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_test_backend(
+                "b1",
+                BackendStatus::Healthy,
+                "llama3:8b",
+                1,
+                0,
+                50,
+            ))
+            .unwrap();
+        registry
+            .add_backend(create_test_backend(
+                "b2",
+                BackendStatus::Healthy,
+                "llama3:8b",
+                1,
+                0,
+                50,
+            ))
+            .unwrap();
+
+        let scheduler = make_scheduler(registry, RoutingStrategy::Random);
+
+        let mut intent = create_intent("llama3:8b", vec!["b1".into(), "b2".into()]);
+        scheduler.reconcile(&mut intent).unwrap();
+
+        assert_eq!(intent.candidate_agents.len(), 1);
+        assert!(intent.route_reason.is_some());
+        // Random with 2 candidates produces "random:xxx" reason
+        let reason = intent.route_reason.unwrap();
+        assert!(
+            reason.starts_with("random:") || reason == "only_healthy_backend",
+            "Unexpected reason: {}",
+            reason,
+        );
+    }
+
+    #[test]
+    fn excludes_tools_mismatch() {
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_test_backend(
+                "b1",
+                BackendStatus::Healthy,
+                "llama3:8b",
+                1,
+                0,
+                50,
+            ))
+            .unwrap();
+
+        let scheduler = make_scheduler(registry, RoutingStrategy::Smart);
+
+        let mut intent = RoutingIntent::new(
+            "req-1".to_string(),
+            "llama3:8b".to_string(),
+            "llama3:8b".to_string(),
+            RequestRequirements {
+                model: "llama3:8b".to_string(),
+                estimated_tokens: 100,
+                needs_vision: false,
+                needs_tools: true,
+                needs_json_mode: false,
+                prefers_streaming: false,
+            },
+            vec!["b1".into()],
+        );
+
+        scheduler.reconcile(&mut intent).unwrap();
+        assert!(intent.candidate_agents.is_empty());
+        assert!(intent.rejection_reasons[0].reason.contains("tools"));
+    }
+
+    #[test]
+    fn excludes_json_mode_mismatch() {
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_test_backend(
+                "b1",
+                BackendStatus::Healthy,
+                "llama3:8b",
+                1,
+                0,
+                50,
+            ))
+            .unwrap();
+
+        let scheduler = make_scheduler(registry, RoutingStrategy::Smart);
+
+        let mut intent = RoutingIntent::new(
+            "req-1".to_string(),
+            "llama3:8b".to_string(),
+            "llama3:8b".to_string(),
+            RequestRequirements {
+                model: "llama3:8b".to_string(),
+                estimated_tokens: 100,
+                needs_vision: false,
+                needs_tools: false,
+                needs_json_mode: true,
+                prefers_streaming: false,
+            },
+            vec!["b1".into()],
+        );
+
+        scheduler.reconcile(&mut intent).unwrap();
+        assert!(intent.candidate_agents.is_empty());
+        assert!(intent.rejection_reasons[0].reason.contains("json_mode"));
+    }
+
+    #[test]
+    fn meets_requirements_tools_required_not_supported() {
+        let backend = create_test_backend("b1", BackendStatus::Healthy, "llama3:8b", 1, 0, 50);
+        let intent = RoutingIntent::new(
+            "req-1".to_string(),
+            "llama3:8b".to_string(),
+            "llama3:8b".to_string(),
+            RequestRequirements {
+                model: "llama3:8b".to_string(),
+                estimated_tokens: 100,
+                needs_vision: false,
+                needs_tools: true,
+                needs_json_mode: false,
+                prefers_streaming: false,
+            },
+            vec!["b1".into()],
+        );
+        assert!(!SchedulerReconciler::meets_requirements(
+            &backend,
+            "llama3:8b",
+            &intent
+        ));
+    }
+
+    #[test]
+    fn meets_requirements_json_mode_required_not_supported() {
+        let backend = create_test_backend("b1", BackendStatus::Healthy, "llama3:8b", 1, 0, 50);
+        let intent = RoutingIntent::new(
+            "req-1".to_string(),
+            "llama3:8b".to_string(),
+            "llama3:8b".to_string(),
+            RequestRequirements {
+                model: "llama3:8b".to_string(),
+                estimated_tokens: 100,
+                needs_vision: false,
+                needs_tools: false,
+                needs_json_mode: true,
+                prefers_streaming: false,
+            },
+            vec!["b1".into()],
+        );
+        assert!(!SchedulerReconciler::meets_requirements(
+            &backend,
+            "llama3:8b",
+            &intent
+        ));
+    }
+
+    #[test]
+    fn budget_adjustment_at_soft_limit_reduces_cloud_score() {
+        let registry = Arc::new(Registry::new());
+        let b1 = create_test_backend("b1", BackendStatus::Healthy, "llama3:8b", 1, 0, 50);
+        registry.add_backend(b1).unwrap();
+
+        let (store, config) = default_quality();
+        let scheduler = SchedulerReconciler::new(
+            registry.clone(),
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            Arc::new(AtomicU64::new(0)),
+            store,
+            config,
+        );
+
+        let backend = registry.get_backend("b1").unwrap();
+        let mut intent = create_intent("llama3:8b", vec!["b1".into()]);
+        intent.budget_status = crate::routing::reconciler::intent::BudgetStatus::SoftLimit;
+
+        // Backend is local (Ollama), so no adjustment
+        let adjusted = scheduler.apply_budget_adjustment(100, &backend, &intent);
+        assert_eq!(adjusted, 100);
+    }
+
+    #[test]
+    fn ttft_penalty_zero_threshold_no_penalty() {
+        let config = QualityConfig {
+            ttft_penalty_threshold_ms: 0,
+            ..QualityConfig::default()
+        };
+        let store = Arc::new(QualityMetricsStore::new(config.clone()));
+        store.record_outcome("b1", true, 10000);
+        store.recompute_all();
+
+        let registry = Arc::new(Registry::new());
+        let scheduler = SchedulerReconciler::new(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            Arc::new(AtomicU64::new(0)),
+            store,
+            config,
+        );
+
+        // With threshold=0, no penalty applied
+        let score = scheduler.apply_ttft_penalty(100, "b1");
+        assert_eq!(score, 100);
+    }
+
+    #[test]
+    fn single_candidate_round_robin_reason() {
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_test_backend(
+                "b1",
+                BackendStatus::Healthy,
+                "llama3:8b",
+                1,
+                0,
+                50,
+            ))
+            .unwrap();
+
+        let scheduler = make_scheduler(registry, RoutingStrategy::RoundRobin);
+
+        let mut intent = create_intent("llama3:8b", vec!["b1".into()]);
+        scheduler.reconcile(&mut intent).unwrap();
+
+        assert_eq!(intent.route_reason.as_deref(), Some("only_healthy_backend"));
+    }
+
+    #[test]
+    fn single_candidate_priority_only_reason() {
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_test_backend(
+                "b1",
+                BackendStatus::Healthy,
+                "llama3:8b",
+                1,
+                0,
+                50,
+            ))
+            .unwrap();
+
+        let scheduler = make_scheduler(registry, RoutingStrategy::PriorityOnly);
+
+        let mut intent = create_intent("llama3:8b", vec!["b1".into()]);
+        scheduler.reconcile(&mut intent).unwrap();
+
+        assert_eq!(intent.route_reason.as_deref(), Some("only_healthy_backend"));
+    }
+
+    #[test]
+    fn single_candidate_random_reason() {
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_test_backend(
+                "b1",
+                BackendStatus::Healthy,
+                "llama3:8b",
+                1,
+                0,
+                50,
+            ))
+            .unwrap();
+
+        let scheduler = make_scheduler(registry, RoutingStrategy::Random);
+
+        let mut intent = create_intent("llama3:8b", vec!["b1".into()]);
+        scheduler.reconcile(&mut intent).unwrap();
+
+        assert_eq!(intent.route_reason.as_deref(), Some("only_healthy_backend"));
+    }
 }

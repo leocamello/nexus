@@ -214,4 +214,84 @@ mod tests {
         assert!(pricing.has_pricing("gemini-1.5-pro"));
         assert!(!pricing.has_pricing("unknown-model"));
     }
+
+    #[test]
+    fn test_google_pricing() {
+        let pricing = PricingTable::new();
+
+        let cost = pricing.estimate_cost("gemini-1.5-pro", 1000, 1000);
+        assert!(cost.is_some());
+        let c = cost.unwrap();
+        // (1000/1000)*0.0035 + (1000/1000)*0.0105 = 0.014
+        assert!((c - 0.014).abs() < 0.0001);
+
+        let cost = pricing.estimate_cost("gemini-1.5-flash", 2000, 500);
+        assert!(cost.is_some());
+
+        let cost = pricing.estimate_cost("gemini-1.0-pro", 1000, 1000);
+        assert!(cost.is_some());
+    }
+
+    #[test]
+    fn test_get_pricing() {
+        let pricing = PricingTable::new();
+
+        let p = pricing.get_pricing("gpt-4-turbo");
+        assert!(p.is_some());
+        let p = p.unwrap();
+        assert_eq!(p.input_price_per_1k, 0.01);
+        assert_eq!(p.output_price_per_1k, 0.03);
+
+        let p = pricing.get_pricing("nonexistent");
+        assert!(p.is_none());
+    }
+
+    #[test]
+    fn test_anthropic_haiku_pricing() {
+        let pricing = PricingTable::new();
+        let cost = pricing.estimate_cost("claude-3-haiku-20240307", 1000, 1000);
+        assert!(cost.is_some());
+        let c = cost.unwrap();
+        // (1000/1000)*0.00025 + (1000/1000)*0.00125 = 0.0015
+        assert!((c - 0.0015).abs() < 0.0001);
+    }
+
+    #[test]
+    fn test_anthropic_sonnet_pricing() {
+        let pricing = PricingTable::new();
+        let cost = pricing.estimate_cost("claude-3-sonnet-20240229", 1000, 1000);
+        assert!(cost.is_some());
+        let c = cost.unwrap();
+        assert!((c - 0.018).abs() < 0.0001);
+    }
+
+    #[test]
+    fn test_gpt4_turbo_preview_pricing() {
+        let pricing = PricingTable::new();
+        let cost = pricing.estimate_cost("gpt-4-turbo-preview", 1000, 500);
+        assert!(cost.is_some());
+        assert_eq!(cost, Some(0.025));
+    }
+
+    #[test]
+    fn test_gpt4_pricing() {
+        let pricing = PricingTable::new();
+        let cost = pricing.estimate_cost("gpt-4", 1000, 500);
+        assert!(cost.is_some());
+        // (1000/1000)*0.03 + (500/1000)*0.06 = 0.03 + 0.03 = 0.06
+        assert_eq!(cost, Some(0.06));
+    }
+
+    #[test]
+    fn test_pricing_default() {
+        let pricing = PricingTable::default();
+        assert!(pricing.has_pricing("gpt-4-turbo"));
+    }
+
+    #[test]
+    fn test_zero_tokens() {
+        let pricing = PricingTable::new();
+        let cost = pricing.estimate_cost("gpt-4-turbo", 0, 0);
+        assert_eq!(cost, Some(0.0));
+    }
 }

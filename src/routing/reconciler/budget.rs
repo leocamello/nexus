@@ -1043,6 +1043,196 @@ mod tests {
 
     // === SC-006: Budget counter resets on billing cycle ===
 
+    // === get_backend_privacy_zone ===
+
+    #[test]
+    fn get_backend_privacy_zone_with_agent() {
+        use crate::agent::types::{AgentCapabilities, AgentProfile, PrivacyZone};
+        use crate::agent::{
+            AgentError, HealthStatus, InferenceAgent, ModelCapability, StreamChunk,
+        };
+        use crate::api::types::{ChatCompletionRequest, ChatCompletionResponse};
+        use async_trait::async_trait;
+        use axum::http::HeaderMap;
+        use futures_util::stream::BoxStream;
+
+        struct RestrictedAgent;
+
+        #[async_trait]
+        impl InferenceAgent for RestrictedAgent {
+            fn id(&self) -> &str {
+                "restricted-agent"
+            }
+            fn name(&self) -> &str {
+                "Restricted"
+            }
+            fn profile(&self) -> AgentProfile {
+                AgentProfile {
+                    backend_type: "ollama".to_string(),
+                    version: None,
+                    privacy_zone: PrivacyZone::Restricted,
+                    capabilities: AgentCapabilities::default(),
+                    capability_tier: Some(1),
+                }
+            }
+            async fn health_check(&self) -> Result<HealthStatus, AgentError> {
+                Ok(HealthStatus::Unhealthy)
+            }
+            async fn list_models(&self) -> Result<Vec<ModelCapability>, AgentError> {
+                Ok(vec![])
+            }
+            async fn chat_completion(
+                &self,
+                _r: ChatCompletionRequest,
+                _h: Option<&HeaderMap>,
+            ) -> Result<ChatCompletionResponse, AgentError> {
+                Err(AgentError::Unsupported("test"))
+            }
+            async fn chat_completion_stream(
+                &self,
+                _r: ChatCompletionRequest,
+                _h: Option<&HeaderMap>,
+            ) -> Result<BoxStream<'static, Result<StreamChunk, AgentError>>, AgentError>
+            {
+                Err(AgentError::Unsupported("test"))
+            }
+        }
+
+        let registry = Arc::new(Registry::new());
+        let backend = create_backend("restricted-agent", "llama3:8b", BackendType::Ollama);
+        let agent: Arc<dyn InferenceAgent> = Arc::new(RestrictedAgent);
+        registry.add_backend_with_agent(backend, agent).unwrap();
+
+        let state = Arc::new(DashMap::new());
+        let reconciler = BudgetReconciler::new(
+            Arc::clone(&registry),
+            budget_config(None, HardLimitAction::Warn),
+            tokenizer_registry(),
+            state,
+        );
+
+        // Agent path — returns agent's privacy zone
+        let zone = reconciler.get_backend_privacy_zone("restricted-agent");
+        assert_eq!(zone, PrivacyZone::Restricted);
+    }
+
+    #[test]
+    fn get_backend_privacy_zone_no_agent_uses_backend_type() {
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_backend(
+                "cloud-no-agent",
+                "gpt-4",
+                BackendType::OpenAI,
+            ))
+            .unwrap();
+
+        let state = Arc::new(DashMap::new());
+        let reconciler = BudgetReconciler::new(
+            Arc::clone(&registry),
+            budget_config(None, HardLimitAction::Warn),
+            tokenizer_registry(),
+            state,
+        );
+
+        // Backend path (no agent) — uses backend_type default
+        let zone = reconciler.get_backend_privacy_zone("cloud-no-agent");
+        assert_eq!(zone, PrivacyZone::Open);
+    }
+
+    #[test]
+    fn get_backend_privacy_zone_unknown_returns_open() {
+        let registry = Arc::new(Registry::new());
+        let state = Arc::new(DashMap::new());
+        let reconciler = BudgetReconciler::new(
+            Arc::clone(&registry),
+            budget_config(None, HardLimitAction::Warn),
+            tokenizer_registry(),
+            state,
+        );
+
+        // Unknown backend → Open
+        let zone = reconciler.get_backend_privacy_zone("nonexistent");
+        assert_eq!(zone, PrivacyZone::Open);
+    }
+
+    // === reconcile_spending (background loop) ===
+
+    #[test]
+    fn reconcile_spending_records_metrics() {
+        let state = Arc::new(DashMap::new());
+        state.insert(GLOBAL_BUDGET_KEY.to_string(), BudgetMetrics::new());
+
+        // Set some spending
+        state
+            .entry(GLOBAL_BUDGET_KEY.to_string())
+            .and_modify(|m| m.current_month_spending = 42.0);
+
+        let budget_cfg = budget_config(Some(100.0), HardLimitAction::Warn);
+        let loop_task = BudgetReconciliationLoop::new(Arc::clone(&state), budget_cfg, 60);
+
+        loop_task.reconcile_spending();
+
+        // Verify timestamp was updated
+        let metrics = state.get(GLOBAL_BUDGET_KEY).unwrap();
+        assert!(!metrics.month_key.is_empty());
+        // spending should remain the same
+        assert!((metrics.current_month_spending - 42.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn reconcile_spending_handles_month_rollover() {
+        let state = Arc::new(DashMap::new());
+        let mut old_metrics = BudgetMetrics::new();
+        old_metrics.current_month_spending = 99.0;
+        old_metrics.month_key = "2023-01".to_string();
+        state.insert(GLOBAL_BUDGET_KEY.to_string(), old_metrics);
+
+        let budget_cfg = budget_config(Some(100.0), HardLimitAction::Warn);
+        let loop_task = BudgetReconciliationLoop::new(Arc::clone(&state), budget_cfg, 60);
+
+        loop_task.reconcile_spending();
+
+        let metrics = state.get(GLOBAL_BUDGET_KEY).unwrap();
+        // Should have reset spending on month rollover
+        assert!(
+            (metrics.current_month_spending).abs() < f64::EPSILON,
+            "Spending should be reset on rollover, got {}",
+            metrics.current_month_spending
+        );
+        assert_ne!(metrics.month_key, "2023-01");
+    }
+
+    #[test]
+    fn reconcile_spending_no_budget_limit() {
+        let state = Arc::new(DashMap::new());
+        state.insert(GLOBAL_BUDGET_KEY.to_string(), BudgetMetrics::new());
+
+        // No budget limit configured
+        let budget_cfg = budget_config(None, HardLimitAction::Warn);
+        let loop_task = BudgetReconciliationLoop::new(Arc::clone(&state), budget_cfg, 60);
+
+        // Should not panic
+        loop_task.reconcile_spending();
+    }
+
+    #[test]
+    fn budget_status_with_zero_limit() {
+        let registry = Arc::new(Registry::new());
+        let state = Arc::new(DashMap::new());
+        let reconciler = BudgetReconciler::new(
+            Arc::clone(&registry),
+            budget_config(Some(0.0), HardLimitAction::Warn),
+            tokenizer_registry(),
+            Arc::clone(&state),
+        );
+
+        // Zero limit → Normal (handled as no limit)
+        assert_eq!(reconciler.calculate_budget_status(), BudgetStatus::Normal);
+    }
+
+    // === SC-006: Budget counter resets on billing cycle ===
+
     #[test]
     fn sc006_auto_reset_on_month_rollover() {
         let registry = Arc::new(Registry::new());

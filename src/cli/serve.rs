@@ -807,4 +807,450 @@ mod tests {
         let config = load_config_with_overrides(&args).unwrap();
         assert_eq!(config.logging.level, "debug");
     }
+
+    #[test]
+    fn test_build_config_from_file() {
+        let temp = NamedTempFile::new().unwrap();
+        std::fs::write(
+            temp.path(),
+            r#"
+[server]
+port = 4321
+host = "10.0.0.5"
+
+[discovery]
+enabled = false
+
+[logging]
+level = "trace"
+
+[[backends]]
+name = "my-ollama"
+url = "http://192.168.1.10:11434"
+type = "ollama"
+priority = 2
+"#,
+        )
+        .unwrap();
+
+        let args = ServeArgs {
+            config: temp.path().to_path_buf(),
+            port: None,
+            host: None,
+            log_level: None,
+            no_discovery: false,
+            no_health_check: false,
+        };
+
+        let config = load_config_with_overrides(&args).unwrap();
+        assert_eq!(config.server.port, 4321);
+        assert_eq!(config.server.host, "10.0.0.5");
+        assert!(!config.discovery.enabled);
+        assert_eq!(config.logging.level, "trace");
+        assert_eq!(config.backends.len(), 1);
+        assert_eq!(config.backends[0].name, "my-ollama");
+        assert_eq!(config.backends[0].backend_type, BackendType::Ollama);
+    }
+
+    #[test]
+    fn test_server_config_defaults() {
+        let args = ServeArgs {
+            config: PathBuf::from("nonexistent.toml"),
+            port: None,
+            host: None,
+            log_level: None,
+            no_discovery: false,
+            no_health_check: false,
+        };
+
+        let config = load_config_with_overrides(&args).unwrap();
+        assert_eq!(config.server.port, 8000);
+        assert_eq!(config.server.host, "0.0.0.0");
+        assert!(config.discovery.enabled);
+        assert!(config.health_check.enabled);
+        assert_eq!(config.logging.level, "info");
+        assert!(config.backends.is_empty());
+    }
+
+    #[test]
+    fn test_config_with_custom_port() {
+        let temp = NamedTempFile::new().unwrap();
+        std::fs::write(temp.path(), "[server]\nport = 12345").unwrap();
+
+        let args = ServeArgs {
+            config: temp.path().to_path_buf(),
+            port: None,
+            host: None,
+            log_level: None,
+            no_discovery: false,
+            no_health_check: false,
+        };
+
+        let config = load_config_with_overrides(&args).unwrap();
+        assert_eq!(config.server.port, 12345);
+        // Other values should be defaults
+        assert_eq!(config.server.host, "0.0.0.0");
+    }
+
+    #[test]
+    fn test_config_with_static_backends() {
+        let temp = NamedTempFile::new().unwrap();
+        std::fs::write(
+            temp.path(),
+            r#"
+[[backends]]
+name = "ollama-local"
+url = "http://localhost:11434"
+type = "ollama"
+priority = 1
+
+[[backends]]
+name = "vllm-gpu"
+url = "http://gpu-server:8000"
+type = "vllm"
+priority = 2
+"#,
+        )
+        .unwrap();
+
+        let args = ServeArgs {
+            config: temp.path().to_path_buf(),
+            port: None,
+            host: None,
+            log_level: None,
+            no_discovery: false,
+            no_health_check: false,
+        };
+
+        let config = load_config_with_overrides(&args).unwrap();
+        assert_eq!(config.backends.len(), 2);
+        assert_eq!(config.backends[0].name, "ollama-local");
+        assert_eq!(config.backends[0].backend_type, BackendType::Ollama);
+        assert_eq!(config.backends[1].name, "vllm-gpu");
+        assert_eq!(config.backends[1].backend_type, BackendType::VLLM);
+    }
+
+    #[test]
+    fn test_config_with_discovery_disabled() {
+        let temp = NamedTempFile::new().unwrap();
+        std::fs::write(temp.path(), "[discovery]\nenabled = false\n").unwrap();
+
+        let args = ServeArgs {
+            config: temp.path().to_path_buf(),
+            port: None,
+            host: None,
+            log_level: None,
+            no_discovery: false,
+            no_health_check: false,
+        };
+
+        let config = load_config_with_overrides(&args).unwrap();
+        assert!(!config.discovery.enabled);
+        // Health check should still be enabled by default
+        assert!(config.health_check.enabled);
+    }
+
+    #[test]
+    fn test_config_with_quality_settings() {
+        let temp = NamedTempFile::new().unwrap();
+        std::fs::write(
+            temp.path(),
+            r#"
+[quality]
+error_rate_threshold = 0.3
+ttft_penalty_threshold_ms = 5000
+metrics_interval_seconds = 60
+"#,
+        )
+        .unwrap();
+
+        let args = ServeArgs {
+            config: temp.path().to_path_buf(),
+            port: None,
+            host: None,
+            log_level: None,
+            no_discovery: false,
+            no_health_check: false,
+        };
+
+        let config = load_config_with_overrides(&args).unwrap();
+        assert_eq!(config.quality.error_rate_threshold, 0.3);
+        assert_eq!(config.quality.ttft_penalty_threshold_ms, 5000);
+        assert_eq!(config.quality.metrics_interval_seconds, 60);
+    }
+
+    #[test]
+    fn test_config_with_queue_settings() {
+        let temp = NamedTempFile::new().unwrap();
+        std::fs::write(
+            temp.path(),
+            r#"
+[queue]
+enabled = true
+max_size = 200
+max_wait_seconds = 45
+"#,
+        )
+        .unwrap();
+
+        let args = ServeArgs {
+            config: temp.path().to_path_buf(),
+            port: None,
+            host: None,
+            log_level: None,
+            no_discovery: false,
+            no_health_check: false,
+        };
+
+        let config = load_config_with_overrides(&args).unwrap();
+        assert!(config.queue.enabled);
+        assert_eq!(config.queue.max_size, 200);
+        assert_eq!(config.queue.max_wait_seconds, 45);
+        assert!(config.queue.is_enabled());
+    }
+
+    #[tokio::test]
+    async fn test_build_api_router_with_queue_enabled() {
+        let registry = Arc::new(Registry::new());
+        let mut config = NexusConfig::default();
+        config.queue.enabled = true;
+        config.queue.max_size = 50;
+        let config_arc = Arc::new(config.clone());
+
+        let queue = Some(Arc::new(crate::queue::RequestQueue::new(
+            config.queue.clone(),
+        )));
+        let (_router, app_state) = build_api_router(registry, config_arc, queue);
+
+        assert!(app_state.queue.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_build_api_router_without_queue() {
+        let registry = Arc::new(Registry::new());
+        let mut config = NexusConfig::default();
+        config.queue.enabled = false;
+        config.queue.max_size = 0;
+        let config_arc = Arc::new(config);
+
+        let (_router, app_state) = build_api_router(registry, config_arc, None);
+        assert!(app_state.queue.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_backends_loaded_with_zone_and_tier() {
+        let mut config = NexusConfig::default();
+        config.backends.push(BackendConfig {
+            name: "private-ollama".to_string(),
+            url: "http://localhost:11434".to_string(),
+            backend_type: BackendType::Ollama,
+            priority: 1,
+            api_key_env: None,
+            zone: Some(crate::agent::types::PrivacyZone::Restricted),
+            tier: Some(3),
+        });
+
+        let registry = Arc::new(Registry::new());
+        load_backends_from_config(&config, &registry).unwrap();
+        assert_eq!(registry.backend_count(), 1);
+
+        // Verify agent was created with correct privacy zone
+        let backends = registry.get_all_backends();
+        let agent = registry.get_agent(&backends[0].id).unwrap();
+        let profile = agent.profile();
+        assert_eq!(
+            profile.privacy_zone,
+            crate::agent::types::PrivacyZone::Restricted
+        );
+        assert_eq!(profile.capability_tier, Some(3));
+    }
+
+    #[tokio::test]
+    async fn test_backends_loaded_with_lmstudio_type() {
+        let mut config = NexusConfig::default();
+        config.backends.push(BackendConfig {
+            name: "lmstudio".to_string(),
+            url: "http://localhost:1234".to_string(),
+            backend_type: BackendType::LMStudio,
+            priority: 1,
+            api_key_env: None,
+            zone: None,
+            tier: None,
+        });
+
+        let registry = Arc::new(Registry::new());
+        load_backends_from_config(&config, &registry).unwrap();
+        assert_eq!(registry.backend_count(), 1);
+
+        let backends = registry.get_all_backends();
+        let agent = registry.get_agent(&backends[0].id).unwrap();
+        assert_eq!(agent.profile().backend_type, "lmstudio");
+    }
+
+    #[test]
+    fn test_config_cli_port_overrides_file_port() {
+        let temp = NamedTempFile::new().unwrap();
+        std::fs::write(temp.path(), "[server]\nport = 5555").unwrap();
+
+        let args = ServeArgs {
+            config: temp.path().to_path_buf(),
+            port: Some(6666),
+            host: None,
+            log_level: None,
+            no_discovery: false,
+            no_health_check: false,
+        };
+
+        let config = load_config_with_overrides(&args).unwrap();
+        // CLI override (6666) should win over file value (5555)
+        assert_eq!(config.server.port, 6666);
+    }
+
+    #[test]
+    fn test_config_queue_disabled_explicitly() {
+        let temp = NamedTempFile::new().unwrap();
+        std::fs::write(temp.path(), "[queue]\nenabled = false\nmax_size = 0\n").unwrap();
+
+        let args = ServeArgs {
+            config: temp.path().to_path_buf(),
+            port: None,
+            host: None,
+            log_level: None,
+            no_discovery: false,
+            no_health_check: false,
+        };
+
+        let config = load_config_with_overrides(&args).unwrap();
+        assert!(!config.queue.is_enabled());
+    }
+
+    #[tokio::test]
+    async fn test_build_api_router_with_queue_and_state() {
+        let registry = Arc::new(Registry::new());
+        let mut config = NexusConfig::default();
+        config.queue.enabled = true;
+        config.queue.max_size = 100;
+        config.queue.max_wait_seconds = 30;
+        let config_arc = Arc::new(config.clone());
+
+        let queue = Some(Arc::new(crate::queue::RequestQueue::new(
+            config.queue.clone(),
+        )));
+        let (_router, app_state) = build_api_router(registry, config_arc, queue);
+
+        // Verify queue is accessible through AppState
+        assert!(app_state.queue.is_some());
+        let q = app_state.queue.as_ref().unwrap();
+        assert_eq!(q.config().max_size, 100);
+        assert_eq!(q.config().max_wait_seconds, 30);
+    }
+
+    #[tokio::test]
+    async fn test_load_backends_with_invalid_url() {
+        let mut config = NexusConfig::default();
+        // Invalid URL still loads (URL validation happens at connection time)
+        config.backends.push(BackendConfig {
+            name: "bad-url".to_string(),
+            url: "not-a-valid-url".to_string(),
+            backend_type: BackendType::Ollama,
+            priority: 1,
+            api_key_env: None,
+            zone: None,
+            tier: None,
+        });
+
+        let registry = Arc::new(Registry::new());
+        let result = load_backends_from_config(&config, &registry);
+        // Ollama agents are created regardless of URL format
+        assert!(result.is_ok());
+        assert_eq!(registry.backend_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_load_backends_with_all_types() {
+        // Set API keys for cloud backends
+        std::env::set_var("NEXUS_TEST_OPENAI_KEY_ALL", "sk-test-openai");
+        std::env::set_var("NEXUS_TEST_ANTHROPIC_KEY_ALL", "sk-test-anthropic");
+        std::env::set_var("NEXUS_TEST_GOOGLE_KEY_ALL", "sk-test-google");
+
+        let mut config = NexusConfig::default();
+        // Cloud backends with API keys
+        config.backends.push(BackendConfig {
+            name: "openai-all".to_string(),
+            url: "https://api.openai.com".to_string(),
+            backend_type: BackendType::OpenAI,
+            priority: 1,
+            api_key_env: Some("NEXUS_TEST_OPENAI_KEY_ALL".to_string()),
+            zone: None,
+            tier: None,
+        });
+        config.backends.push(BackendConfig {
+            name: "anthropic-all".to_string(),
+            url: "https://api.anthropic.com".to_string(),
+            backend_type: BackendType::Anthropic,
+            priority: 1,
+            api_key_env: Some("NEXUS_TEST_ANTHROPIC_KEY_ALL".to_string()),
+            zone: None,
+            tier: None,
+        });
+        config.backends.push(BackendConfig {
+            name: "google-all".to_string(),
+            url: "https://generativelanguage.googleapis.com".to_string(),
+            backend_type: BackendType::Google,
+            priority: 1,
+            api_key_env: Some("NEXUS_TEST_GOOGLE_KEY_ALL".to_string()),
+            zone: None,
+            tier: None,
+        });
+        // Local backends
+        config.backends.push(BackendConfig {
+            name: "ollama-all".to_string(),
+            url: "http://localhost:11434".to_string(),
+            backend_type: BackendType::Ollama,
+            priority: 1,
+            api_key_env: None,
+            zone: None,
+            tier: None,
+        });
+        config.backends.push(BackendConfig {
+            name: "lmstudio-all".to_string(),
+            url: "http://localhost:1234".to_string(),
+            backend_type: BackendType::LMStudio,
+            priority: 1,
+            api_key_env: None,
+            zone: None,
+            tier: None,
+        });
+        config.backends.push(BackendConfig {
+            name: "generic-all".to_string(),
+            url: "http://localhost:5000".to_string(),
+            backend_type: BackendType::Generic,
+            priority: 1,
+            api_key_env: None,
+            zone: None,
+            tier: None,
+        });
+
+        let registry = Arc::new(Registry::new());
+        load_backends_from_config(&config, &registry).unwrap();
+
+        // All 6 should be loaded
+        assert_eq!(registry.backend_count(), 6);
+
+        // Verify each has an agent
+        let backends = registry.get_all_backends();
+        for backend in &backends {
+            let agent = registry.get_agent(&backend.id);
+            assert!(
+                agent.is_some(),
+                "Agent should exist for backend {}",
+                backend.name
+            );
+        }
+
+        // Clean up
+        std::env::remove_var("NEXUS_TEST_OPENAI_KEY_ALL");
+        std::env::remove_var("NEXUS_TEST_ANTHROPIC_KEY_ALL");
+        std::env::remove_var("NEXUS_TEST_GOOGLE_KEY_ALL");
+    }
 }

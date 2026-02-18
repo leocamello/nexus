@@ -1831,4 +1831,1171 @@ mod alias_and_fallback_tests {
         // And result.backend is the primary backend
         assert_eq!(result.backend.name, "Backend Primary");
     }
+
+    #[test]
+    fn test_circular_alias_detection() {
+        // Aliases form a cycle: a → b → c → a
+        // resolve_alias should stop at MAX_DEPTH (3) and not loop infinitely
+        let backends = vec![
+            create_test_backend_with_model("backend_a", "Backend A", "a"),
+            create_test_backend_with_model("backend_b", "Backend B", "b"),
+            create_test_backend_with_model("backend_c", "Backend C", "c"),
+        ];
+
+        let registry = Arc::new(Registry::new());
+        for backend in backends {
+            registry.add_backend(backend).unwrap();
+        }
+
+        let mut aliases = HashMap::new();
+        aliases.insert("a".to_string(), "b".to_string());
+        aliases.insert("b".to_string(), "c".to_string());
+        aliases.insert("c".to_string(), "a".to_string());
+
+        let router = Router::with_aliases_and_fallbacks(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            aliases,
+            HashMap::new(),
+        );
+
+        // After 3 hops: a → b → c → a, resolve_alias returns "a"
+        let resolved = router.resolve_alias("a");
+        assert_eq!(resolved, "a", "Circular alias should stop at MAX_DEPTH");
+
+        // The model "a" exists, so select_backend should succeed
+        let requirements = RequestRequirements {
+            model: "a".to_string(),
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: false,
+            prefers_streaming: false,
+        };
+        let result = router.select_backend(&requirements, None);
+        assert!(
+            result.is_ok(),
+            "Should route to model 'a' after circular alias resolution"
+        );
+    }
+
+    #[test]
+    fn test_alias_max_depth() {
+        // 4-level chain: x → y → z → w → final
+        // Should stop at 3 hops, resolving to "w" (not "final")
+        let backends = vec![
+            create_test_backend_with_model("backend_w", "Backend W", "w"),
+            create_test_backend_with_model("backend_final", "Backend Final", "final"),
+        ];
+
+        let registry = Arc::new(Registry::new());
+        for backend in backends {
+            registry.add_backend(backend).unwrap();
+        }
+
+        let mut aliases = HashMap::new();
+        aliases.insert("x".to_string(), "y".to_string());
+        aliases.insert("y".to_string(), "z".to_string());
+        aliases.insert("z".to_string(), "w".to_string());
+        aliases.insert("w".to_string(), "final".to_string());
+
+        let router = Router::with_aliases_and_fallbacks(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            aliases,
+            HashMap::new(),
+        );
+
+        // After 3 hops: x → y → z → w, stops at depth 3
+        let resolved = router.resolve_alias("x");
+        assert_eq!(resolved, "w", "Should stop at 3 levels, resolving to 'w'");
+
+        let requirements = RequestRequirements {
+            model: "x".to_string(),
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: false,
+            prefers_streaming: false,
+        };
+        let result = router.select_backend(&requirements, None).unwrap();
+        assert_eq!(result.backend.name, "Backend W");
+    }
+}
+
+#[cfg(test)]
+mod constructor_tests {
+    use super::*;
+    use crate::config::{BudgetConfig, PolicyMatcher, QualityConfig};
+    use crate::registry::{Backend, BackendStatus, BackendType, DiscoverySource, Model, Registry};
+    use chrono::Utc;
+    use dashmap::DashMap;
+    use std::collections::HashMap;
+    use std::sync::atomic::{AtomicU32, AtomicU64};
+
+    fn create_test_backend_with_model(id: &str, name: &str, model_id: &str) -> Backend {
+        Backend {
+            id: id.to_string(),
+            name: name.to_string(),
+            url: format!("http://{}", name),
+            backend_type: BackendType::Ollama,
+            status: BackendStatus::Healthy,
+            last_health_check: Utc::now(),
+            last_error: None,
+            models: vec![Model {
+                id: model_id.to_string(),
+                name: model_id.to_string(),
+                context_length: 4096,
+                supports_vision: false,
+                supports_tools: false,
+                supports_json_mode: false,
+                max_output_tokens: None,
+            }],
+            priority: 1,
+            pending_requests: AtomicU32::new(0),
+            total_requests: AtomicU64::new(0),
+            avg_latency_ms: AtomicU32::new(50),
+            discovery_source: DiscoverySource::Static,
+            metadata: HashMap::new(),
+        }
+    }
+
+    fn simple_requirements(model: &str) -> RequestRequirements {
+        RequestRequirements {
+            model: model.to_string(),
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: false,
+            prefers_streaming: false,
+        }
+    }
+
+    #[test]
+    fn test_with_full_config() {
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_test_backend_with_model(
+                "b1",
+                "Backend1",
+                "llama3:8b",
+            ))
+            .unwrap();
+
+        let budget_config = BudgetConfig {
+            monthly_limit_usd: Some(100.0),
+            soft_limit_percent: 75.0,
+            ..BudgetConfig::default()
+        };
+        let budget_state = Arc::new(DashMap::new());
+
+        let router = Router::with_full_config(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            HashMap::new(),
+            HashMap::new(),
+            PolicyMatcher::default(),
+            budget_config,
+            budget_state,
+        );
+
+        let result = router.select_backend(&simple_requirements("llama3:8b"), None);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().backend.name, "Backend1");
+    }
+
+    #[test]
+    fn test_with_aliases_fallbacks_and_policies() {
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_test_backend_with_model(
+                "b1",
+                "Backend1",
+                "llama3:8b",
+            ))
+            .unwrap();
+
+        let mut aliases = HashMap::new();
+        aliases.insert("gpt-4".to_string(), "llama3:8b".to_string());
+
+        let router = Router::with_aliases_fallbacks_and_policies(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            aliases,
+            HashMap::new(),
+            PolicyMatcher::default(),
+            QualityConfig::default(),
+        );
+
+        // Alias "gpt-4" should resolve to "llama3:8b"
+        let result = router.select_backend(&simple_requirements("gpt-4"), None);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().backend.name, "Backend1");
+    }
+}
+
+#[cfg(test)]
+mod select_backend_error_tests {
+    use super::*;
+    use crate::registry::{Backend, BackendStatus, BackendType, DiscoverySource, Model, Registry};
+    use chrono::Utc;
+    use std::collections::HashMap;
+    use std::sync::atomic::{AtomicU32, AtomicU64};
+
+    fn create_backend(id: &str, name: &str, status: BackendStatus, models: Vec<Model>) -> Backend {
+        Backend {
+            id: id.to_string(),
+            name: name.to_string(),
+            url: format!("http://{}", name),
+            backend_type: BackendType::Ollama,
+            status,
+            last_health_check: Utc::now(),
+            last_error: None,
+            models,
+            priority: 1,
+            pending_requests: AtomicU32::new(0),
+            total_requests: AtomicU64::new(0),
+            avg_latency_ms: AtomicU32::new(50),
+            discovery_source: DiscoverySource::Static,
+            metadata: HashMap::new(),
+        }
+    }
+
+    fn simple_requirements(model: &str) -> RequestRequirements {
+        RequestRequirements {
+            model: model.to_string(),
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: false,
+            prefers_streaming: false,
+        }
+    }
+
+    #[test]
+    fn test_select_backend_model_not_found() {
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_backend(
+                "b1",
+                "Backend1",
+                BackendStatus::Healthy,
+                vec![Model {
+                    id: "llama3:8b".to_string(),
+                    name: "llama3:8b".to_string(),
+                    context_length: 4096,
+                    supports_vision: false,
+                    supports_tools: false,
+                    supports_json_mode: false,
+                    max_output_tokens: None,
+                }],
+            ))
+            .unwrap();
+
+        let router = Router::new(registry, RoutingStrategy::Smart, ScoringWeights::default());
+        let result = router.select_backend(&simple_requirements("nonexistent-model"), None);
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            RoutingError::ModelNotFound { model } => {
+                assert_eq!(model, "nonexistent-model");
+            }
+            other => panic!("Expected ModelNotFound, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_select_backend_no_healthy_backend() {
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_backend(
+                "b1",
+                "Backend1",
+                BackendStatus::Unhealthy,
+                vec![Model {
+                    id: "llama3:8b".to_string(),
+                    name: "llama3:8b".to_string(),
+                    context_length: 4096,
+                    supports_vision: false,
+                    supports_tools: false,
+                    supports_json_mode: false,
+                    max_output_tokens: None,
+                }],
+            ))
+            .unwrap();
+
+        let router = Router::new(registry, RoutingStrategy::Smart, ScoringWeights::default());
+        let result = router.select_backend(&simple_requirements("llama3:8b"), None);
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            RoutingError::NoHealthyBackend { model } => {
+                assert_eq!(model, "llama3:8b");
+            }
+            other => panic!("Expected NoHealthyBackend, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_select_backend_capability_mismatch() {
+        // Backend has the model but does NOT support vision
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_backend(
+                "b1",
+                "Backend1",
+                BackendStatus::Healthy,
+                vec![Model {
+                    id: "llama3:8b".to_string(),
+                    name: "llama3:8b".to_string(),
+                    context_length: 4096,
+                    supports_vision: false,
+                    supports_tools: false,
+                    supports_json_mode: false,
+                    max_output_tokens: None,
+                }],
+            ))
+            .unwrap();
+
+        let router = Router::new(registry, RoutingStrategy::Smart, ScoringWeights::default());
+
+        let requirements = RequestRequirements {
+            model: "llama3:8b".to_string(),
+            estimated_tokens: 100,
+            needs_vision: true,
+            needs_tools: false,
+            needs_json_mode: false,
+            prefers_streaming: false,
+        };
+
+        let result = router.select_backend(&requirements, None);
+        // The pipeline rejects when no backend meets capability requirements.
+        // This may manifest as NoHealthyBackend or CapabilityMismatch depending
+        // on how the scheduler reconciler reports it.
+        assert!(
+            result.is_err(),
+            "Expected error for vision capability mismatch"
+        );
+        let err = result.unwrap_err();
+        match &err {
+            RoutingError::NoHealthyBackend { .. }
+            | RoutingError::CapabilityMismatch { .. }
+            | RoutingError::Reject { .. } => {
+                // Any of these is acceptable — the model exists but can't serve the request
+            }
+            other => panic!(
+                "Expected NoHealthyBackend, CapabilityMismatch, or Reject, got: {:?}",
+                other
+            ),
+        }
+    }
+}
+
+#[cfg(test)]
+mod budget_status_tests {
+    use super::*;
+    use crate::config::BudgetConfig;
+    use crate::registry::{Backend, BackendStatus, BackendType, DiscoverySource, Model, Registry};
+    use crate::routing::reconciler::budget::{BudgetMetrics, GLOBAL_BUDGET_KEY};
+    use crate::routing::reconciler::intent::BudgetStatus;
+    use chrono::Utc;
+    use dashmap::DashMap;
+    use std::collections::HashMap;
+    use std::sync::atomic::{AtomicU32, AtomicU64};
+
+    fn create_backend_with_model(model_id: &str) -> Backend {
+        Backend {
+            id: "b1".to_string(),
+            name: "Backend1".to_string(),
+            url: "http://backend1".to_string(),
+            backend_type: BackendType::Ollama,
+            status: BackendStatus::Healthy,
+            last_health_check: Utc::now(),
+            last_error: None,
+            models: vec![Model {
+                id: model_id.to_string(),
+                name: model_id.to_string(),
+                context_length: 4096,
+                supports_vision: false,
+                supports_tools: false,
+                supports_json_mode: false,
+                max_output_tokens: None,
+            }],
+            priority: 1,
+            pending_requests: AtomicU32::new(0),
+            total_requests: AtomicU64::new(0),
+            avg_latency_ms: AtomicU32::new(50),
+            discovery_source: DiscoverySource::Static,
+            metadata: HashMap::new(),
+        }
+    }
+
+    fn make_router_with_budget(
+        monthly_limit: Option<f64>,
+        soft_limit_percent: f64,
+        spending: f64,
+    ) -> Router {
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_backend_with_model("llama3:8b"))
+            .unwrap();
+
+        let budget_config = BudgetConfig {
+            monthly_limit_usd: monthly_limit,
+            soft_limit_percent,
+            ..BudgetConfig::default()
+        };
+        let budget_state = Arc::new(DashMap::new());
+        if spending > 0.0 {
+            budget_state.insert(
+                GLOBAL_BUDGET_KEY.to_string(),
+                BudgetMetrics {
+                    current_month_spending: spending,
+                    last_reconciliation_time: Utc::now(),
+                    month_key: Utc::now().format("%Y-%m").to_string(),
+                },
+            );
+        }
+
+        Router::with_full_config(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            HashMap::new(),
+            HashMap::new(),
+            PolicyMatcher::default(),
+            budget_config,
+            budget_state,
+        )
+    }
+
+    #[test]
+    fn budget_normal_when_no_limit() {
+        let router = make_router_with_budget(None, 75.0, 0.0);
+        let (status, utilization, remaining) = router.get_budget_status_and_utilization();
+
+        assert!(matches!(status, BudgetStatus::Normal));
+        assert!(utilization.is_none());
+        assert!(remaining.is_none());
+    }
+
+    #[test]
+    fn budget_normal_when_zero_limit() {
+        let router = make_router_with_budget(Some(0.0), 75.0, 0.0);
+        let (status, utilization, remaining) = router.get_budget_status_and_utilization();
+
+        assert!(matches!(status, BudgetStatus::Normal));
+        assert!(utilization.is_none());
+        assert!(remaining.is_none());
+    }
+
+    #[test]
+    fn budget_normal_when_below_soft_limit() {
+        // $100 limit, 75% soft threshold, $50 spent (50%)
+        let router = make_router_with_budget(Some(100.0), 75.0, 50.0);
+        let (status, utilization, remaining) = router.get_budget_status_and_utilization();
+
+        assert!(matches!(status, BudgetStatus::Normal));
+        let util = utilization.unwrap();
+        assert!((util - 50.0).abs() < 0.01);
+        let rem = remaining.unwrap();
+        assert!((rem - 50.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn budget_soft_limit_when_at_threshold() {
+        // $100 limit, 75% soft threshold, $75 spent (75%)
+        let router = make_router_with_budget(Some(100.0), 75.0, 75.0);
+        let (status, utilization, remaining) = router.get_budget_status_and_utilization();
+
+        assert!(matches!(status, BudgetStatus::SoftLimit));
+        let util = utilization.unwrap();
+        assert!((util - 75.0).abs() < 0.01);
+        let rem = remaining.unwrap();
+        assert!((rem - 25.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn budget_soft_limit_when_above_soft_below_hard() {
+        // $100 limit, 75% soft threshold, $90 spent (90%)
+        let router = make_router_with_budget(Some(100.0), 75.0, 90.0);
+        let (status, utilization, remaining) = router.get_budget_status_and_utilization();
+
+        assert!(matches!(status, BudgetStatus::SoftLimit));
+        let util = utilization.unwrap();
+        assert!((util - 90.0).abs() < 0.01);
+        let rem = remaining.unwrap();
+        assert!((rem - 10.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn budget_hard_limit_when_at_100_percent() {
+        // $100 limit, 75% soft threshold, $100 spent (100%)
+        let router = make_router_with_budget(Some(100.0), 75.0, 100.0);
+        let (status, utilization, remaining) = router.get_budget_status_and_utilization();
+
+        assert!(matches!(status, BudgetStatus::HardLimit));
+        let util = utilization.unwrap();
+        assert!((util - 100.0).abs() < 0.01);
+        let rem = remaining.unwrap();
+        assert!((rem - 0.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn budget_hard_limit_when_over_budget() {
+        // $100 limit, 75% soft threshold, $150 spent (150%)
+        let router = make_router_with_budget(Some(100.0), 75.0, 150.0);
+        let (status, utilization, remaining) = router.get_budget_status_and_utilization();
+
+        assert!(matches!(status, BudgetStatus::HardLimit));
+        let util = utilization.unwrap();
+        assert!((util - 150.0).abs() < 0.01);
+        // Remaining clamped to 0
+        let rem = remaining.unwrap();
+        assert!((rem - 0.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn budget_normal_when_no_spending_recorded() {
+        // $100 limit, but no spending has been recorded yet
+        let router = make_router_with_budget(Some(100.0), 75.0, 0.0);
+        let (status, utilization, remaining) = router.get_budget_status_and_utilization();
+
+        assert!(matches!(status, BudgetStatus::Normal));
+        let util = utilization.unwrap();
+        assert!((util - 0.0).abs() < 0.01);
+        let rem = remaining.unwrap();
+        assert!((rem - 100.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_select_backend_queue_decision() {
+        // Enable queue in router, register a model with an unhealthy backend
+        // so that the pipeline produces RoutingDecision::Queue
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_backend_with_model("llama3:8b"))
+            .unwrap();
+        // Make backend unhealthy so no candidates remain
+        registry
+            .update_status(
+                "b1",
+                crate::registry::BackendStatus::Unhealthy,
+                Some("test".to_string()),
+            )
+            .unwrap();
+
+        let mut router = Router::new(registry, RoutingStrategy::Smart, ScoringWeights::default());
+        router.set_queue_enabled(true);
+
+        let requirements = RequestRequirements {
+            model: "llama3:8b".to_string(),
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: false,
+            prefers_streaming: false,
+        };
+
+        let result = router.select_backend(&requirements, None);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            RoutingError::Queue { reason, .. } => {
+                assert!(
+                    reason.contains("capacity"),
+                    "Expected capacity reason, got: {}",
+                    reason
+                );
+            }
+            other => panic!("Expected Queue, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_select_backend_with_fallback_chain_all_unhealthy() {
+        let registry = Arc::new(Registry::new());
+
+        // Create backend with both primary and fallback models, but unhealthy
+        let mut backend = create_backend_with_model("primary-model");
+        backend.models.push(Model {
+            id: "fallback-model".to_string(),
+            name: "fallback-model".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+        });
+        registry.add_backend(backend).unwrap();
+        registry
+            .update_status(
+                "b1",
+                crate::registry::BackendStatus::Unhealthy,
+                Some("down".to_string()),
+            )
+            .unwrap();
+
+        let mut fallbacks = HashMap::new();
+        fallbacks.insert(
+            "primary-model".to_string(),
+            vec!["fallback-model".to_string()],
+        );
+
+        let router = Router::with_aliases_and_fallbacks(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            HashMap::new(),
+            fallbacks,
+        );
+
+        let requirements = RequestRequirements {
+            model: "primary-model".to_string(),
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: false,
+            prefers_streaming: false,
+        };
+
+        let result = router.select_backend(&requirements, None);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            RoutingError::FallbackChainExhausted { chain } => {
+                assert!(chain.contains(&"primary-model".to_string()));
+                assert!(chain.contains(&"fallback-model".to_string()));
+            }
+            other => panic!("Expected FallbackChainExhausted, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_select_backend_fallback_succeeds() {
+        // Primary model's backend is unhealthy, but fallback model's backend is healthy
+        let registry = Arc::new(Registry::new());
+
+        // Backend with primary model (unhealthy)
+        let mut primary_backend = create_backend_with_model("primary-model");
+        primary_backend.id = "b-primary".to_string();
+        primary_backend.name = "PrimaryBackend".to_string();
+        registry.add_backend(primary_backend).unwrap();
+        registry
+            .update_status(
+                "b-primary",
+                crate::registry::BackendStatus::Unhealthy,
+                Some("down".to_string()),
+            )
+            .unwrap();
+
+        // Backend with fallback model (healthy)
+        let mut fallback_backend = create_backend_with_model("fallback-model");
+        fallback_backend.id = "b-fallback".to_string();
+        fallback_backend.name = "FallbackBackend".to_string();
+        registry.add_backend(fallback_backend).unwrap();
+
+        let mut fallbacks = HashMap::new();
+        fallbacks.insert(
+            "primary-model".to_string(),
+            vec!["fallback-model".to_string()],
+        );
+
+        let router = Router::with_aliases_and_fallbacks(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            HashMap::new(),
+            fallbacks,
+        );
+
+        let requirements = RequestRequirements {
+            model: "primary-model".to_string(),
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: false,
+            prefers_streaming: false,
+        };
+
+        let result = router.select_backend(&requirements, None);
+        assert!(result.is_ok(), "Fallback should succeed");
+        let routing_result = result.unwrap();
+        assert!(routing_result.fallback_used);
+        assert_eq!(routing_result.actual_model, "fallback-model");
+        assert!(routing_result.route_reason.starts_with("fallback:"));
+    }
+
+    #[test]
+    fn test_select_backend_success_returns_budget_fields() {
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_backend_with_model("llama3:8b"))
+            .unwrap();
+
+        let budget_config = BudgetConfig {
+            monthly_limit_usd: Some(100.0),
+            soft_limit_percent: 75.0,
+            ..BudgetConfig::default()
+        };
+        let budget_state = Arc::new(DashMap::new());
+        budget_state.insert(
+            crate::routing::reconciler::budget::GLOBAL_BUDGET_KEY.to_string(),
+            BudgetMetrics {
+                current_month_spending: 50.0,
+                last_reconciliation_time: chrono::Utc::now(),
+                month_key: chrono::Utc::now().format("%Y-%m").to_string(),
+            },
+        );
+
+        let router = Router::with_full_config(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            HashMap::new(),
+            HashMap::new(),
+            PolicyMatcher::default(),
+            budget_config,
+            budget_state,
+        );
+
+        let requirements = RequestRequirements {
+            model: "llama3:8b".to_string(),
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: false,
+            prefers_streaming: false,
+        };
+
+        let result = router.select_backend(&requirements, None);
+        assert!(result.is_ok());
+        let r = result.unwrap();
+        assert_eq!(r.budget_status, BudgetStatus::Normal);
+        assert!(r.budget_utilization.is_some());
+        assert!(r.budget_remaining.is_some());
+        assert!(!r.fallback_used);
+        assert!(r.cost_estimated.is_some());
+    }
+
+    #[test]
+    fn test_select_smart_selects_best_scored_backend() {
+        let registry = Arc::new(Registry::new());
+        // b1: good priority, low latency
+        let mut b1 = create_backend_with_model("llama3:8b");
+        b1.id = "b1".to_string();
+        b1.name = "B1".to_string();
+        b1.priority = 1;
+        registry.add_backend(b1).unwrap();
+        // b2: worse priority, higher latency
+        let mut b2 = create_backend_with_model("llama3:8b");
+        b2.id = "b2".to_string();
+        b2.name = "B2".to_string();
+        b2.priority = 10;
+        registry.add_backend(b2).unwrap();
+
+        let router = Router::new(registry, RoutingStrategy::Smart, ScoringWeights::default());
+        let result = router.select_backend(
+            &RequestRequirements {
+                model: "llama3:8b".to_string(),
+                estimated_tokens: 100,
+                needs_vision: false,
+                needs_tools: false,
+                needs_json_mode: false,
+                prefers_streaming: false,
+            },
+            None,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_select_priority_only_via_router() {
+        let registry = Arc::new(Registry::new());
+        // b1: priority 10
+        let mut b1 = create_backend_with_model("llama3:8b");
+        b1.id = "b1".to_string();
+        b1.name = "B1".to_string();
+        b1.priority = 10;
+        registry.add_backend(b1).unwrap();
+        // b2: priority 1 (better)
+        let mut b2 = create_backend_with_model("llama3:8b");
+        b2.id = "b2".to_string();
+        b2.name = "B2".to_string();
+        b2.priority = 1;
+        registry.add_backend(b2).unwrap();
+
+        let router = Router::new(
+            registry,
+            RoutingStrategy::PriorityOnly,
+            ScoringWeights::default(),
+        );
+        let result = router.select_backend(
+            &RequestRequirements {
+                model: "llama3:8b".to_string(),
+                estimated_tokens: 100,
+                needs_vision: false,
+                needs_tools: false,
+                needs_json_mode: false,
+                prefers_streaming: false,
+            },
+            None,
+        );
+        assert!(result.is_ok());
+        let r = result.unwrap();
+        assert_eq!(r.backend.name, "B2");
+    }
+
+    #[test]
+    fn test_select_round_robin_via_router() {
+        let registry = Arc::new(Registry::new());
+        let mut b1 = create_backend_with_model("llama3:8b");
+        b1.id = "b1".to_string();
+        b1.name = "B1".to_string();
+        registry.add_backend(b1).unwrap();
+        let mut b2 = create_backend_with_model("llama3:8b");
+        b2.id = "b2".to_string();
+        b2.name = "B2".to_string();
+        registry.add_backend(b2).unwrap();
+
+        let router = Router::new(
+            registry,
+            RoutingStrategy::RoundRobin,
+            ScoringWeights::default(),
+        );
+        let reqs = RequestRequirements {
+            model: "llama3:8b".to_string(),
+            estimated_tokens: 100,
+            needs_vision: false,
+            needs_tools: false,
+            needs_json_mode: false,
+            prefers_streaming: false,
+        };
+
+        let r1 = router.select_backend(&reqs, None).unwrap();
+        let r2 = router.select_backend(&reqs, None).unwrap();
+        // Different backends should be selected
+        assert_ne!(r1.backend.name, r2.backend.name);
+    }
+
+    #[test]
+    fn test_select_random_via_router() {
+        let registry = Arc::new(Registry::new());
+        let mut b1 = create_backend_with_model("llama3:8b");
+        b1.id = "b1".to_string();
+        b1.name = "B1".to_string();
+        registry.add_backend(b1).unwrap();
+
+        let router = Router::new(registry, RoutingStrategy::Random, ScoringWeights::default());
+        let result = router.select_backend(
+            &RequestRequirements {
+                model: "llama3:8b".to_string(),
+                estimated_tokens: 100,
+                needs_vision: false,
+                needs_tools: false,
+                needs_json_mode: false,
+                prefers_streaming: false,
+            },
+            None,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_select_backend_with_tier_enforcement() {
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_backend_with_model("llama3:8b"))
+            .unwrap();
+
+        let router = Router::new(registry, RoutingStrategy::Smart, ScoringWeights::default());
+        let result = router.select_backend(
+            &RequestRequirements {
+                model: "llama3:8b".to_string(),
+                estimated_tokens: 100,
+                needs_vision: false,
+                needs_tools: false,
+                needs_json_mode: false,
+                prefers_streaming: false,
+            },
+            Some(crate::routing::reconciler::intent::TierEnforcementMode::Strict),
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_filter_candidates_legacy() {
+        let registry = Arc::new(Registry::new());
+        let mut backend = create_backend_with_model("llama3:8b");
+        backend.models[0].supports_vision = true;
+        backend.models[0].supports_tools = true;
+        backend.models[0].supports_json_mode = true;
+        registry.add_backend(backend).unwrap();
+
+        let router = Router::new(registry, RoutingStrategy::Smart, ScoringWeights::default());
+
+        // All requirements met
+        let candidates = router.filter_candidates(
+            "llama3:8b",
+            &RequestRequirements {
+                model: "llama3:8b".to_string(),
+                estimated_tokens: 100,
+                needs_vision: true,
+                needs_tools: true,
+                needs_json_mode: true,
+                prefers_streaming: false,
+            },
+        );
+        assert_eq!(candidates.len(), 1);
+    }
+
+    #[test]
+    fn test_filter_candidates_vision_mismatch() {
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_backend_with_model("llama3:8b"))
+            .unwrap();
+
+        let router = Router::new(registry, RoutingStrategy::Smart, ScoringWeights::default());
+
+        let candidates = router.filter_candidates(
+            "llama3:8b",
+            &RequestRequirements {
+                model: "llama3:8b".to_string(),
+                estimated_tokens: 100,
+                needs_vision: true,
+                needs_tools: false,
+                needs_json_mode: false,
+                prefers_streaming: false,
+            },
+        );
+        assert!(candidates.is_empty());
+    }
+
+    #[test]
+    fn test_filter_candidates_tools_mismatch() {
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_backend_with_model("llama3:8b"))
+            .unwrap();
+
+        let router = Router::new(registry, RoutingStrategy::Smart, ScoringWeights::default());
+
+        let candidates = router.filter_candidates(
+            "llama3:8b",
+            &RequestRequirements {
+                model: "llama3:8b".to_string(),
+                estimated_tokens: 100,
+                needs_vision: false,
+                needs_tools: true,
+                needs_json_mode: false,
+                prefers_streaming: false,
+            },
+        );
+        assert!(candidates.is_empty());
+    }
+
+    #[test]
+    fn test_filter_candidates_json_mode_mismatch() {
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_backend_with_model("llama3:8b"))
+            .unwrap();
+
+        let router = Router::new(registry, RoutingStrategy::Smart, ScoringWeights::default());
+
+        let candidates = router.filter_candidates(
+            "llama3:8b",
+            &RequestRequirements {
+                model: "llama3:8b".to_string(),
+                estimated_tokens: 100,
+                needs_vision: false,
+                needs_tools: false,
+                needs_json_mode: true,
+                prefers_streaming: false,
+            },
+        );
+        assert!(candidates.is_empty());
+    }
+
+    #[test]
+    fn test_filter_candidates_context_length_exceeded() {
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_backend_with_model("llama3:8b"))
+            .unwrap();
+
+        let router = Router::new(registry, RoutingStrategy::Smart, ScoringWeights::default());
+
+        let candidates = router.filter_candidates(
+            "llama3:8b",
+            &RequestRequirements {
+                model: "llama3:8b".to_string(),
+                estimated_tokens: 999999,
+                needs_vision: false,
+                needs_tools: false,
+                needs_json_mode: false,
+                prefers_streaming: false,
+            },
+        );
+        assert!(candidates.is_empty());
+    }
+
+    #[test]
+    fn test_filter_candidates_unhealthy_excluded() {
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_backend_with_model("llama3:8b"))
+            .unwrap();
+        registry
+            .update_status(
+                "b1",
+                crate::registry::BackendStatus::Unhealthy,
+                Some("down".to_string()),
+            )
+            .unwrap();
+
+        let router = Router::new(registry, RoutingStrategy::Smart, ScoringWeights::default());
+
+        let candidates = router.filter_candidates(
+            "llama3:8b",
+            &RequestRequirements {
+                model: "llama3:8b".to_string(),
+                estimated_tokens: 100,
+                needs_vision: false,
+                needs_tools: false,
+                needs_json_mode: false,
+                prefers_streaming: false,
+            },
+        );
+        assert!(candidates.is_empty());
+    }
+
+    #[test]
+    fn test_filter_candidates_model_not_found() {
+        let registry = Arc::new(Registry::new());
+        registry
+            .add_backend(create_backend_with_model("llama3:8b"))
+            .unwrap();
+
+        let router = Router::new(registry, RoutingStrategy::Smart, ScoringWeights::default());
+
+        let candidates = router.filter_candidates(
+            "nonexistent",
+            &RequestRequirements {
+                model: "nonexistent".to_string(),
+                estimated_tokens: 100,
+                needs_vision: false,
+                needs_tools: false,
+                needs_json_mode: false,
+                prefers_streaming: false,
+            },
+        );
+        assert!(candidates.is_empty());
+    }
+
+    #[test]
+    fn test_select_smart_with_candidates() {
+        let registry = Arc::new(Registry::new());
+        let mut b1 = create_backend_with_model("llama3:8b");
+        b1.id = "b1".to_string();
+        b1.name = "B1".to_string();
+        b1.priority = 1;
+        registry.add_backend(b1).unwrap();
+        let mut b2 = create_backend_with_model("llama3:8b");
+        b2.id = "b2".to_string();
+        b2.name = "B2".to_string();
+        b2.priority = 10;
+        registry.add_backend(b2).unwrap();
+
+        let router = Router::new(
+            registry.clone(),
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+        );
+        let candidates: Vec<Backend> = registry
+            .get_backends_for_model("llama3:8b")
+            .into_iter()
+            .filter(|b| b.status == BackendStatus::Healthy)
+            .collect();
+        let selected = router.select_smart(&candidates);
+        // b1 should win (higher priority = lower number = better)
+        assert_eq!(selected.id, "b1");
+    }
+
+    #[test]
+    fn test_select_priority_only_with_candidates() {
+        let registry = Arc::new(Registry::new());
+        let mut b1 = create_backend_with_model("llama3:8b");
+        b1.id = "b1".to_string();
+        b1.name = "B1".to_string();
+        b1.priority = 10;
+        registry.add_backend(b1).unwrap();
+        let mut b2 = create_backend_with_model("llama3:8b");
+        b2.id = "b2".to_string();
+        b2.name = "B2".to_string();
+        b2.priority = 1;
+        registry.add_backend(b2).unwrap();
+
+        let router = Router::new(
+            registry.clone(),
+            RoutingStrategy::PriorityOnly,
+            ScoringWeights::default(),
+        );
+        let candidates: Vec<Backend> = registry
+            .get_backends_for_model("llama3:8b")
+            .into_iter()
+            .filter(|b| b.status == BackendStatus::Healthy)
+            .collect();
+        let selected = router.select_priority_only(&candidates);
+        assert_eq!(selected.id, "b2");
+    }
+
+    #[test]
+    fn test_select_random_with_candidates() {
+        let registry = Arc::new(Registry::new());
+        let mut b1 = create_backend_with_model("llama3:8b");
+        b1.id = "b1".to_string();
+        b1.name = "B1".to_string();
+        registry.add_backend(b1).unwrap();
+
+        let router = Router::new(
+            registry.clone(),
+            RoutingStrategy::Random,
+            ScoringWeights::default(),
+        );
+        let candidates: Vec<Backend> = registry
+            .get_backends_for_model("llama3:8b")
+            .into_iter()
+            .filter(|b| b.status == BackendStatus::Healthy)
+            .collect();
+        let selected = router.select_random(&candidates);
+        assert_eq!(selected.id, "b1");
+    }
+
+    #[test]
+    fn test_budget_config_and_state_accessors() {
+        let registry = Arc::new(Registry::new());
+        let budget_config = BudgetConfig {
+            monthly_limit_usd: Some(200.0),
+            soft_limit_percent: 80.0,
+            ..BudgetConfig::default()
+        };
+        let budget_state = Arc::new(DashMap::new());
+        let router = Router::with_full_config(
+            registry,
+            RoutingStrategy::Smart,
+            ScoringWeights::default(),
+            HashMap::new(),
+            HashMap::new(),
+            PolicyMatcher::default(),
+            budget_config,
+            budget_state,
+        );
+        assert_eq!(router.budget_config().monthly_limit_usd, Some(200.0));
+        assert!(router.budget_state().is_empty());
+        assert!(router.quality_store().get_all_metrics().is_empty());
+    }
 }

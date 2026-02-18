@@ -168,4 +168,36 @@ mod tests {
         assert!(json.contains("required_tier"));
         assert!(json.contains("available_backends"));
     }
+
+    #[tokio::test]
+    async fn test_into_response_status_code() {
+        let error = ServiceUnavailableError::all_backends_down();
+        let response = axum::response::IntoResponse::into_response(error);
+        assert_eq!(
+            response.status(),
+            axum::http::StatusCode::SERVICE_UNAVAILABLE
+        );
+        let body = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["error"]["type"], "service_unavailable");
+    }
+
+    #[tokio::test]
+    async fn test_into_response_privacy_error() {
+        let error =
+            ServiceUnavailableError::privacy_unavailable("restricted", vec!["cloud-1".to_string()]);
+        let response = axum::response::IntoResponse::into_response(error);
+        assert_eq!(
+            response.status(),
+            axum::http::StatusCode::SERVICE_UNAVAILABLE
+        );
+        let body = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["context"]["privacy_zone_required"], "restricted");
+        assert_eq!(json["context"]["available_backends"][0], "cloud-1");
+    }
 }

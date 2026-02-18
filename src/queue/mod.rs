@@ -657,4 +657,310 @@ mod tests {
         let first = queue.try_dequeue().await.unwrap();
         assert_eq!(first.priority, Priority::High);
     }
+
+    #[tokio::test]
+    async fn test_queue_timeout_response() {
+        let response = build_timeout_response("10");
+        assert_eq!(
+            response.status(),
+            axum::http::StatusCode::SERVICE_UNAVAILABLE
+        );
+        let retry = response
+            .headers()
+            .get(axum::http::header::RETRY_AFTER)
+            .expect("should have Retry-After header");
+        assert_eq!(retry.to_str().unwrap(), "10");
+
+        // Verify body contains error message
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let msg = json["error"]["message"].as_str().unwrap();
+        assert!(
+            msg.contains("timed out"),
+            "expected timeout message, got: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_queue_enqueue_disabled() {
+        let config = QueueConfig {
+            enabled: false,
+            max_size: 10,
+            max_wait_seconds: 30,
+        };
+        let queue = RequestQueue::new(config);
+        let (req, _rx) = make_queued(Priority::Normal);
+        let result = queue.enqueue(req);
+        assert!(matches!(result, Err(QueueError::Disabled)));
+    }
+
+    #[tokio::test]
+    async fn test_queue_enqueue_full() {
+        let queue = RequestQueue::new(make_config(2, 30));
+        let (r1, _rx1) = make_queued(Priority::Normal);
+        let (r2, _rx2) = make_queued(Priority::Normal);
+        let (r3, _rx3) = make_queued(Priority::Normal);
+
+        queue.enqueue(r1).unwrap();
+        queue.enqueue(r2).unwrap();
+        let result = queue.enqueue(r3);
+        assert!(matches!(result, Err(QueueError::Full { max_size: 2 })));
+        assert_eq!(queue.depth(), 2);
+    }
+
+    #[test]
+    fn test_queued_request_debug_format() {
+        let (req, _rx) = make_queued(Priority::High);
+        let debug = format!("{:?}", req);
+        assert!(debug.contains("High"));
+        assert!(debug.contains("enqueued_at"));
+    }
+
+    #[test]
+    fn test_queue_error_display_full() {
+        let err = QueueError::Full { max_size: 42 };
+        assert!(err.to_string().contains("42"));
+    }
+
+    #[test]
+    fn test_queue_error_display_disabled() {
+        let err = QueueError::Disabled;
+        assert!(err.to_string().contains("disabled"));
+    }
+
+    #[tokio::test]
+    async fn test_process_queued_request_success_with_agent() {
+        use crate::agent::types::{AgentCapabilities, AgentProfile, PrivacyZone};
+        use crate::agent::{
+            AgentError, HealthStatus, InferenceAgent, ModelCapability, StreamChunk,
+        };
+        use crate::api::types::{
+            ChatCompletionResponse, ChatMessage, Choice, MessageContent, Usage,
+        };
+        use crate::config::NexusConfig;
+        use crate::registry::{Backend, BackendType, DiscoverySource, Registry};
+        use async_trait::async_trait;
+        use axum::http::HeaderMap;
+        use futures_util::stream::BoxStream;
+
+        struct QueueSuccessAgent;
+
+        #[async_trait]
+        impl InferenceAgent for QueueSuccessAgent {
+            fn id(&self) -> &str {
+                "queue-agent"
+            }
+            fn name(&self) -> &str {
+                "Queue Agent"
+            }
+            fn profile(&self) -> AgentProfile {
+                AgentProfile {
+                    backend_type: "ollama".to_string(),
+                    version: None,
+                    privacy_zone: PrivacyZone::Restricted,
+                    capabilities: AgentCapabilities::default(),
+                    capability_tier: Some(1),
+                }
+            }
+            async fn health_check(&self) -> Result<HealthStatus, AgentError> {
+                Ok(HealthStatus::Healthy { model_count: 1 })
+            }
+            async fn list_models(&self) -> Result<Vec<ModelCapability>, AgentError> {
+                Ok(vec![])
+            }
+            async fn chat_completion(
+                &self,
+                _req: ChatCompletionRequest,
+                _h: Option<&HeaderMap>,
+            ) -> Result<ChatCompletionResponse, AgentError> {
+                Ok(ChatCompletionResponse {
+                    id: "queue-cmpl".to_string(),
+                    object: "chat.completion".to_string(),
+                    created: 1234567890,
+                    model: "llama3:8b".to_string(),
+                    choices: vec![Choice {
+                        index: 0,
+                        message: ChatMessage {
+                            role: "assistant".to_string(),
+                            content: MessageContent::Text {
+                                content: "Queued response".to_string(),
+                            },
+                            name: None,
+                            function_call: None,
+                        },
+                        finish_reason: Some("stop".to_string()),
+                    }],
+                    usage: Some(Usage {
+                        prompt_tokens: 5,
+                        completion_tokens: 3,
+                        total_tokens: 8,
+                    }),
+                    extra: std::collections::HashMap::new(),
+                })
+            }
+            async fn chat_completion_stream(
+                &self,
+                _req: ChatCompletionRequest,
+                _h: Option<&HeaderMap>,
+            ) -> Result<BoxStream<'static, Result<StreamChunk, AgentError>>, AgentError>
+            {
+                Err(AgentError::Unsupported("streaming"))
+            }
+        }
+
+        let registry = Arc::new(Registry::new());
+        let backend = Backend::new(
+            "queue-agent".to_string(),
+            "Queue Agent Backend".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        let agent: Arc<dyn InferenceAgent> = Arc::new(QueueSuccessAgent);
+        registry.add_backend_with_agent(backend, agent).unwrap();
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(crate::api::AppState::new(Arc::clone(&registry), config));
+
+        let backend_arc = registry
+            .get_all_backends()
+            .into_iter()
+            .find(|b| b.id == "queue-agent")
+            .unwrap();
+        let routing_result = crate::routing::RoutingResult {
+            backend: Arc::new(backend_arc),
+            actual_model: "llama3:8b".to_string(),
+            fallback_used: false,
+            route_reason: "test".to_string(),
+            cost_estimated: None,
+            budget_status: crate::routing::reconciler::intent::BudgetStatus::Normal,
+            budget_utilization: None,
+            budget_remaining: None,
+        };
+
+        let request = make_request();
+        let result = process_queued_request(&state, &routing_result, &request).await;
+        assert!(result.is_ok(), "should succeed with agent");
+        let response = result.unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["id"], "queue-cmpl");
+    }
+
+    #[tokio::test]
+    async fn test_process_queued_request_agent_not_found() {
+        use crate::config::NexusConfig;
+        use crate::registry::{Backend, BackendType, DiscoverySource, Registry};
+
+        let registry = Arc::new(Registry::new());
+        let backend = Backend::new(
+            "ghost".to_string(),
+            "ghost-backend".to_string(),
+            "http://localhost:9999".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        registry.add_backend(backend).unwrap();
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(crate::api::AppState::new(Arc::clone(&registry), config));
+
+        // Build a RoutingResult pointing to the backend with no agent registered
+        let backend_arc = registry
+            .get_all_backends()
+            .into_iter()
+            .find(|b| b.id == "ghost")
+            .expect("backend must exist");
+        let routing_result = crate::routing::RoutingResult {
+            backend: Arc::new(backend_arc),
+            actual_model: "llama3:8b".to_string(),
+            fallback_used: false,
+            route_reason: "test".to_string(),
+            cost_estimated: None,
+            budget_status: crate::routing::reconciler::intent::BudgetStatus::Normal,
+            budget_utilization: None,
+            budget_remaining: None,
+        };
+
+        let request = make_request();
+        let result = process_queued_request(&state, &routing_result, &request).await;
+        assert!(result.is_err(), "should fail when agent is not registered");
+    }
+
+    #[tokio::test]
+    async fn test_drain_remaining_on_shutdown() {
+        let queue = Arc::new(RequestQueue::new(make_config(10, 30)));
+
+        let (r1, rx1) = make_queued(Priority::Normal);
+        let (r2, rx2) = make_queued(Priority::High);
+        queue.enqueue(r1).unwrap();
+        queue.enqueue(r2).unwrap();
+        assert_eq!(queue.depth(), 2);
+
+        drain_remaining(&queue).await;
+        assert_eq!(queue.depth(), 0);
+
+        // Both receivers should get 503 timeout responses
+        let resp1 = rx1.await.expect("should receive response").unwrap();
+        assert_eq!(resp1.status(), axum::http::StatusCode::SERVICE_UNAVAILABLE);
+        let resp2 = rx2.await.expect("should receive response").unwrap();
+        assert_eq!(resp2.status(), axum::http::StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn test_queue_drain_loop_processes_request() {
+        use crate::config::NexusConfig;
+        use crate::registry::Registry;
+        use tokio_util::sync::CancellationToken;
+
+        let queue = Arc::new(RequestQueue::new(make_config(10, 1)));
+        let registry = Arc::new(Registry::new());
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(crate::api::AppState::new(Arc::clone(&registry), config));
+
+        // Enqueue a request — no backends registered so routing will fail,
+        // and since max_wait_seconds=1, after the request expires the drain
+        // loop will send a timeout response.
+        let (req, rx) = make_queued(Priority::Normal);
+        // Set enqueued_at to the past so it's already expired
+        let timed_out = QueuedRequest {
+            intent: req.intent,
+            request: req.request,
+            response_tx: req.response_tx,
+            enqueued_at: Instant::now() - Duration::from_secs(5),
+            priority: req.priority,
+        };
+        queue.enqueue(timed_out).unwrap();
+
+        let cancel = CancellationToken::new();
+        let cancel_clone = cancel.clone();
+        let q = Arc::clone(&queue);
+        let s = Arc::clone(&state);
+
+        let handle = tokio::spawn(async move {
+            queue_drain_loop(q, s, cancel_clone).await;
+        });
+
+        // Wait for the drain loop to process the expired request
+        let result = tokio::time::timeout(Duration::from_secs(3), rx).await;
+        assert!(result.is_ok(), "should receive response within timeout");
+        let response = result.unwrap().unwrap().unwrap();
+        assert_eq!(
+            response.status(),
+            axum::http::StatusCode::SERVICE_UNAVAILABLE
+        );
+
+        cancel.cancel();
+        let _ = tokio::time::timeout(Duration::from_secs(2), handle).await;
+    }
 }
