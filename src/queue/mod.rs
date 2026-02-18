@@ -629,4 +629,32 @@ mod tests {
         assert_eq!(successes, 10, "Exactly max_size requests should succeed");
         assert_eq!(queue.depth(), 10);
     }
+
+    #[test]
+    fn test_config_returns_queue_config() {
+        let config = make_config(50, 15);
+        let queue = RequestQueue::new(config);
+        let returned = queue.config();
+        assert_eq!(returned.max_size, 50);
+        assert_eq!(returned.max_wait_seconds, 15);
+    }
+
+    #[tokio::test]
+    async fn test_enqueue_high_priority_dequeued_first() {
+        let queue = Arc::new(RequestQueue::new(make_config(10, 30)));
+
+        // Enqueue a normal priority request
+        let (req1, _rx1) = make_queued(Priority::Normal);
+        queue.enqueue(req1).unwrap();
+
+        // Enqueue a high priority request
+        let (req2, _rx2) = make_queued(Priority::High);
+        queue.enqueue(req2).unwrap();
+
+        assert_eq!(queue.depth(), 2);
+
+        // High priority should be dequeued first
+        let first = queue.try_dequeue().await.unwrap();
+        assert_eq!(first.priority, Priority::High);
+    }
 }

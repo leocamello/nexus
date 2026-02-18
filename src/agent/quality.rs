@@ -324,4 +324,46 @@ mod tests {
         let all = store.get_all_metrics();
         assert_eq!(all.len(), 2);
     }
+
+    #[test]
+    fn test_config_returns_configuration() {
+        let config = QualityConfig {
+            error_rate_threshold: 0.3,
+            ttft_penalty_threshold_ms: 5000,
+            metrics_interval_seconds: 60,
+        };
+        let store = QualityMetricsStore::new(config);
+        let returned = store.config();
+        assert_eq!(returned.error_rate_threshold, 0.3);
+        assert_eq!(returned.ttft_penalty_threshold_ms, 5000);
+        assert_eq!(returned.metrics_interval_seconds, 60);
+    }
+
+    #[tokio::test]
+    async fn test_quality_reconciliation_loop_recomputes() {
+        use tokio_util::sync::CancellationToken;
+
+        let config = QualityConfig {
+            error_rate_threshold: 0.5,
+            ttft_penalty_threshold_ms: 3000,
+            metrics_interval_seconds: 1,
+        };
+        let store = Arc::new(QualityMetricsStore::new(config));
+        store.record_outcome("agent-1", true, 100);
+        store.record_outcome("agent-1", false, 200);
+
+        let cancel_token = CancellationToken::new();
+        let store_clone = store.clone();
+        let token_clone = cancel_token.clone();
+        let handle = tokio::spawn(async move {
+            quality_reconciliation_loop(store_clone, token_clone).await;
+        });
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        cancel_token.cancel();
+        handle.await.unwrap();
+
+        let metrics = store.get_metrics("agent-1");
+        assert!(metrics.error_rate_1h > 0.0);
+    }
 }

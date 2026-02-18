@@ -1413,4 +1413,233 @@ mod tests {
         assert!(available.iter().any(|v| v == "backend-a"));
         assert!(available.iter().any(|v| v == "backend-b"));
     }
+
+    #[test]
+    fn test_extract_priority_high() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-nexus-priority", HeaderValue::from_static("high"));
+        let priority = extract_priority(&headers);
+        assert_eq!(priority, crate::queue::Priority::High);
+    }
+
+    #[test]
+    fn test_extract_priority_normal() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-nexus-priority", HeaderValue::from_static("normal"));
+        let priority = extract_priority(&headers);
+        assert_eq!(priority, crate::queue::Priority::Normal);
+    }
+
+    #[test]
+    fn test_extract_priority_missing() {
+        let headers = HeaderMap::new();
+        let priority = extract_priority(&headers);
+        assert_eq!(priority, crate::queue::Priority::Normal);
+    }
+
+    #[test]
+    fn test_extract_priority_invalid() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-nexus-priority", HeaderValue::from_static("critical"));
+        let priority = extract_priority(&headers);
+        assert_eq!(priority, crate::queue::Priority::Normal);
+    }
+
+    #[tokio::test]
+    async fn test_inject_budget_headers_normal_status() {
+        use crate::registry::{BackendType, DiscoverySource};
+        use crate::routing::reconciler::intent::BudgetStatus;
+
+        let backend = Backend::new(
+            "b1".to_string(),
+            "B1".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        let routing_result = crate::routing::RoutingResult {
+            backend: Arc::new(backend),
+            actual_model: "test-model".to_string(),
+            route_reason: "test".to_string(),
+            fallback_used: false,
+            cost_estimated: None,
+            budget_status: BudgetStatus::Normal,
+            budget_utilization: None,
+            budget_remaining: None,
+        };
+
+        let mut resp =
+            axum::response::IntoResponse::into_response(axum::Json(serde_json::json!({})));
+        inject_budget_headers(&mut resp, &routing_result);
+
+        assert!(!resp.headers().contains_key("x-nexus-budget-status"));
+        assert!(!resp.headers().contains_key("x-nexus-budget-utilization"));
+        assert!(!resp.headers().contains_key("x-nexus-budget-remaining"));
+    }
+
+    #[tokio::test]
+    async fn test_inject_budget_headers_soft_limit() {
+        use crate::registry::{BackendType, DiscoverySource};
+        use crate::routing::reconciler::intent::BudgetStatus;
+
+        let backend = Backend::new(
+            "b1".to_string(),
+            "B1".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        let routing_result = crate::routing::RoutingResult {
+            backend: Arc::new(backend),
+            actual_model: "test-model".to_string(),
+            route_reason: "test".to_string(),
+            fallback_used: false,
+            cost_estimated: Some(0.05),
+            budget_status: BudgetStatus::SoftLimit,
+            budget_utilization: Some(80.5),
+            budget_remaining: Some(9.75),
+        };
+
+        let mut resp =
+            axum::response::IntoResponse::into_response(axum::Json(serde_json::json!({})));
+        inject_budget_headers(&mut resp, &routing_result);
+
+        assert_eq!(
+            resp.headers()
+                .get("x-nexus-budget-status")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "SoftLimit"
+        );
+        assert_eq!(
+            resp.headers()
+                .get("x-nexus-budget-utilization")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "80.50"
+        );
+        assert_eq!(
+            resp.headers()
+                .get("x-nexus-budget-remaining")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "9.75"
+        );
+        assert_eq!(
+            resp.headers()
+                .get("x-nexus-cost-estimated")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "0.0500"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_inject_budget_headers_cost_zero() {
+        use crate::registry::{BackendType, DiscoverySource};
+        use crate::routing::reconciler::intent::BudgetStatus;
+
+        let backend = Backend::new(
+            "b1".to_string(),
+            "B1".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        let routing_result = crate::routing::RoutingResult {
+            backend: Arc::new(backend),
+            actual_model: "test-model".to_string(),
+            route_reason: "test".to_string(),
+            fallback_used: false,
+            cost_estimated: Some(0.0),
+            budget_status: BudgetStatus::Normal,
+            budget_utilization: None,
+            budget_remaining: None,
+        };
+
+        let mut resp =
+            axum::response::IntoResponse::into_response(axum::Json(serde_json::json!({})));
+        inject_budget_headers(&mut resp, &routing_result);
+
+        // Cost of 0.0 should NOT set the header
+        assert!(!resp.headers().contains_key("x-nexus-cost-estimated"));
+    }
+
+    #[test]
+    fn test_create_error_chunk_has_error_content() {
+        let chunk = create_error_chunk("something went wrong");
+        assert_eq!(chunk.object, "chat.completion.chunk");
+        assert_eq!(chunk.model, "error");
+        assert_eq!(chunk.choices.len(), 1);
+        assert_eq!(chunk.choices[0].finish_reason, Some("error".to_string()));
+        assert!(chunk.choices[0]
+            .delta
+            .content
+            .as_ref()
+            .unwrap()
+            .contains("something went wrong"));
+    }
+
+    #[test]
+    fn test_available_models_empty_registry() {
+        use crate::config::NexusConfig;
+        use crate::registry::Registry;
+
+        let registry = Arc::new(Registry::new());
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(registry, config));
+
+        let models = available_models(&state);
+        assert!(models.is_empty());
+
+        let backends = available_backend_names(&state);
+        assert!(backends.is_empty());
+    }
+
+    #[test]
+    fn test_record_request_completion_increments_and_broadcasts() {
+        use crate::config::NexusConfig;
+        use crate::registry::{BackendType, DiscoverySource, Registry};
+
+        let registry = Arc::new(Registry::new());
+        let backend = Backend::new(
+            "test-backend".to_string(),
+            "Test".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        let _ = registry.add_backend(backend);
+
+        let config = Arc::new(NexusConfig::default());
+        let state = Arc::new(AppState::new(Arc::clone(&registry), config));
+
+        // Subscribe to websocket broadcast before sending
+        let mut rx = state.ws_broadcast.subscribe();
+
+        record_request_completion(
+            &state,
+            "test-model",
+            "test-backend",
+            150,
+            crate::dashboard::types::RequestStatus::Success,
+            None,
+        );
+
+        // Verify broadcast was sent
+        let update = rx.try_recv();
+        assert!(update.is_ok());
+    }
 }

@@ -401,4 +401,87 @@ mod tests {
         let output = handle_backends_list(&args, &registry).unwrap();
         assert!(output.contains("Test Backend") || output.contains("b1"));
     }
+
+    #[tokio::test]
+    async fn test_detect_backend_type_ollama() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/api/tags")
+            .with_status(200)
+            .with_body(r#"{"models":[]}"#)
+            .create_async()
+            .await;
+
+        let result = detect_backend_type(&server.url()).await;
+        mock.assert_async().await;
+        assert_eq!(result, Some(BackendType::Ollama));
+    }
+
+    #[tokio::test]
+    async fn test_detect_backend_type_llamacpp() {
+        let mut server = mockito::Server::new_async().await;
+        let _ollama_mock = server
+            .mock("GET", "/api/tags")
+            .with_status(404)
+            .create_async()
+            .await;
+        let mock = server
+            .mock("GET", "/health")
+            .with_status(200)
+            .with_body(r#"{"status":"ok"}"#)
+            .create_async()
+            .await;
+
+        let result = detect_backend_type(&server.url()).await;
+        mock.assert_async().await;
+        assert_eq!(result, Some(BackendType::LlamaCpp));
+    }
+
+    #[tokio::test]
+    async fn test_detect_backend_type_openai_compatible() {
+        let mut server = mockito::Server::new_async().await;
+        let _ollama = server
+            .mock("GET", "/api/tags")
+            .with_status(404)
+            .create_async()
+            .await;
+        let _health = server
+            .mock("GET", "/health")
+            .with_status(404)
+            .create_async()
+            .await;
+        let mock = server
+            .mock("GET", "/v1/models")
+            .with_status(200)
+            .with_body(r#"{"data":[]}"#)
+            .create_async()
+            .await;
+
+        let result = detect_backend_type(&server.url()).await;
+        mock.assert_async().await;
+        assert_eq!(result, Some(BackendType::Generic));
+    }
+
+    #[tokio::test]
+    async fn test_detect_backend_type_unknown() {
+        let mut server = mockito::Server::new_async().await;
+        let _m1 = server
+            .mock("GET", "/api/tags")
+            .with_status(404)
+            .create_async()
+            .await;
+        let _m2 = server
+            .mock("GET", "/health")
+            .with_status(404)
+            .create_async()
+            .await;
+        let _m3 = server
+            .mock("GET", "/v1/models")
+            .with_status(404)
+            .create_async()
+            .await;
+
+        let result = detect_backend_type(&server.url()).await;
+        assert_eq!(result, None);
+    }
 }

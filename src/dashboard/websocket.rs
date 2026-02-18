@@ -404,4 +404,44 @@ mod tests {
         let parsed: WebSocketUpdate = serde_json::from_str(&json3).unwrap();
         assert_eq!(parsed.update_type, UpdateType::RequestComplete);
     }
+
+    #[test]
+    fn test_create_backend_status_update_empty_vec() {
+        let update = create_backend_status_update(vec![]);
+        assert_eq!(update.update_type, UpdateType::BackendStatus);
+        assert_eq!(update.data, serde_json::json!([]));
+    }
+
+    #[test]
+    fn test_create_model_change_update_with_models() {
+        let models = vec![serde_json::json!({"id": "llama3", "name": "LLaMA 3"})];
+        let update = create_model_change_update("backend-1".to_string(), models);
+        assert_eq!(update.update_type, UpdateType::ModelChange);
+        assert_eq!(update.data["backend_id"], "backend-1");
+        assert_eq!(update.data["models"][0]["id"], "llama3");
+    }
+
+    #[test]
+    fn test_create_request_complete_update_fields() {
+        let entry = HistoryEntry {
+            timestamp: 1234567890,
+            model: "test-model".to_string(),
+            backend_id: "backend-1".to_string(),
+            duration_ms: 150,
+            status: RequestStatus::Success,
+            error_message: None,
+        };
+        let update = create_request_complete_update(entry);
+        assert_eq!(update.update_type, UpdateType::RequestComplete);
+        assert_eq!(update.data["model"], "test-model");
+        assert_eq!(update.data["duration_ms"], 150);
+    }
+
+    #[test]
+    fn test_websocket_update_serialization() {
+        let update = create_backend_status_update(vec![]);
+        let json = serde_json::to_string(&update).unwrap();
+        assert!(json.contains("BackendStatus"));
+        assert!(json.len() < 10 * 1024, "Should be under 10KB limit");
+    }
 }
