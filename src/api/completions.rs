@@ -2934,4 +2934,141 @@ mod tests {
         let reason = determine_route_reason("highest_score:b1:0.95", false, 1);
         assert_eq!(reason, RouteReason::Failover);
     }
+
+    #[tokio::test]
+    async fn test_inject_budget_headers_soft_limit_no_utilization() {
+        use crate::registry::{BackendType, DiscoverySource};
+        use crate::routing::reconciler::intent::BudgetStatus;
+
+        let backend = Backend::new(
+            "b1".to_string(),
+            "B1".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        let routing_result = crate::routing::RoutingResult {
+            backend: Arc::new(backend),
+            actual_model: "test-model".to_string(),
+            route_reason: "test".to_string(),
+            fallback_used: false,
+            cost_estimated: None,
+            budget_status: BudgetStatus::SoftLimit,
+            budget_utilization: None,
+            budget_remaining: None,
+        };
+
+        let mut resp =
+            axum::response::IntoResponse::into_response(axum::Json(serde_json::json!({})));
+        inject_budget_headers(&mut resp, &routing_result);
+
+        assert_eq!(
+            resp.headers()
+                .get("x-nexus-budget-status")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "SoftLimit"
+        );
+        // No utilization/remaining set
+        assert!(!resp.headers().contains_key("x-nexus-budget-utilization"));
+        assert!(!resp.headers().contains_key("x-nexus-budget-remaining"));
+        assert!(!resp.headers().contains_key("x-nexus-cost-estimated"));
+    }
+
+    #[tokio::test]
+    async fn test_inject_budget_headers_cost_already_set() {
+        use crate::registry::{BackendType, DiscoverySource};
+        use crate::routing::reconciler::intent::BudgetStatus;
+
+        let backend = Backend::new(
+            "b1".to_string(),
+            "B1".to_string(),
+            "http://localhost:11434".to_string(),
+            BackendType::Ollama,
+            vec![],
+            DiscoverySource::Static,
+            std::collections::HashMap::new(),
+        );
+        let routing_result = crate::routing::RoutingResult {
+            backend: Arc::new(backend),
+            actual_model: "test-model".to_string(),
+            route_reason: "test".to_string(),
+            fallback_used: false,
+            cost_estimated: Some(0.10),
+            budget_status: BudgetStatus::Normal,
+            budget_utilization: None,
+            budget_remaining: None,
+        };
+
+        let mut resp =
+            axum::response::IntoResponse::into_response(axum::Json(serde_json::json!({})));
+        // Pre-set the cost header (simulating F12 headers already set)
+        resp.headers_mut().insert(
+            HeaderName::from_static("x-nexus-cost-estimated"),
+            HeaderValue::from_static("0.0200"),
+        );
+        inject_budget_headers(&mut resp, &routing_result);
+
+        // Should keep the pre-existing value, not overwrite
+        assert_eq!(
+            resp.headers()
+                .get("x-nexus-cost-estimated")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "0.0200"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_rejection_response_has_rejection_details_header() {
+        let reasons = vec![
+            RejectionReason {
+                agent_id: "a1".to_string(),
+                reconciler: "PrivacyReconciler".to_string(),
+                reason: "restricted zone".to_string(),
+                suggested_action: "Use local".to_string(),
+            },
+            RejectionReason {
+                agent_id: "a2".to_string(),
+                reconciler: "TierReconciler".to_string(),
+                reason: "agent tier 1 below minimum 3".to_string(),
+                suggested_action: "Upgrade".to_string(),
+            },
+        ];
+        let resp = rejection_response(reasons, vec!["b1".to_string()]);
+        assert_eq!(resp.status(), axum::http::StatusCode::SERVICE_UNAVAILABLE);
+
+        // Verify x-nexus-rejection-reasons header is set
+        assert!(resp.headers().contains_key("x-nexus-rejection-reasons"));
+        // Verify x-nexus-rejection-details header (JSON) is set
+        assert!(resp.headers().contains_key("x-nexus-rejection-details"));
+
+        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        // Both privacy and tier should be extracted
+        assert_eq!(json["context"]["privacy_zone_required"], "restricted");
+        assert_eq!(json["context"]["required_tier"], 3);
+    }
+
+    #[tokio::test]
+    async fn test_rejection_response_privacy_open_zone() {
+        let reasons = vec![RejectionReason {
+            agent_id: "a1".to_string(),
+            reconciler: "PrivacyReconciler".to_string(),
+            reason: "open zone required for cloud".to_string(),
+            suggested_action: "Use cloud backend".to_string(),
+        }];
+        let resp = rejection_response(reasons, vec![]);
+        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["context"]["privacy_zone_required"], "open");
+    }
 }

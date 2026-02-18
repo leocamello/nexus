@@ -1221,4 +1221,68 @@ mod tests {
         let result = agent.health_check().await;
         assert!(matches!(result, Err(AgentError::Network(_))));
     }
+
+    #[tokio::test]
+    async fn test_health_check_returns_invalid_json() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v1/models")
+            .with_status(200)
+            .with_body("not json at all")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), BackendType::Generic);
+        let result = agent.health_check().await;
+
+        mock.assert_async().await;
+        assert!(matches!(result, Err(AgentError::InvalidResponse(_))));
+    }
+
+    #[tokio::test]
+    async fn test_list_models_returns_invalid_json() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v1/models")
+            .with_status(200)
+            .with_body("not json")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), BackendType::LlamaCpp);
+        let result = agent.list_models().await;
+
+        mock.assert_async().await;
+        assert!(matches!(result, Err(AgentError::InvalidResponse(_))));
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_returns_invalid_json() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .with_status(200)
+            .with_body("not json")
+            .create_async()
+            .await;
+
+        let agent = test_agent(server.url(), BackendType::VLLM);
+        let request = ChatCompletionRequest {
+            model: "test".to_string(),
+            messages: vec![],
+            stream: false,
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            user: None,
+            extra: std::collections::HashMap::new(),
+        };
+
+        let result = agent.chat_completion(request, None).await;
+        mock.assert_async().await;
+        assert!(matches!(result, Err(AgentError::InvalidResponse(_))));
+    }
 }

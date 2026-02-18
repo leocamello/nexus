@@ -2191,3 +2191,274 @@ async fn test_check_all_backends_broadcasts_status() {
     let update = rx.try_recv();
     assert!(update.is_ok());
 }
+
+#[tokio::test]
+async fn test_parse_and_enrich_llamacpp_not_ok() {
+    let registry = Arc::new(Registry::new());
+    let backend = Backend::new(
+        "llamacpp-not-ok".to_string(),
+        "LlamaCpp".to_string(),
+        "http://localhost:8080".to_string(),
+        BackendType::LlamaCpp,
+        vec![],
+        crate::registry::DiscoverySource::Static,
+        std::collections::HashMap::new(),
+    );
+    registry.add_backend(backend).unwrap();
+
+    let checker = HealthChecker::with_client(
+        registry.clone(),
+        HealthCheckConfig::default(),
+        reqwest::Client::new(),
+    );
+
+    let backend_ref = registry.get_backend("llamacpp-not-ok").unwrap();
+    let result = checker
+        .parse_and_enrich(&backend_ref, r#"{"status":"loading"}"#, 50)
+        .await;
+    assert!(matches!(result, HealthCheckResult::Failure { .. }));
+}
+
+#[tokio::test]
+async fn test_parse_and_enrich_llamacpp_status_ok() {
+    let registry = Arc::new(Registry::new());
+    let backend = Backend::new(
+        "llamacpp-healthy".to_string(),
+        "LlamaCpp".to_string(),
+        "http://localhost:8080".to_string(),
+        BackendType::LlamaCpp,
+        vec![],
+        crate::registry::DiscoverySource::Static,
+        std::collections::HashMap::new(),
+    );
+    registry.add_backend(backend).unwrap();
+
+    let checker = HealthChecker::with_client(
+        registry.clone(),
+        HealthCheckConfig::default(),
+        reqwest::Client::new(),
+    );
+
+    let backend_ref = registry.get_backend("llamacpp-healthy").unwrap();
+    let result = checker
+        .parse_and_enrich(&backend_ref, r#"{"status":"ok"}"#, 50)
+        .await;
+    match result {
+        HealthCheckResult::Success { latency_ms, models } => {
+            assert_eq!(latency_ms, 50);
+            assert!(models.is_empty());
+        }
+        other => panic!("Expected Success, got {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn test_parse_and_enrich_llamacpp_bad_json() {
+    let registry = Arc::new(Registry::new());
+    let backend = Backend::new(
+        "llamacpp-bad-json".to_string(),
+        "LlamaCpp".to_string(),
+        "http://localhost:8080".to_string(),
+        BackendType::LlamaCpp,
+        vec![],
+        crate::registry::DiscoverySource::Static,
+        std::collections::HashMap::new(),
+    );
+    registry.add_backend(backend).unwrap();
+
+    let checker = HealthChecker::with_client(
+        registry.clone(),
+        HealthCheckConfig::default(),
+        reqwest::Client::new(),
+    );
+
+    let backend_ref = registry.get_backend("llamacpp-bad-json").unwrap();
+    let result = checker.parse_and_enrich(&backend_ref, "not json", 50).await;
+    assert!(matches!(
+        result,
+        HealthCheckResult::SuccessWithParseError { .. }
+    ));
+}
+
+#[tokio::test]
+async fn test_parse_and_enrich_vllm_bad_json() {
+    let registry = Arc::new(Registry::new());
+    let backend = Backend::new(
+        "vllm-bad-json".to_string(),
+        "VLLM".to_string(),
+        "http://localhost:8000".to_string(),
+        BackendType::VLLM,
+        vec![],
+        crate::registry::DiscoverySource::Static,
+        std::collections::HashMap::new(),
+    );
+    registry.add_backend(backend).unwrap();
+
+    let checker = HealthChecker::with_client(
+        registry.clone(),
+        HealthCheckConfig::default(),
+        reqwest::Client::new(),
+    );
+
+    let backend_ref = registry.get_backend("vllm-bad-json").unwrap();
+    let result = checker.parse_and_enrich(&backend_ref, "not json", 50).await;
+    assert!(matches!(
+        result,
+        HealthCheckResult::SuccessWithParseError { .. }
+    ));
+}
+
+#[tokio::test]
+async fn test_parse_and_enrich_ollama_bad_json() {
+    let registry = Arc::new(Registry::new());
+    let backend = Backend::new(
+        "ollama-bad-json".to_string(),
+        "Ollama".to_string(),
+        "http://localhost:11434".to_string(),
+        BackendType::Ollama,
+        vec![],
+        crate::registry::DiscoverySource::Static,
+        std::collections::HashMap::new(),
+    );
+    registry.add_backend(backend).unwrap();
+
+    let checker = HealthChecker::with_client(
+        registry.clone(),
+        HealthCheckConfig::default(),
+        reqwest::Client::new(),
+    );
+
+    let backend_ref = registry.get_backend("ollama-bad-json").unwrap();
+    let result = checker.parse_and_enrich(&backend_ref, "not json", 50).await;
+    assert!(matches!(
+        result,
+        HealthCheckResult::SuccessWithParseError { .. }
+    ));
+}
+
+#[tokio::test]
+async fn test_broadcast_model_change_with_models() {
+    let registry = Arc::new(Registry::new());
+    let backend = Backend::new(
+        "b-model-change".to_string(),
+        "ModelChange".to_string(),
+        "http://localhost:11434".to_string(),
+        BackendType::Ollama,
+        vec![],
+        crate::registry::DiscoverySource::Static,
+        std::collections::HashMap::new(),
+    );
+    registry.add_backend(backend).unwrap();
+
+    let (tx, mut rx) = tokio::sync::broadcast::channel(16);
+    let checker = HealthChecker::with_client(
+        registry.clone(),
+        HealthCheckConfig::default(),
+        reqwest::Client::new(),
+    )
+    .with_broadcast(tx);
+
+    let models = vec![Model {
+        id: "llama3:8b".to_string(),
+        name: "llama3:8b".to_string(),
+        context_length: 4096,
+        supports_vision: false,
+        supports_tools: false,
+        supports_json_mode: false,
+        max_output_tokens: None,
+    }];
+
+    checker.broadcast_model_change("b-model-change", &models);
+
+    let update = rx.try_recv();
+    assert!(update.is_ok());
+}
+
+#[test]
+fn test_broadcast_model_change_no_sender() {
+    let registry = Arc::new(Registry::new());
+    let checker = HealthChecker::with_client(
+        registry,
+        HealthCheckConfig::default(),
+        reqwest::Client::new(),
+    );
+    // Should not panic when no broadcast sender
+    checker.broadcast_model_change("nonexistent", &[]);
+}
+
+#[test]
+fn test_apply_result_success_with_parse_error() {
+    let registry = Arc::new(Registry::new());
+    let backend = Backend::new(
+        "parse-err-1".to_string(),
+        "ParseErr".to_string(),
+        "http://localhost:11434".to_string(),
+        BackendType::Ollama,
+        vec![],
+        crate::registry::DiscoverySource::Static,
+        std::collections::HashMap::new(),
+    );
+    registry.add_backend(backend).unwrap();
+
+    let checker = HealthChecker::with_client(
+        registry.clone(),
+        HealthCheckConfig::default(),
+        reqwest::Client::new(),
+    );
+
+    let result = HealthCheckResult::SuccessWithParseError {
+        latency_ms: 50,
+        parse_error: "bad json".to_string(),
+    };
+    // Should not panic
+    checker.apply_result("parse-err-1", result);
+}
+
+#[test]
+fn test_apply_result_failure_broadcasts_empty_model_list() {
+    let registry = Arc::new(Registry::new());
+    let backend = Backend::new(
+        "fail-bc2".to_string(),
+        "FailBC2".to_string(),
+        "http://localhost:11434".to_string(),
+        BackendType::Ollama,
+        vec![],
+        crate::registry::DiscoverySource::Static,
+        std::collections::HashMap::new(),
+    );
+    registry.add_backend(backend).unwrap();
+
+    let (tx, mut rx) = tokio::sync::broadcast::channel(16);
+    let checker = HealthChecker::with_client(
+        registry.clone(),
+        HealthCheckConfig::default(),
+        reqwest::Client::new(),
+    )
+    .with_broadcast(tx);
+
+    // First apply success to populate last_models
+    let success = HealthCheckResult::Success {
+        latency_ms: 50,
+        models: vec![Model {
+            id: "test".to_string(),
+            name: "test".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+        }],
+    };
+    checker.apply_result("fail-bc2", success);
+    // Drain the success broadcasts
+    while rx.try_recv().is_ok() {}
+
+    // Now apply failure - should broadcast empty models
+    let failure = HealthCheckResult::Failure {
+        error: HealthCheckError::Timeout(5),
+    };
+    checker.apply_result("fail-bc2", failure);
+
+    let update = rx.try_recv();
+    assert!(update.is_ok());
+}

@@ -710,6 +710,26 @@ mod tests {
         assert_eq!(queue.depth(), 2);
     }
 
+    #[test]
+    fn test_queued_request_debug_format() {
+        let (req, _rx) = make_queued(Priority::High);
+        let debug = format!("{:?}", req);
+        assert!(debug.contains("High"));
+        assert!(debug.contains("enqueued_at"));
+    }
+
+    #[test]
+    fn test_queue_error_display_full() {
+        let err = QueueError::Full { max_size: 42 };
+        assert!(err.to_string().contains("42"));
+    }
+
+    #[test]
+    fn test_queue_error_display_disabled() {
+        let err = QueueError::Disabled;
+        assert!(err.to_string().contains("disabled"));
+    }
+
     #[tokio::test]
     async fn test_process_queued_request_success_with_agent() {
         use crate::agent::types::{AgentCapabilities, AgentProfile, PrivacyZone};

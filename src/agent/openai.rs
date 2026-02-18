@@ -1530,4 +1530,41 @@ mod tests {
         mock.assert_async().await;
         assert!(matches!(result, Err(AgentError::InvalidResponse(_))));
     }
+
+    #[tokio::test]
+    async fn test_count_tokens_trait_returns_exact() {
+        let agent = test_agent("http://localhost".to_string(), "sk-test".to_string());
+        let agent_ref: &dyn InferenceAgent = &agent;
+        let count = agent_ref.count_tokens("gpt-4", "Hello, world!").await;
+        match count {
+            TokenCount::Exact(n) => assert!(n > 0 && n < 10),
+            TokenCount::Heuristic(_) => panic!("Expected Exact for OpenAI agent"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_count_tokens_trait_empty() {
+        let agent = test_agent("http://localhost".to_string(), "sk-test".to_string());
+        let agent_ref: &dyn InferenceAgent = &agent;
+        let count = agent_ref.count_tokens("gpt-4", "").await;
+        assert_eq!(count, TokenCount::Exact(0));
+    }
+
+    #[test]
+    fn test_name_heuristics_plain_gpt4() {
+        let mut model = ModelCapability {
+            id: "gpt-4".to_string(),
+            name: "gpt-4".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+            capability_tier: None,
+        };
+        OpenAIAgent::apply_name_heuristics(&mut model);
+        assert!(model.supports_tools);
+        assert!(model.supports_json_mode);
+        assert_eq!(model.context_length, 8192);
+    }
 }

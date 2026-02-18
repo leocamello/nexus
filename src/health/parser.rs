@@ -454,4 +454,151 @@ mod tests {
         assert_eq!(models.len(), 1);
         assert!(models[0].supports_tools);
     }
+
+    #[tokio::test]
+    async fn test_enrich_ollama_models_with_capabilities() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/api/show")
+            .with_status(200)
+            .with_body(
+                r#"{"capabilities":["vision","tools"],"model_info":{"llama.context_length":8192}}"#,
+            )
+            .create_async()
+            .await;
+
+        let mut models = vec![Model {
+            id: "test-model".to_string(),
+            name: "test-model".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+        }];
+
+        let client = reqwest::Client::new();
+        enrich_ollama_models(&mut models, &server.url(), &client, Duration::from_secs(5)).await;
+
+        mock.assert_async().await;
+        assert!(models[0].supports_vision);
+        assert!(models[0].supports_tools);
+        assert_eq!(models[0].context_length, 8192);
+    }
+
+    #[tokio::test]
+    async fn test_enrich_ollama_models_fallback_to_heuristics() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/api/show")
+            .with_status(500)
+            .with_body("Internal Server Error")
+            .create_async()
+            .await;
+
+        let mut models = vec![Model {
+            id: "llava:13b".to_string(),
+            name: "llava:13b".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+        }];
+
+        let client = reqwest::Client::new();
+        enrich_ollama_models(&mut models, &server.url(), &client, Duration::from_secs(5)).await;
+
+        mock.assert_async().await;
+        // Falls back to name heuristics: llava → vision
+        assert!(models[0].supports_vision);
+    }
+
+    #[tokio::test]
+    async fn test_enrich_ollama_models_partial_model_info() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/api/show")
+            .with_status(200)
+            .with_body(r#"{"capabilities":[],"model_info":{"general.parameter_count":7000000}}"#)
+            .create_async()
+            .await;
+
+        let mut models = vec![Model {
+            id: "basic-model".to_string(),
+            name: "basic-model".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+        }];
+
+        let client = reqwest::Client::new();
+        enrich_ollama_models(&mut models, &server.url(), &client, Duration::from_secs(5)).await;
+
+        mock.assert_async().await;
+        // No context_length key → stays at default
+        assert_eq!(models[0].context_length, 4096);
+        assert!(!models[0].supports_vision);
+        assert!(!models[0].supports_tools);
+    }
+
+    #[tokio::test]
+    async fn test_enrich_ollama_models_invalid_json_response() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/api/show")
+            .with_status(200)
+            .with_body("not valid json")
+            .create_async()
+            .await;
+
+        let mut models = vec![Model {
+            id: "mistral:7b".to_string(),
+            name: "mistral:7b".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+        }];
+
+        let client = reqwest::Client::new();
+        enrich_ollama_models(&mut models, &server.url(), &client, Duration::from_secs(5)).await;
+
+        mock.assert_async().await;
+        // Invalid JSON falls back to heuristics: mistral → tools
+        assert!(models[0].supports_tools);
+    }
+
+    #[test]
+    fn test_apply_name_heuristics_llama32_tools() {
+        let mut model = crate::registry::Model {
+            id: "llama3.2:3b".to_string(),
+            name: "llama3.2:3b".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+        };
+        apply_name_heuristics(&mut model);
+        assert!(model.supports_tools);
+    }
+
+    #[test]
+    fn test_apply_name_heuristics_llama33_tools() {
+        let mut model = crate::registry::Model {
+            id: "llama3.3:70b".to_string(),
+            name: "llama3.3:70b".to_string(),
+            context_length: 4096,
+            supports_vision: false,
+            supports_tools: false,
+            supports_json_mode: false,
+            max_output_tokens: None,
+        };
+        apply_name_heuristics(&mut model);
+        assert!(model.supports_tools);
+    }
 }
