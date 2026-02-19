@@ -138,6 +138,7 @@ mod tests {
             avg_latency_ms: 42,
             discovery_source: DiscoverySource::Static,
             metadata: HashMap::new(),
+            current_operation: None,
         }];
 
         let update = create_backend_status_update(backends);
@@ -224,6 +225,7 @@ mod tests {
             avg_latency_ms: 42,
             discovery_source: DiscoverySource::Static,
             metadata: HashMap::new(),
+            current_operation: None,
         }];
 
         let update = create_backend_status_update(backends);
@@ -265,6 +267,7 @@ mod tests {
             avg_latency_ms: 50,
             discovery_source: DiscoverySource::Static,
             metadata: HashMap::new(),
+            current_operation: None,
         }];
 
         let update = create_backend_status_update(backends);
@@ -295,6 +298,7 @@ mod tests {
             avg_latency_ms: 0,
             discovery_source: DiscoverySource::Manual,
             metadata: HashMap::new(),
+            current_operation: None,
         }];
 
         let update = create_backend_status_update(backends);
@@ -381,6 +385,7 @@ mod tests {
             avg_latency_ms: 0,
             discovery_source: DiscoverySource::Static,
             metadata: HashMap::new(),
+            current_operation: None,
         }]);
         let json1 = serde_json::to_string(&backend_update).unwrap();
         let _: serde_json::Value = serde_json::from_str(&json1).unwrap();
@@ -455,6 +460,7 @@ mod tests {
                 avg_latency_ms: 50,
                 discovery_source: DiscoverySource::Static,
                 metadata: HashMap::new(),
+                current_operation: None,
             },
             BackendView {
                 id: "unhealthy-1".to_string(),
@@ -471,6 +477,7 @@ mod tests {
                 avg_latency_ms: 0,
                 discovery_source: DiscoverySource::MDNS,
                 metadata: HashMap::new(),
+                current_operation: None,
             },
             BackendView {
                 id: "unknown-1".to_string(),
@@ -487,6 +494,7 @@ mod tests {
                 avg_latency_ms: 0,
                 discovery_source: DiscoverySource::Manual,
                 metadata: HashMap::new(),
+                current_operation: None,
             },
         ];
 
@@ -521,6 +529,7 @@ mod tests {
             avg_latency_ms: 99,
             discovery_source: DiscoverySource::Static,
             metadata: HashMap::new(),
+            current_operation: None,
         }];
 
         let original = create_backend_status_update(backends);
@@ -583,6 +592,7 @@ mod tests {
             avg_latency_ms: 250,
             discovery_source: DiscoverySource::MDNS,
             metadata,
+            current_operation: None,
         }];
 
         let update = create_backend_status_update(backends);

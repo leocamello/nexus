@@ -34,6 +34,7 @@ fn create_test_backend(id: &str, model_id: &str) -> Backend {
         avg_latency_ms: AtomicU32::new(50),
         discovery_source: DiscoverySource::Static,
         metadata: HashMap::new(),
+        current_operation: None,
     }
 }
 

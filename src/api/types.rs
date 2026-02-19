@@ -248,6 +248,42 @@ impl ApiError {
         }
     }
 
+    /// Create a not implemented error (501).
+    pub fn not_implemented(message: &str) -> Self {
+        Self {
+            error: ApiErrorBody {
+                message: message.to_string(),
+                r#type: "server_error".to_string(),
+                param: None,
+                code: Some("not_implemented".to_string()),
+            },
+        }
+    }
+
+    /// Create a not found error (404).
+    pub fn not_found(message: &str) -> Self {
+        Self {
+            error: ApiErrorBody {
+                message: message.to_string(),
+                r#type: "invalid_request_error".to_string(),
+                param: None,
+                code: Some("not_found".to_string()),
+            },
+        }
+    }
+
+    /// Create a conflict error (409).
+    pub fn conflict(message: &str) -> Self {
+        Self {
+            error: ApiErrorBody {
+                message: message.to_string(),
+                r#type: "invalid_request_error".to_string(),
+                param: None,
+                code: Some("conflict".to_string()),
+            },
+        }
+    }
+
     /// Create error from raw backend response JSON (T050).
     ///
     /// This preserves the backend's error response unchanged, maintaining
@@ -322,9 +358,12 @@ impl ApiError {
         match self.error.code.as_deref() {
             Some("invalid_request_error") => StatusCode::BAD_REQUEST,
             Some("model_not_found") => StatusCode::NOT_FOUND,
+            Some("not_found") => StatusCode::NOT_FOUND,
+            Some("conflict") => StatusCode::CONFLICT,
             Some("bad_gateway") => StatusCode::BAD_GATEWAY,
             Some("gateway_timeout") => StatusCode::GATEWAY_TIMEOUT,
             Some("service_unavailable") => StatusCode::SERVICE_UNAVAILABLE,
+            Some("not_implemented") => StatusCode::NOT_IMPLEMENTED,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -683,10 +722,7 @@ mod tests {
         };
         let api_err = ApiError::from_agent_error(agent_err);
         assert_eq!(api_err.error.code.as_deref(), Some("not_found"));
-        assert_eq!(
-            api_err.into_response().status(),
-            StatusCode::INTERNAL_SERVER_ERROR
-        );
+        assert_eq!(api_err.into_response().status(), StatusCode::NOT_FOUND);
     }
 
     #[test]

@@ -173,3 +173,39 @@ format = "pretty"
 # Only enable for local debugging. Never in production with user data.
 # enable_content_logging = false
 
+# Model lifecycle management - control model loading, unloading, and migration
+# [lifecycle]
+# Maximum time to wait for a model load/unload operation in milliseconds
+# Default: 300000ms (5 minutes). Operations exceeding this timeout are marked as failed.
+# timeout_ms = 300000
+
+# VRAM headroom percentage to keep free when loading models
+# Default: 20 (20% of total VRAM). Prevents OOM by refusing loads if free VRAM would drop below this.
+# vram_headroom_percent = 20
+
+# Additional VRAM buffer percentage for safety margin
+# Default: 10 (10% of total VRAM). Added buffer on top of headroom for unexpected VRAM spikes.
+# vram_buffer_percent = 10
+
+# Fleet intelligence - analyze request patterns and generate pre-warming recommendations
+# [fleet]
+# Whether fleet intelligence analysis is enabled
+# Default: false. When false, no pattern analysis or recommendations are generated.
+# enabled = false
+
+# Minimum number of days of request history required for pattern analysis
+# Default: 7 days. Patterns with less historical data are insufficient for recommendations.
+# min_sample_days = 7
+
+# Minimum request count required for a model to be analyzed
+# Default: 100 requests. Models with fewer requests are excluded from pattern analysis.
+# min_request_count = 100
+
+# Interval between fleet analysis runs in seconds
+# Default: 3600 seconds (1 hour). Background analysis loop runs at this interval.
+# analysis_interval_seconds = 3600
+
+# Maximum number of recommendations to generate per analysis cycle
+# Default: 5. Limits recommendation output to top N suggestions by confidence score.
+# max_recommendations = 5
+

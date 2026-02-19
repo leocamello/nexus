@@ -92,6 +92,7 @@ pub fn make_backend(id: &str, name: &str, model_id: &str, priority: i32) -> Back
         avg_latency_ms: AtomicU32::new(50),
         discovery_source: DiscoverySource::Static,
         metadata: HashMap::new(),
+        current_operation: None,
     }
 }
 

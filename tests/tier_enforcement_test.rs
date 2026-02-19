@@ -54,6 +54,7 @@ fn create_test_backend_with_tier(
         avg_latency_ms: std::sync::atomic::AtomicU32::new(0),
         discovery_source: DiscoverySource::Static,
         metadata: HashMap::new(),
+        current_operation: None,
     };
 
     let client = Arc::new(reqwest::Client::new());

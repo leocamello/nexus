@@ -180,6 +180,99 @@ pub struct ResourceUsage {
     pub loaded_models: Vec<String>,
 }
 
+impl ResourceUsage {
+    /// Compute free VRAM from total - used.
+    ///
+    /// Returns None if either vram_total_bytes or vram_used_bytes is None.
+    pub fn vram_free_bytes(&self) -> Option<u64> {
+        match (self.vram_total_bytes, self.vram_used_bytes) {
+            (Some(total), Some(used)) => {
+                // Handle potential underflow if used > total (shouldn't happen but be defensive)
+                Some(total.saturating_sub(used))
+            }
+            _ => None,
+        }
+    }
+}
+
+// T009: Operation types for model lifecycle
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum OperationType {
+    Load,
+    Unload,
+    Migrate,
+}
+
+// T010: Status of a lifecycle operation
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum OperationStatus {
+    Pending,
+    InProgress,
+    Completed,
+    Failed,
+}
+
+// T008: A model lifecycle operation (load/unload/migrate)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LifecycleOperation {
+    pub operation_id: String,
+    pub operation_type: OperationType,
+    pub model_id: String,
+    pub source_backend_id: Option<String>,
+    pub target_backend_id: String,
+    pub status: OperationStatus,
+    pub progress_percent: u8,
+    pub eta_ms: Option<u64>,
+    pub initiated_at: chrono::DateTime<chrono::Utc>,
+    pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub error_details: Option<String>,
+}
+
+// T011: Loading state for a backend currently pulling a model
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoadingState {
+    pub model_id: String,
+    pub percent_complete: u8,
+    pub estimated_completion_ms: Option<u64>,
+    pub started_at: chrono::DateTime<chrono::Utc>,
+    pub backend_id: String,
+}
+
+// T013: Trend direction for request patterns
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum TrendDirection {
+    Increasing,
+    Stable,
+    Decreasing,
+}
+
+// T013: Historical request pattern data
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RequestPattern {
+    pub model_id: String,
+    pub time_window: String,
+    pub request_count: u64,
+    pub avg_latency_ms: Option<u32>,
+    pub peak_hour: Option<u8>,
+    pub trend_direction: TrendDirection,
+}
+
+// T012: A pre-warming recommendation from fleet intelligence
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PrewarmingRecommendation {
+    pub recommendation_id: String,
+    pub model_id: String,
+    pub target_backend_ids: Vec<String>,
+    pub confidence_score: f64,
+    pub reasoning: String,
+    pub vram_required_bytes: Option<u64>,
+    pub generated_at: chrono::DateTime<chrono::Utc>,
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
 /// Streaming chunk error wrapper.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamChunk {

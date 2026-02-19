@@ -37,6 +37,7 @@ fn create_backend(id: usize, model_count: usize) -> Backend {
         avg_latency_ms: AtomicU32::new(20 + (id * 5) as u32),
         discovery_source: DiscoverySource::Static,
         metadata: HashMap::new(),
+        current_operation: None,
     }
 }
 

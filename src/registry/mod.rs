@@ -277,6 +277,7 @@ impl Registry {
                 ),
                 discovery_source: backend.discovery_source,
                 metadata: backend.metadata.clone(),
+                current_operation: backend.current_operation.clone(),
             }
         })
     }
@@ -316,6 +317,7 @@ impl Registry {
                     ),
                     discovery_source: backend.discovery_source,
                     metadata: backend.metadata.clone(),
+                    current_operation: backend.current_operation.clone(),
                 }
             })
             .collect()
@@ -376,6 +378,7 @@ impl Registry {
                     ),
                     discovery_source: backend.discovery_source,
                     metadata: backend.metadata.clone(),
+                    current_operation: backend.current_operation.clone(),
                 }
             })
             .collect()
@@ -588,6 +591,97 @@ impl Registry {
                     == Some(instance)
             })
             .map(|entry| entry.value().id.clone())
+    }
+
+    // Lifecycle operation tracking (T034)
+
+    /// Update the current lifecycle operation for a backend.
+    ///
+    /// Used to track model load/unload/migrate operations in progress.
+    pub fn update_operation(
+        &self,
+        id: &str,
+        operation: Option<crate::agent::types::LifecycleOperation>,
+    ) -> Result<(), RegistryError> {
+        let mut backend = self
+            .backends
+            .get_mut(id)
+            .ok_or_else(|| RegistryError::BackendNotFound(id.to_string()))?;
+
+        backend.current_operation = operation;
+        Ok(())
+    }
+
+    /// Get the current lifecycle operation for a backend.
+    pub fn get_operation(
+        &self,
+        id: &str,
+    ) -> Result<Option<crate::agent::types::LifecycleOperation>, RegistryError> {
+        let backend = self
+            .backends
+            .get(id)
+            .ok_or_else(|| RegistryError::BackendNotFound(id.to_string()))?;
+
+        Ok(backend.current_operation.clone())
+    }
+
+    /// Add a model to a backend's model list (T035).
+    ///
+    /// Used after successful model load operation.
+    pub fn add_model_to_backend(
+        &self,
+        backend_id: &str,
+        model: Model,
+    ) -> Result<(), RegistryError> {
+        let mut backend = self
+            .backends
+            .get_mut(backend_id)
+            .ok_or_else(|| RegistryError::BackendNotFound(backend_id.to_string()))?;
+
+        // Check if model already exists
+        if backend.models.iter().any(|m| m.id == model.id) {
+            return Ok(()); // Already exists, no-op
+        }
+
+        // Add to backend's model list
+        backend.models.push(model.clone());
+
+        // Add to model index
+        self.model_index
+            .entry(model.id.clone())
+            .or_default()
+            .push(backend_id.to_string());
+
+        Ok(())
+    }
+
+    /// Remove a model from a backend after successful unload (T058).
+    ///
+    /// Used after successful model unload operation to update the registry state.
+    pub fn remove_model_from_backend(
+        &self,
+        backend_id: &str,
+        model_id: &str,
+    ) -> Result<(), RegistryError> {
+        let mut backend = self
+            .backends
+            .get_mut(backend_id)
+            .ok_or_else(|| RegistryError::BackendNotFound(backend_id.to_string()))?;
+
+        // Remove from backend's model list
+        backend.models.retain(|m| m.id != model_id);
+
+        // Remove from model index
+        if let Some(mut backends) = self.model_index.get_mut(model_id) {
+            backends.retain(|id| id != backend_id);
+            // If no backends have this model, remove the index entry
+            if backends.is_empty() {
+                drop(backends); // Release the lock before removing
+                self.model_index.remove(model_id);
+            }
+        }
+
+        Ok(())
     }
 }
 

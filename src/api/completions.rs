@@ -1148,6 +1148,9 @@ fn record_request_completion(
     // Push to request history ring buffer
     state.request_history.push(entry.clone());
 
+    // Record for fleet intelligence pattern analysis
+    state.fleet_tracker.record_request(model);
+
     // Broadcast update to WebSocket clients
     let update = create_request_complete_update(entry);
     let _ = state.ws_broadcast.send(update);

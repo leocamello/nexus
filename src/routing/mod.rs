@@ -28,6 +28,7 @@ use dashmap::DashMap;
 use reconciler::budget::BudgetReconciler;
 use reconciler::decision::RoutingDecision;
 use reconciler::intent::RoutingIntent;
+use reconciler::lifecycle::LifecycleReconciler;
 use reconciler::privacy::PrivacyReconciler;
 use reconciler::quality::QualityReconciler;
 use reconciler::request_analyzer::RequestAnalyzer;
@@ -261,10 +262,11 @@ impl Router {
     }
 
     /// Build a reconciler pipeline for the given model
-    /// Order: RequestAnalyzer → PrivacyReconciler → BudgetReconciler → TierReconciler
-    ///        → QualityReconciler → SchedulerReconciler
+    /// Order: RequestAnalyzer → LifecycleReconciler → PrivacyReconciler → BudgetReconciler
+    ///        → TierReconciler → QualityReconciler → SchedulerReconciler
     fn build_pipeline(&self, model_aliases: HashMap<String, String>) -> ReconcilerPipeline {
         let analyzer = RequestAnalyzer::new(model_aliases, Arc::clone(&self.registry));
+        let lifecycle = LifecycleReconciler::new(Arc::clone(&self.registry));
         let privacy =
             PrivacyReconciler::new(Arc::clone(&self.registry), self.policy_matcher.clone());
         let budget = BudgetReconciler::new(
@@ -287,6 +289,7 @@ impl Router {
         ReconcilerPipeline::with_queue(
             vec![
                 Box::new(analyzer),
+                Box::new(lifecycle),
                 Box::new(privacy),
                 Box::new(budget),
                 Box::new(tier),
@@ -509,6 +512,7 @@ impl Router {
             ),
             discovery_source: best.discovery_source,
             metadata: best.metadata.clone(),
+            current_operation: best.current_operation.clone(),
         }
     }
 
@@ -545,6 +549,7 @@ impl Router {
             ),
             discovery_source: best.discovery_source,
             metadata: best.metadata.clone(),
+            current_operation: best.current_operation.clone(),
         }
     }
 
@@ -585,6 +590,7 @@ impl Router {
             ),
             discovery_source: best.discovery_source,
             metadata: best.metadata.clone(),
+            current_operation: best.current_operation.clone(),
         }
     }
 
@@ -789,6 +795,7 @@ mod filter_tests {
             avg_latency_ms: AtomicU32::new(50),
             discovery_source: DiscoverySource::Static,
             metadata: HashMap::new(),
+            current_operation: None,
         }
     }
 
@@ -1133,6 +1140,7 @@ mod smart_strategy_tests {
             avg_latency_ms: AtomicU32::new(avg_latency_ms),
             discovery_source: DiscoverySource::Static,
             metadata: HashMap::new(),
+            current_operation: None,
         }
     }
 
@@ -1269,6 +1277,7 @@ mod other_strategies_tests {
             avg_latency_ms: AtomicU32::new(50),
             discovery_source: DiscoverySource::Static,
             metadata: HashMap::new(),
+            current_operation: None,
         }
     }
 
@@ -1412,6 +1421,7 @@ mod alias_and_fallback_tests {
             avg_latency_ms: AtomicU32::new(50),
             discovery_source: DiscoverySource::Static,
             metadata: HashMap::new(),
+            current_operation: None,
         }
     }
 
@@ -1959,6 +1969,7 @@ mod constructor_tests {
             avg_latency_ms: AtomicU32::new(50),
             discovery_source: DiscoverySource::Static,
             metadata: HashMap::new(),
+            current_operation: None,
         }
     }
 
@@ -2062,6 +2073,7 @@ mod select_backend_error_tests {
             avg_latency_ms: AtomicU32::new(50),
             discovery_source: DiscoverySource::Static,
             metadata: HashMap::new(),
+            current_operation: None,
         }
     }
 
@@ -2231,6 +2243,7 @@ mod budget_status_tests {
             avg_latency_ms: AtomicU32::new(50),
             discovery_source: DiscoverySource::Static,
             metadata: HashMap::new(),
+            current_operation: None,
         }
     }
 

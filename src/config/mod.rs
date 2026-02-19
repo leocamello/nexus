@@ -30,6 +30,8 @@
 pub mod backend;
 pub mod discovery;
 pub mod error;
+pub mod fleet;
+pub mod lifecycle;
 pub mod logging;
 pub mod quality;
 pub mod queue;
@@ -39,6 +41,8 @@ pub mod server;
 pub use backend::{BackendConfig, BackendType};
 pub use discovery::DiscoveryConfig;
 pub use error::ConfigError;
+pub use fleet::FleetConfig;
+pub use lifecycle::LifecycleConfig;
 pub use logging::{LogFormat, LoggingConfig};
 pub use quality::QualityConfig;
 pub use queue::QueueConfig;
@@ -87,6 +91,10 @@ pub struct NexusConfig {
     pub quality: QualityConfig,
     /// Request queue configuration
     pub queue: QueueConfig,
+    /// Model lifecycle management configuration
+    pub lifecycle: LifecycleConfig,
+    /// Fleet intelligence configuration
+    pub fleet: FleetConfig,
 }
 
 impl NexusConfig {
