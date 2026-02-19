@@ -148,39 +148,28 @@ pub async fn handle_load(
                     )));
                 }
             } else {
-                // We have used but not total - use heuristic
-                // If already using >16GB, likely insufficient for another large model
-                if vram_used > 16_000_000_000 {
+                // Backend doesn't report total VRAM (e.g. Ollama) — use configurable heuristic
+                let max_gb = state.config.lifecycle.vram_heuristic_max_gb;
+                if vram_used > max_gb * 1_000_000_000 {
                     warn!(
                         model_id = %request.model_id,
                         backend_id = %request.backend_id,
                         vram_used = vram_used,
+                        vram_heuristic_max_gb = max_gb,
                         "High VRAM usage detected, may be insufficient for model load"
                     );
                     return Err(ApiError::bad_request(&format!(
-                        "High VRAM usage: {}GB already in use, may be insufficient",
-                        vram_used / 1_000_000_000
+                        "High VRAM usage: {}GB in use (heuristic max: {}GB). \
+                         Adjust lifecycle.vram_heuristic_max_gb to match your GPU.",
+                        vram_used / 1_000_000_000,
+                        max_gb
                     )));
                 }
             }
         }
     }
 
-    // 4. Call agent.load_model()
-    if let Err(e) = agent.load_model(&request.model_id).await {
-        error!(
-            model_id = %request.model_id,
-            backend_id = %request.backend_id,
-            error = ?e,
-            "Failed to initiate model load"
-        );
-        return Err(ApiError::bad_gateway(&format!(
-            "Failed to load model: {:?}",
-            e
-        )));
-    }
-
-    // 5. Create and set operation
+    // 4. Create operation and set BEFORE calling load_model to prevent TOCTOU races
     let operation_id = format!("op-{}", uuid::Uuid::new_v4());
     let operation = LifecycleOperation {
         operation_id: operation_id.clone(),
@@ -206,6 +195,22 @@ pub async fn handle_load(
             "Failed to update operation in registry"
         );
         return Err(ApiError::bad_gateway("Failed to track operation"));
+    }
+
+    // 5. Call agent.load_model() — operation is already tracked
+    if let Err(e) = agent.load_model(&request.model_id).await {
+        error!(
+            model_id = %request.model_id,
+            backend_id = %request.backend_id,
+            error = ?e,
+            "Failed to initiate model load"
+        );
+        // Clear operation on failure
+        let _ = state.registry.update_operation(&request.backend_id, None);
+        return Err(ApiError::bad_gateway(&format!(
+            "Failed to load model: {:?}",
+            e
+        )));
     }
 
     info!(
@@ -378,43 +383,31 @@ pub async fn handle_migrate(
                         required_free / 1_000_000_000
                     )));
                 }
-            } else if vram_used > 16_000_000_000 {
+            } else if vram_used > state.config.lifecycle.vram_heuristic_max_gb * 1_000_000_000 {
                 // T048: Detailed failure notification
+                let max_gb = state.config.lifecycle.vram_heuristic_max_gb;
                 warn!(
                     model_id = %request.model_id,
                     target_backend_id = %request.target_backend_id,
                     vram_used = vram_used,
+                    vram_heuristic_max_gb = max_gb,
                     "High VRAM usage on target, may be insufficient for migration"
                 );
                 return Err(ApiError::bad_request(&format!(
-                    "Target backend has high VRAM usage: {}GB in use, may be insufficient",
-                    vram_used / 1_000_000_000
+                    "Target backend has high VRAM usage: {}GB in use (heuristic max: {}GB). \
+                     Adjust lifecycle.vram_heuristic_max_gb to match your GPU.",
+                    vram_used / 1_000_000_000,
+                    max_gb
                 )));
             }
         }
     }
 
-    // 4. Start load on target backend
-    if let Err(e) = target_agent.load_model(&request.model_id).await {
-        // T047: Migration failure detection
-        error!(
-            model_id = %request.model_id,
-            target_backend_id = %request.target_backend_id,
-            error = ?e,
-            "Failed to initiate model load on target backend"
-        );
-        // T048: Detailed failure notification
-        return Err(ApiError::bad_gateway(&format!(
-            "Migration failed: could not load model on target backend {}: {:?}",
-            request.target_backend_id, e
-        )));
-    }
-
-    // Generate operation IDs
+    // 3. Set operations on BOTH backends BEFORE calling load_model to prevent TOCTOU races
     let migration_op_id = format!("op-migrate-{}", uuid::Uuid::new_v4());
     let load_op_id = format!("op-load-{}", uuid::Uuid::new_v4());
 
-    // 3. Set source backend operation to Migrate/InProgress (T046)
+    // Set source backend operation to Migrate/InProgress (T046)
     let source_operation = LifecycleOperation {
         operation_id: migration_op_id.clone(),
         operation_type: OperationType::Migrate,
@@ -438,12 +431,10 @@ pub async fn handle_migrate(
             error = ?e,
             "Failed to set migration operation on source backend"
         );
-        // T047: Rollback - target load was initiated but we can't track it
-        // In production, we'd want to cancel the target load here
         return Err(ApiError::bad_gateway("Failed to track migration operation"));
     }
 
-    // 5. Set target backend operation to Load/InProgress
+    // Set target backend operation to Load/InProgress
     let target_operation = LifecycleOperation {
         operation_id: load_op_id.clone(),
         operation_type: OperationType::Load,
@@ -467,20 +458,35 @@ pub async fn handle_migrate(
             error = ?e,
             "Failed to set load operation on target backend"
         );
-        // T047: Rollback source operation
-        if let Err(e) = state
+        // Rollback source operation
+        let _ = state
             .registry
-            .update_operation(&request.source_backend_id, None)
-        {
-            error!(
-                source_backend_id = %request.source_backend_id,
-                error = ?e,
-                "Failed to clear source operation during rollback"
-            );
-        }
+            .update_operation(&request.source_backend_id, None);
         return Err(ApiError::bad_gateway(
             "Failed to track target load operation",
         ));
+    }
+
+    // 4. Start load on target backend — both operations already tracked
+    if let Err(e) = target_agent.load_model(&request.model_id).await {
+        // T047: Migration failure detection — rollback both operations
+        error!(
+            model_id = %request.model_id,
+            target_backend_id = %request.target_backend_id,
+            error = ?e,
+            "Failed to initiate model load on target backend"
+        );
+        let _ = state
+            .registry
+            .update_operation(&request.source_backend_id, None);
+        let _ = state
+            .registry
+            .update_operation(&request.target_backend_id, None);
+        // T048: Detailed failure notification
+        return Err(ApiError::bad_gateway(&format!(
+            "Migration failed: could not load model on target backend {}: {:?}",
+            request.target_backend_id, e
+        )));
     }
 
     info!(

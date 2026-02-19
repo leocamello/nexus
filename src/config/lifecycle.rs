@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 /// timeout_ms = 300000
 /// vram_headroom_percent = 20
 /// vram_buffer_percent = 10
+/// vram_heuristic_max_gb = 16
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -34,6 +35,13 @@ pub struct LifecycleConfig {
     /// Default: 10 (10% of total VRAM)
     /// Added buffer on top of headroom for unexpected VRAM spikes.
     pub vram_buffer_percent: u8,
+
+    /// VRAM heuristic maximum threshold in GB.
+    ///
+    /// Default: 16 (16GB)
+    /// When the backend does not report total VRAM (e.g., Ollama), load requests
+    /// are rejected if used VRAM exceeds this threshold. Adjust to match your GPU.
+    pub vram_heuristic_max_gb: u64,
 }
 
 impl Default for LifecycleConfig {
@@ -42,6 +50,7 @@ impl Default for LifecycleConfig {
             timeout_ms: 300_000, // 5 minutes
             vram_headroom_percent: 20,
             vram_buffer_percent: 10,
+            vram_heuristic_max_gb: 16,
         }
     }
 }

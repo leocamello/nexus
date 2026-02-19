@@ -83,7 +83,11 @@ impl FleetReconciler {
     ///
     /// Called from the completions handler after each request.
     /// Stores the current UTC timestamp for the given model.
+    /// No-op when fleet intelligence is disabled to avoid unbounded memory growth.
     pub fn record_request(&self, model_id: &str) {
+        if !self.config.enabled {
+            return;
+        }
         let now = Utc::now().timestamp();
         self.request_history
             .entry(model_id.to_string())

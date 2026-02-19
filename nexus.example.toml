@@ -187,6 +187,10 @@ format = "pretty"
 # Default: 10 (10% of total VRAM). Added buffer on top of headroom for unexpected VRAM spikes.
 # vram_buffer_percent = 10
 
+# VRAM heuristic maximum threshold in GB for backends that don't report total VRAM (e.g. Ollama).
+# Default: 16. Load requests are rejected if used VRAM exceeds this. Adjust to match your GPU.
+# vram_heuristic_max_gb = 16
+
 # Fleet intelligence - analyze request patterns and generate pre-warming recommendations
 # [fleet]
 # Whether fleet intelligence analysis is enabled
