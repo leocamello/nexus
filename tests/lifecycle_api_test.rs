@@ -251,8 +251,8 @@ async fn test_load_model_concurrent_load_returns_409() {
 // T022: Integration test for HealthStatus::Loading blocking routing
 #[tokio::test]
 async fn test_loading_backend_blocked_from_routing() {
-    use nexus::routing::{Router, RoutingStrategy, ScoringWeights, RequestRequirements};
     use chrono::Utc;
+    use nexus::routing::{RequestRequirements, Router, RoutingStrategy, ScoringWeights};
 
     // Create test registry
     let registry = Arc::new(Registry::new());
@@ -307,7 +307,9 @@ async fn test_loading_backend_blocked_from_routing() {
     )
     .unwrap();
 
-    registry.add_backend_with_agent(backend_loading, agent_loading).unwrap();
+    registry
+        .add_backend_with_agent(backend_loading, agent_loading)
+        .unwrap();
 
     // Backend 2: Idle and ready (should be selected)
     let mut backend_idle = Backend::new(
@@ -343,7 +345,9 @@ async fn test_loading_backend_blocked_from_routing() {
     )
     .unwrap();
 
-    registry.add_backend_with_agent(backend_idle, agent_idle).unwrap();
+    registry
+        .add_backend_with_agent(backend_idle, agent_idle)
+        .unwrap();
 
     // Create router
     let router = Router::new(
@@ -368,14 +372,16 @@ async fn test_loading_backend_blocked_from_routing() {
     if let Err(e) = &result {
         panic!("Routing failed: {:?}", e);
     }
-    assert!(result.is_ok(), "Routing should succeed when idle backend available");
-    
+    assert!(
+        result.is_ok(),
+        "Routing should succeed when idle backend available"
+    );
+
     let routing_result = result.unwrap();
-    
+
     // Should route to the idle backend, NOT the loading one
     assert_eq!(
-        routing_result.backend.id,
-        "backend-idle",
+        routing_result.backend.id, "backend-idle",
         "Should route to idle backend, not loading backend"
     );
 }
@@ -454,7 +460,9 @@ async fn test_migrate_model_initiates_coordination() {
     )
     .unwrap();
 
-    registry.add_backend_with_agent(backend_source, agent_source).unwrap();
+    registry
+        .add_backend_with_agent(backend_source, agent_source)
+        .unwrap();
 
     // Target backend ready for load
     let mut backend_target = Backend::new(
@@ -480,7 +488,9 @@ async fn test_migrate_model_initiates_coordination() {
     )
     .unwrap();
 
-    registry.add_backend_with_agent(backend_target, agent_target).unwrap();
+    registry
+        .add_backend_with_agent(backend_target, agent_target)
+        .unwrap();
 
     let state = Arc::new(AppState::new(registry, config));
     let mut app = create_router(state.clone());
@@ -507,7 +517,10 @@ async fn test_migrate_model_initiates_coordination() {
 
     // Verify source backend still has the model and is marked as Migrating
     let source_op = state.registry.get_operation("backend-source").unwrap();
-    assert!(source_op.is_some(), "Source should have migration operation");
+    assert!(
+        source_op.is_some(),
+        "Source should have migration operation"
+    );
     let source_op = source_op.unwrap();
     assert_eq!(source_op.operation_type, OperationType::Migrate);
     assert_eq!(source_op.status, OperationStatus::InProgress);
@@ -523,7 +536,7 @@ async fn test_migrate_model_initiates_coordination() {
 // T039: Integration test for migration without request drops
 #[tokio::test]
 async fn test_migration_source_continues_serving() {
-    use nexus::routing::{Router, RoutingStrategy, ScoringWeights, RequestRequirements};
+    use nexus::routing::{RequestRequirements, Router, RoutingStrategy, ScoringWeights};
 
     // Create test registry
     let registry = Arc::new(Registry::new());
@@ -575,7 +588,9 @@ async fn test_migration_source_continues_serving() {
     )
     .unwrap();
 
-    registry.add_backend_with_agent(backend_source, agent_source).unwrap();
+    registry
+        .add_backend_with_agent(backend_source, agent_source)
+        .unwrap();
 
     // Target backend: loading model (should NOT be selected for routing yet)
     let mut backend_target = Backend::new(
@@ -614,7 +629,9 @@ async fn test_migration_source_continues_serving() {
     )
     .unwrap();
 
-    registry.add_backend_with_agent(backend_target, agent_target).unwrap();
+    registry
+        .add_backend_with_agent(backend_target, agent_target)
+        .unwrap();
 
     // Create router
     let router = Router::new(
@@ -637,13 +654,12 @@ async fn test_migration_source_continues_serving() {
 
     // Should succeed routing to source backend (even though it's migrating)
     assert!(result.is_ok(), "Routing should succeed during migration");
-    
+
     let routing_result = result.unwrap();
-    
+
     // Should route to source backend (which is migrating but still serving)
     assert_eq!(
-        routing_result.backend.id,
-        "backend-source",
+        routing_result.backend.id, "backend-source",
         "Should route to source backend during migration, NOT target which is loading"
     );
 }
@@ -651,7 +667,7 @@ async fn test_migration_source_continues_serving() {
 // T040: Integration test for traffic shift after migration completes
 #[tokio::test]
 async fn test_traffic_shifts_after_target_loads() {
-    use nexus::routing::{Router, RoutingStrategy, ScoringWeights, RequestRequirements};
+    use nexus::routing::{RequestRequirements, Router, RoutingStrategy, ScoringWeights};
 
     // Create test registry
     let registry = Arc::new(Registry::new());
@@ -664,7 +680,7 @@ async fn test_traffic_shifts_after_target_loads() {
         "Source Backend".to_string(),
         "http://source:11434".to_string(),
         BackendType::Ollama,
-        vec![],  // Model removed after unload
+        vec![], // Model removed after unload
         DiscoverySource::Static,
         HashMap::new(),
     );
@@ -683,7 +699,9 @@ async fn test_traffic_shifts_after_target_loads() {
     )
     .unwrap();
 
-    registry.add_backend_with_agent(backend_source, agent_source).unwrap();
+    registry
+        .add_backend_with_agent(backend_source, agent_source)
+        .unwrap();
 
     // Target backend: model now loaded and ready
     let mut backend_target = Backend::new(
@@ -718,7 +736,9 @@ async fn test_traffic_shifts_after_target_loads() {
     )
     .unwrap();
 
-    registry.add_backend_with_agent(backend_target, agent_target).unwrap();
+    registry
+        .add_backend_with_agent(backend_target, agent_target)
+        .unwrap();
 
     // Create router
     let router = Router::new(
@@ -740,14 +760,16 @@ async fn test_traffic_shifts_after_target_loads() {
     let result = router.select_backend(&requirements, None);
 
     // Should succeed routing
-    assert!(result.is_ok(), "Routing should succeed after migration completes");
-    
+    assert!(
+        result.is_ok(),
+        "Routing should succeed after migration completes"
+    );
+
     let routing_result = result.unwrap();
-    
+
     // Should route to target backend (which now has the model)
     assert_eq!(
-        routing_result.backend.id,
-        "backend-target",
+        routing_result.backend.id, "backend-target",
         "Should route to target backend after migration completes"
     );
 }
@@ -826,7 +848,9 @@ async fn test_migration_rollback_on_failure() {
     )
     .unwrap();
 
-    registry.add_backend_with_agent(backend_source, agent_source).unwrap();
+    registry
+        .add_backend_with_agent(backend_source, agent_source)
+        .unwrap();
 
     // Target backend
     let mut backend_target = Backend::new(
@@ -852,7 +876,9 @@ async fn test_migration_rollback_on_failure() {
     )
     .unwrap();
 
-    registry.add_backend_with_agent(backend_target, agent_target).unwrap();
+    registry
+        .add_backend_with_agent(backend_target, agent_target)
+        .unwrap();
 
     let state = Arc::new(AppState::new(registry, config));
     let mut app = create_router(state.clone());
@@ -890,7 +916,7 @@ async fn test_migration_rollback_on_failure() {
         nexus::registry::BackendStatus::Healthy,
         "Source should remain healthy after migration failure"
     );
-    
+
     // Verify source still has the model
     assert!(
         source_status.models.iter().any(|m| m.id == "llama3:8b"),

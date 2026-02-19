@@ -277,7 +277,9 @@ async fn test_ollama_vram_release_after_unload() {
     assert!(usage_before.vram_used_bytes.is_some());
     assert_eq!(usage_before.vram_used_bytes.unwrap(), 4661224676u64);
     assert_eq!(usage_before.loaded_models.len(), 1);
-    assert!(usage_before.loaded_models.contains(&"llama3:8b".to_string()));
+    assert!(usage_before
+        .loaded_models
+        .contains(&"llama3:8b".to_string()));
 
     // Mock unload operation
     Mock::given(method("POST"))

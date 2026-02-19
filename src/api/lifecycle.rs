@@ -468,14 +468,19 @@ pub async fn handle_migrate(
             "Failed to set load operation on target backend"
         );
         // T047: Rollback source operation
-        if let Err(e) = state.registry.update_operation(&request.source_backend_id, None) {
+        if let Err(e) = state
+            .registry
+            .update_operation(&request.source_backend_id, None)
+        {
             error!(
                 source_backend_id = %request.source_backend_id,
                 error = ?e,
                 "Failed to clear source operation during rollback"
             );
         }
-        return Err(ApiError::bad_gateway("Failed to track target load operation"));
+        return Err(ApiError::bad_gateway(
+            "Failed to track target load operation",
+        ));
     }
 
     info!(
@@ -530,7 +535,13 @@ pub async fn handle_unload(
     State(state): State<Arc<AppState>>,
     Path(model_id): Path<String>,
     Query(query): Query<UnloadQuery>,
-) -> Result<(AppendHeaders<[(&'static str, String); 2]>, Json<serde_json::Value>), ApiError> {
+) -> Result<
+    (
+        AppendHeaders<[(&'static str, String); 2]>,
+        Json<serde_json::Value>,
+    ),
+    ApiError,
+> {
     use std::sync::atomic::Ordering;
 
     info!(

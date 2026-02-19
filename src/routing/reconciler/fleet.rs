@@ -140,8 +140,7 @@ impl FleetReconciler {
                 let trend = self.calculate_trend(ts_slice);
 
                 // Only generate recommendations for models with clear patterns
-                if profile.peak_ratio >= PEAK_RATIO_THRESHOLD
-                    || trend == TrendDirection::Increasing
+                if profile.peak_ratio >= PEAK_RATIO_THRESHOLD || trend == TrendDirection::Increasing
                 {
                     // T074: Calculate confidence score
                     let confidence = self.calculate_confidence(&profile, ts_slice.len());
@@ -211,8 +210,7 @@ impl FleetReconciler {
         if count > 0 {
             info!(
                 recommendation_count = count,
-                "Fleet analysis complete: {} recommendations generated",
-                count
+                "Fleet analysis complete: {} recommendations generated", count
             );
         } else {
             debug!("Fleet analysis complete: no recommendations generated");
@@ -225,13 +223,11 @@ impl FleetReconciler {
             return false;
         }
 
-        // Check minimum days of data
-        if timestamps.is_empty() {
+        // Check minimum days of data (safe: already verified non-empty via min_request_count check)
+        let (Some(&min_ts), Some(&max_ts)) = (timestamps.iter().min(), timestamps.iter().max())
+        else {
             return false;
-        }
-
-        let min_ts = *timestamps.iter().min().unwrap();
-        let max_ts = *timestamps.iter().max().unwrap();
+        };
         let days_span = (max_ts - min_ts) / (24 * SECONDS_PER_HOUR);
 
         days_span >= self.config.min_sample_days as i64
@@ -507,11 +503,7 @@ mod tests {
             // Add some background traffic at other hours (1 req/hour)
             for h in 0..24u32 {
                 if h != peak_hour as u32 {
-                    let t = day
-                        .date_naive()
-                        .and_hms_opt(h, 30, 0)
-                        .unwrap()
-                        .and_utc();
+                    let t = day.date_naive().and_hms_opt(h, 30, 0).unwrap().and_utc();
                     timestamps.push(t.timestamp());
                 }
             }
@@ -736,10 +728,7 @@ mod tests {
             .map(|i| now - i * 3600) // 50 recent
             .chain((0..50).map(|i| now - 8 * day - i * 3600)) // 50 older
             .collect();
-        assert_eq!(
-            reconciler.calculate_trend(&stable),
-            TrendDirection::Stable
-        );
+        assert_eq!(reconciler.calculate_trend(&stable), TrendDirection::Stable);
     }
 
     // T068: Request history storage
@@ -752,7 +741,10 @@ mod tests {
         reconciler.record_request("llama3:8b");
         reconciler.record_request("codellama:7b");
 
-        assert_eq!(reconciler.request_history.get("llama3:8b").unwrap().len(), 2);
+        assert_eq!(
+            reconciler.request_history.get("llama3:8b").unwrap().len(),
+            2
+        );
         assert_eq!(
             reconciler
                 .request_history

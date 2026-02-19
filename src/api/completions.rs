@@ -215,10 +215,12 @@ fn rejection_response(
             .iter()
             .find_map(|r| {
                 // Parse ETA from suggested_action like "Wait for the load operation to complete (ETA: 30s)"
-                r.suggested_action
-                    .split("ETA: ")
-                    .nth(1)
-                    .and_then(|s| s.trim_end_matches(')').trim_end_matches('s').parse::<u64>().ok())
+                r.suggested_action.split("ETA: ").nth(1).and_then(|s| {
+                    s.trim_end_matches(')')
+                        .trim_end_matches('s')
+                        .parse::<u64>()
+                        .ok()
+                })
             })
             .unwrap_or(30); // Default 30s retry
         if let Ok(val) = HeaderValue::from_str(&eta_hint.to_string()) {

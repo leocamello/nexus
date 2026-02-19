@@ -440,7 +440,7 @@ impl HealthChecker {
                 // Only check operations that are InProgress
                 if operation.status == crate::agent::types::OperationStatus::InProgress {
                     let elapsed_ms = (now - operation.initiated_at).num_milliseconds();
-                    
+
                     if elapsed_ms < 0 {
                         // Clock skew detected - initiated_at is in the future
                         tracing::warn!(
@@ -452,7 +452,7 @@ impl HealthChecker {
                     }
 
                     let elapsed_ms = elapsed_ms as u64;
-                    
+
                     if elapsed_ms > lifecycle_timeout_ms {
                         // Operation has timed out
                         tracing::warn!(
@@ -475,7 +475,10 @@ impl HealthChecker {
                         ));
 
                         // Update in registry
-                        if let Err(e) = self.registry.update_operation(&backend.id, Some(failed_operation)) {
+                        if let Err(e) = self
+                            .registry
+                            .update_operation(&backend.id, Some(failed_operation))
+                        {
                             tracing::error!(
                                 backend_id = %backend.id,
                                 operation_id = %operation.operation_id,

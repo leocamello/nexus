@@ -168,12 +168,10 @@ impl AppState {
         let pricing = Arc::new(crate::agent::pricing::PricingTable::new());
 
         // Create fleet intelligence tracker
-        let fleet_tracker = Arc::new(
-            crate::routing::reconciler::fleet::FleetReconciler::new(
-                config.fleet.clone(),
-                Arc::clone(&registry),
-            ),
-        );
+        let fleet_tracker = Arc::new(crate::routing::reconciler::fleet::FleetReconciler::new(
+            config.fleet.clone(),
+            Arc::clone(&registry),
+        ));
 
         Self {
             registry,

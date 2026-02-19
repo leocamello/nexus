@@ -83,7 +83,8 @@ impl Reconciler for LifecycleReconciler {
                                     match operation.operation_type {
                                         crate::agent::types::OperationType::Load => "loading",
                                         crate::agent::types::OperationType::Unload => "unloading",
-                                        crate::agent::types::OperationType::Migrate => "migrating to (target)",
+                                        crate::agent::types::OperationType::Migrate =>
+                                            "migrating to (target)",
                                     },
                                     operation.model_id,
                                     operation.progress_percent
@@ -95,7 +96,10 @@ impl Reconciler for LifecycleReconciler {
                                         crate::agent::types::OperationType::Unload => "unload",
                                         crate::agent::types::OperationType::Migrate => "migration",
                                     },
-                                    operation.eta_ms.map(|eta| format!("{}s", eta / 1000)).unwrap_or_else(|| "unknown".to_string())
+                                    operation
+                                        .eta_ms
+                                        .map(|eta| format!("{}s", eta / 1000))
+                                        .unwrap_or_else(|| "unknown".to_string())
                                 ),
                             );
 
@@ -144,7 +148,11 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicU32, AtomicU64};
 
-    fn create_backend(id: &str, model_id: &str, current_operation: Option<LifecycleOperation>) -> Backend {
+    fn create_backend(
+        id: &str,
+        model_id: &str,
+        current_operation: Option<LifecycleOperation>,
+    ) -> Backend {
         Backend {
             id: id.to_string(),
             name: id.to_string(),
@@ -227,7 +235,7 @@ mod tests {
     #[test]
     fn excludes_agent_with_in_progress_operation() {
         let registry = Arc::new(Registry::new());
-        
+
         // Backend with active load operation
         registry
             .add_backend(create_backend(
@@ -236,7 +244,7 @@ mod tests {
                 Some(create_in_progress_operation("llama3:70b")),
             ))
             .unwrap();
-        
+
         // Normal backend
         registry
             .add_backend(create_backend("idle", "llama3:8b", None))
@@ -254,11 +262,11 @@ mod tests {
     #[test]
     fn completed_operation_does_not_exclude() {
         let registry = Arc::new(Registry::new());
-        
+
         // Backend with completed operation
         let mut completed_op = create_in_progress_operation("llama3:70b");
         completed_op.status = OperationStatus::Completed;
-        
+
         registry
             .add_backend(create_backend("completed", "llama3:8b", Some(completed_op)))
             .unwrap();
@@ -275,11 +283,11 @@ mod tests {
     #[test]
     fn failed_operation_does_not_exclude() {
         let registry = Arc::new(Registry::new());
-        
+
         // Backend with failed operation
         let mut failed_op = create_in_progress_operation("llama3:70b");
         failed_op.status = OperationStatus::Failed;
-        
+
         registry
             .add_backend(create_backend("failed", "llama3:8b", Some(failed_op)))
             .unwrap();
@@ -322,7 +330,7 @@ mod tests {
     #[test]
     fn multiple_operations_all_excluded() {
         let registry = Arc::new(Registry::new());
-        
+
         registry
             .add_backend(create_backend(
                 "b1",
@@ -330,7 +338,7 @@ mod tests {
                 Some(create_in_progress_operation("model-a")),
             ))
             .unwrap();
-        
+
         registry
             .add_backend(create_backend(
                 "b2",
@@ -351,10 +359,10 @@ mod tests {
     #[test]
     fn unload_operation_also_blocks() {
         let registry = Arc::new(Registry::new());
-        
+
         let mut unload_op = create_in_progress_operation("llama3:70b");
         unload_op.operation_type = OperationType::Unload;
-        
+
         registry
             .add_backend(create_backend("unloading", "llama3:8b", Some(unload_op)))
             .unwrap();
@@ -366,7 +374,7 @@ mod tests {
 
         assert!(intent.candidate_agents.is_empty());
         assert_eq!(intent.excluded_agents, vec!["unloading"]);
-        
+
         let reason = &intent.rejection_reasons[0];
         assert!(reason.reason.contains("unloading"));
     }
@@ -375,14 +383,18 @@ mod tests {
     fn migrate_operation_source_continues_serving() {
         // T044: Migration source should NOT be blocked
         let registry = Arc::new(Registry::new());
-        
+
         let mut migrate_op = create_in_progress_operation("llama3:70b");
         migrate_op.operation_type = OperationType::Migrate;
         migrate_op.source_backend_id = Some("migrating-source".to_string());
         migrate_op.target_backend_id = "migrating-target".to_string();
-        
+
         registry
-            .add_backend(create_backend("migrating-source", "llama3:8b", Some(migrate_op)))
+            .add_backend(create_backend(
+                "migrating-source",
+                "llama3:8b",
+                Some(migrate_op),
+            ))
             .unwrap();
 
         let reconciler = LifecycleReconciler::new(Arc::clone(&registry));
@@ -399,20 +411,24 @@ mod tests {
     fn migrate_operation_target_is_blocked() {
         // T044: Migration target SHOULD be blocked (it's loading)
         let registry = Arc::new(Registry::new());
-        
+
         let mut migrate_op = create_in_progress_operation("llama3:70b");
         migrate_op.operation_type = OperationType::Migrate;
         migrate_op.source_backend_id = Some("migrating-source".to_string());
         migrate_op.target_backend_id = "migrating-target".to_string();
-        
+
         // Note: This is a Load operation on the target, not Migrate
         // The target has a Load operation, source has Migrate operation
         let mut load_op = create_in_progress_operation("llama3:70b");
         load_op.operation_type = OperationType::Load;
         load_op.target_backend_id = "migrating-target".to_string();
-        
+
         registry
-            .add_backend(create_backend("migrating-target", "llama3:8b", Some(load_op)))
+            .add_backend(create_backend(
+                "migrating-target",
+                "llama3:8b",
+                Some(load_op),
+            ))
             .unwrap();
 
         let reconciler = LifecycleReconciler::new(Arc::clone(&registry));
@@ -423,7 +439,7 @@ mod tests {
         // Target backend SHOULD be excluded - it's loading
         assert!(intent.candidate_agents.is_empty());
         assert_eq!(intent.excluded_agents, vec!["migrating-target"]);
-        
+
         let reason = &intent.rejection_reasons[0];
         assert!(reason.reason.contains("loading"));
     }
