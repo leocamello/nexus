@@ -44,9 +44,9 @@ Nexus is a control plane for heterogeneous LLM inference — it routes requests 
 | F16 | Quality Tracking & Backend Profiling | v0.4 | ✅ Complete | [specs/019-quality-tracking](../specs/019-quality-tracking/) |
 | F17 | Embeddings API | v0.4 | ✅ Complete | [specs/020-embeddings-api](../specs/020-embeddings-api/) |
 | F18 | Request Queuing & Prioritization | v0.4 | ✅ Complete | [specs/021-request-queuing](../specs/021-request-queuing/) |
-| — | **Fleet Intelligence (Phase 3)** | **v0.5** | Planned | - |
-| F19 | Pre-warming & Fleet Intelligence | v0.5 | Planned | - |
-| F20 | Model Lifecycle Management | v0.5 | Planned | - |
+| — | **Fleet Intelligence (Phase 3)** | **v0.5** | ✅ Complete | [specs/022-fleet-intelligence-model-lifecycle](../specs/022-fleet-intelligence-model-lifecycle/) |
+| F19 | Pre-warming & Fleet Intelligence | v0.5 | ✅ Complete | [specs/022-fleet-intelligence-model-lifecycle](../specs/022-fleet-intelligence-model-lifecycle/) |
+| F20 | Model Lifecycle Management | v0.5 | ✅ Complete | [specs/022-fleet-intelligence-model-lifecycle](../specs/022-fleet-intelligence-model-lifecycle/) |
 | F21 | Multi-Tenant Support | v0.5 | Planned | - |
 | F22 | Rate Limiting | v0.5 | Planned | - |
 | F23 | Management UI | v1.0 | Planned | - |
@@ -79,8 +79,8 @@ Added intelligence features that make Nexus smarter about backend quality and re
 
 The next phase focuses on **fleet-level intelligence and operational control**:
 
-- **Pre-warming & Fleet Intelligence (F19)** — Predictive model loading based on usage patterns
-- **Model Lifecycle Management (F20)** — Load/unload/migrate models via API
+- ~~**Pre-warming & Fleet Intelligence (F19)**~~ ✅ Predictive model loading based on usage patterns
+- ~~**Model Lifecycle Management (F20)**~~ ✅ Load/unload/migrate models via API
 - **Multi-Tenant Support (F21)** — API keys and per-tenant quotas
 - **Rate Limiting (F22)** — Per-backend and per-tenant protection
 

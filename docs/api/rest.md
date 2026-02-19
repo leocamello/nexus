@@ -11,6 +11,10 @@ Nexus exposes an [OpenAI-compatible](https://platform.openai.com/docs/api-refere
 | `POST` | [`/v1/chat/completions`](#post-v1chatcompletions) | Chat completion (streaming and non-streaming) |
 | `POST` | [`/v1/embeddings`](#post-v1embeddings) | Generate text embeddings |
 | `GET` | [`/v1/models`](#get-v1models) | List available models from healthy backends |
+| `POST` | `/v1/models/load` | Load model on specific backend ([lifecycle API](lifecycle.md)) |
+| `DELETE` | `/v1/models/{id}` | Unload model from specific backend ([lifecycle API](lifecycle.md)) |
+| `POST` | `/v1/models/migrate` | Migrate model between backends ([lifecycle API](lifecycle.md)) |
+| `GET` | `/v1/fleet/recommendations` | Fleet intelligence recommendations ([lifecycle API](lifecycle.md)) |
 | `GET` | [`/health`](#get-health) | System health with backend/model counts |
 | `GET` | [`/v1/stats`](#get-v1stats) | JSON stats: uptime, request counts, per-backend metrics |
 | `GET` | [`/metrics`](#get-metrics) | Prometheus text format metrics |
