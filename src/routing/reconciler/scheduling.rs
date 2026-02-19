@@ -112,6 +112,7 @@ mod tests {
             avg_latency_ms: AtomicU32::new(latency),
             discovery_source: DiscoverySource::Static,
             metadata: HashMap::new(),
+            current_operation: None,
         }
     }
 

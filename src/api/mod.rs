@@ -65,6 +65,7 @@ pub mod embeddings;
 pub mod error;
 pub mod headers;
 mod health;
+pub mod lifecycle;
 pub mod models;
 pub mod types;
 
@@ -77,7 +78,7 @@ use crate::metrics::MetricsCollector;
 use crate::registry::Registry;
 use crate::routing;
 use axum::{
-    routing::{get, post},
+    routing::{delete, get, post},
     Router,
 };
 use std::sync::Arc;
@@ -107,6 +108,8 @@ pub struct AppState {
     pub pricing: Arc<crate::agent::pricing::PricingTable>,
     /// Optional request queue for burst traffic (T030)
     pub queue: Option<Arc<crate::queue::RequestQueue>>,
+    /// Fleet intelligence tracker for pre-warming recommendations
+    pub fleet_tracker: Arc<crate::routing::reconciler::fleet::FleetReconciler>,
 }
 
 impl AppState {
@@ -164,6 +167,12 @@ impl AppState {
         // Create pricing table for cloud cost estimation
         let pricing = Arc::new(crate::agent::pricing::PricingTable::new());
 
+        // Create fleet intelligence tracker
+        let fleet_tracker = Arc::new(crate::routing::reconciler::fleet::FleetReconciler::new(
+            config.fleet.clone(),
+            Arc::clone(&registry),
+        ));
+
         Self {
             registry,
             config,
@@ -175,6 +184,7 @@ impl AppState {
             ws_broadcast,
             pricing,
             queue: None,
+            fleet_tracker,
         }
     }
 }
@@ -194,6 +204,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/health", get(health::handle))
         .route("/metrics", get(crate::metrics::handler::metrics_handler))
         .route("/v1/stats", get(crate::metrics::handler::stats_handler))
+        // Lifecycle management routes
+        .route("/v1/models/load", post(lifecycle::handle_load))
+        .route("/v1/models/migrate", post(lifecycle::handle_migrate))
+        .route("/v1/models/:model_id", delete(lifecycle::handle_unload))
+        .route(
+            "/v1/fleet/recommendations",
+            get(lifecycle::handle_recommendations),
+        )
         .layer(RequestBodyLimitLayer::new(MAX_BODY_SIZE))
         .with_state(state)
 }

@@ -252,6 +252,7 @@ mod us3_routing_visibility {
             avg_latency_ms: AtomicU32::new(50),
             discovery_source: DiscoverySource::Static,
             metadata: HashMap::new(),
+            current_operation: None,
         };
         let _ = registry.add_backend(backend1);
 
@@ -278,6 +279,7 @@ mod us3_routing_visibility {
             avg_latency_ms: AtomicU32::new(50),
             discovery_source: DiscoverySource::Static,
             metadata: HashMap::new(),
+            current_operation: None,
         };
         let _ = registry.add_backend(backend2);
 
@@ -340,6 +342,7 @@ mod us3_routing_visibility {
             avg_latency_ms: AtomicU32::new(50),
             discovery_source: DiscoverySource::Static,
             metadata: HashMap::new(),
+            current_operation: None,
         };
         let _ = registry.add_backend(backend1);
 
@@ -408,6 +411,7 @@ mod us3_routing_visibility {
             avg_latency_ms: AtomicU32::new(50),
             discovery_source: DiscoverySource::Static,
             metadata: HashMap::new(),
+            current_operation: None,
         };
         let _ = registry.add_backend(backend1);
 

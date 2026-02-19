@@ -37,6 +37,8 @@ pub struct HealthChecker {
     state: DashMap<String, BackendHealthState>,
     /// Optional WebSocket broadcast sender for dashboard updates
     ws_broadcast: Option<tokio::sync::broadcast::Sender<crate::dashboard::types::WebSocketUpdate>>,
+    /// Lifecycle operation timeout in milliseconds (for T037)
+    lifecycle_timeout_ms: u64,
 }
 
 impl HealthChecker {
@@ -53,6 +55,7 @@ impl HealthChecker {
             config,
             state: DashMap::new(),
             ws_broadcast: None,
+            lifecycle_timeout_ms: 300_000, // Default 5 minutes
         }
     }
 
@@ -68,7 +71,14 @@ impl HealthChecker {
             config,
             state: DashMap::new(),
             ws_broadcast: None,
+            lifecycle_timeout_ms: 300_000, // Default 5 minutes
         }
+    }
+
+    /// Set the lifecycle operation timeout (T037).
+    pub fn with_lifecycle_timeout(mut self, timeout_ms: u64) -> Self {
+        self.lifecycle_timeout_ms = timeout_ms;
+        self
     }
 
     /// Set the WebSocket broadcast sender for dashboard updates.
@@ -101,6 +111,19 @@ impl HealthChecker {
     /// Falls back to legacy direct HTTP if agent is not available (for backwards compatibility).
     pub async fn check_backend(&self, backend: &Backend) -> HealthCheckResult {
         let start = Instant::now();
+
+        // T031: Log if backend has active lifecycle operation
+        if let Some(operation) = &backend.current_operation {
+            if operation.status == crate::agent::types::OperationStatus::InProgress {
+                tracing::debug!(
+                    backend_id = %backend.id,
+                    operation_type = ?operation.operation_type,
+                    model_id = %operation.model_id,
+                    progress = operation.progress_percent,
+                    "Backend has active lifecycle operation during health check"
+                );
+            }
+        }
 
         // Try to get agent from registry (T029)
         if let Some(agent) = self.registry.get_agent(&backend.id) {
@@ -404,6 +427,71 @@ impl HealthChecker {
         results
     }
 
+    /// Check for timed-out lifecycle operations and mark them as failed (T037).
+    ///
+    /// This should be called periodically during health checks to detect operations
+    /// that have been in progress for longer than the configured timeout.
+    pub fn check_operation_timeouts(&self, lifecycle_timeout_ms: u64) {
+        let now = chrono::Utc::now();
+        let backends = self.registry.get_all_backends();
+
+        for backend in backends {
+            if let Some(operation) = &backend.current_operation {
+                // Only check operations that are InProgress
+                if operation.status == crate::agent::types::OperationStatus::InProgress {
+                    let elapsed_ms = (now - operation.initiated_at).num_milliseconds();
+
+                    if elapsed_ms < 0 {
+                        // Clock skew detected - initiated_at is in the future
+                        tracing::warn!(
+                            backend_id = %backend.id,
+                            operation_id = %operation.operation_id,
+                            "Operation initiated_at is in the future (clock skew?)"
+                        );
+                        continue;
+                    }
+
+                    let elapsed_ms = elapsed_ms as u64;
+
+                    if elapsed_ms > lifecycle_timeout_ms {
+                        // Operation has timed out
+                        tracing::warn!(
+                            backend_id = %backend.id,
+                            operation_id = %operation.operation_id,
+                            operation_type = ?operation.operation_type,
+                            model_id = %operation.model_id,
+                            elapsed_ms = elapsed_ms,
+                            timeout_ms = lifecycle_timeout_ms,
+                            "Lifecycle operation timed out, marking as failed"
+                        );
+
+                        // Update operation to Failed status
+                        let mut failed_operation = operation.clone();
+                        failed_operation.status = crate::agent::types::OperationStatus::Failed;
+                        failed_operation.completed_at = Some(now);
+                        failed_operation.error_details = Some(format!(
+                            "Operation timed out after {}ms (timeout: {}ms)",
+                            elapsed_ms, lifecycle_timeout_ms
+                        ));
+
+                        // Update in registry
+                        if let Err(e) = self
+                            .registry
+                            .update_operation(&backend.id, Some(failed_operation))
+                        {
+                            tracing::error!(
+                                backend_id = %backend.id,
+                                operation_id = %operation.operation_id,
+                                error = %e,
+                                "Failed to update timed-out operation in registry"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// Start the health checker background task.
     /// Returns a JoinHandle that resolves when the checker stops.
     pub fn start(self, cancel_token: CancellationToken) -> JoinHandle<()> {
@@ -414,6 +502,7 @@ impl HealthChecker {
 
             tracing::info!(
                 interval_seconds = self.config.interval_seconds,
+                lifecycle_timeout_ms = self.lifecycle_timeout_ms,
                 "Health checker started"
             );
 
@@ -424,6 +513,10 @@ impl HealthChecker {
                         break;
                     }
                     _ = interval.tick() => {
+                        // T037: Check for timed-out lifecycle operations
+                        self.check_operation_timeouts(self.lifecycle_timeout_ms);
+
+                        // Perform health checks
                         let results = self.check_all_backends().await;
                         tracing::debug!(
                             backends_checked = results.len(),

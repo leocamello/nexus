@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Model Lifecycle Management (F20)**: API-driven model load/unload/migrate across backends
+  - `POST /v1/models/load` — Load model on specific backend via NII agent
+  - `DELETE /v1/models/{id}` — Graceful unload with active request protection
+  - `POST /v1/models/migrate` — Coordinated migration (load target, preserve source routing)
+  - `LifecycleReconciler` filters loading backends from routing pipeline
+  - OllamaAgent: `load_model()` → POST /api/pull, `unload_model()` → keep_alive=0, `resource_usage()` → GET /api/ps
+  - VRAM validation with configurable headroom and heuristic thresholds
+  - `X-Nexus-Lifecycle-Status` and `X-Nexus-Lifecycle-Operation` response headers
+  - `Retry-After` header on 503 responses during model loading
+- **Pre-warming & Fleet Intelligence (F19)**: Predictive model placement recommendations
+  - `GET /v1/fleet/recommendations` — Advisory pre-warming suggestions
+  - Background pattern analysis: hourly request profiles, trend detection, confidence scoring
+  - VRAM headroom awareness prevents overcommitting GPU memory
+  - Hot model protection: never recommends unloading actively-served models
+  - Configurable via `[fleet]` TOML section (disabled by default)
+- **Configuration**: `[lifecycle]` and `[fleet]` TOML config sections with sensible defaults
+
 ## [0.4.0] - 2026-02-18
 
 ### Added

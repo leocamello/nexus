@@ -5,7 +5,9 @@
 
 pub mod budget;
 pub mod decision;
+pub mod fleet;
 pub mod intent;
+pub mod lifecycle;
 pub mod privacy;
 pub mod quality;
 pub mod request_analyzer;

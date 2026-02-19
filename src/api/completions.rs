@@ -204,6 +204,32 @@ fn rejection_response(
     let error = ServiceUnavailableError::new(message, context);
     let mut response = error.into_response();
 
+    // T089b: Add Retry-After header when rejections are from LifecycleReconciler
+    let lifecycle_rejections: Vec<&RejectionReason> = rejection_reasons
+        .iter()
+        .filter(|r| r.reconciler == "LifecycleReconciler")
+        .collect();
+    if !lifecycle_rejections.is_empty() {
+        // Estimate retry time from ETA in rejection reasons
+        let eta_hint = lifecycle_rejections
+            .iter()
+            .find_map(|r| {
+                // Parse ETA from suggested_action like "Wait for the load operation to complete (ETA: 30s)"
+                r.suggested_action.split("ETA: ").nth(1).and_then(|s| {
+                    s.trim_end_matches(')')
+                        .trim_end_matches('s')
+                        .parse::<u64>()
+                        .ok()
+                })
+            })
+            .unwrap_or(30); // Default 30s retry
+        if let Ok(val) = HeaderValue::from_str(&eta_hint.to_string()) {
+            response
+                .headers_mut()
+                .insert(HeaderName::from_static("retry-after"), val);
+        }
+    }
+
     // Add rejection details header
     let header_value = format!(
         "{} agents rejected by {}",
@@ -1147,6 +1173,9 @@ fn record_request_completion(
 
     // Push to request history ring buffer
     state.request_history.push(entry.clone());
+
+    // Record for fleet intelligence pattern analysis
+    state.fleet_tracker.record_request(model);
 
     // Broadcast update to WebSocket clients
     let update = create_request_complete_update(entry);

@@ -27,6 +27,8 @@ Nexus is a distributed LLM orchestrator that unifies heterogeneous inference bac
 - 🧠 **Quality Tracking** — Profiles backend response quality to inform routing decisions
 - 📐 **Embeddings API** — OpenAI-compatible `/v1/embeddings` with capability-aware routing
 - 📋 **Request Queuing** — Holds requests when backends are busy, with priority support
+- 🔧 **Model Lifecycle** — Load, unload, and migrate models across backends via API
+- 🔮 **Fleet Intelligence** — Pattern analysis with pre-warming recommendations
 
 ## Supported Backends
 

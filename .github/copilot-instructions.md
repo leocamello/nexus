@@ -22,7 +22,7 @@ You are an expert Rust developer building **Nexus**, a distributed LLM orchestra
 | v0.2 | Observability — Prometheus metrics, Web Dashboard, Structured logging | ✅ Released |
 | v0.3 | Cloud Hybrid — Cloud backends, Privacy zones, Budget management | ✅ Released |
 | v0.4 | Intelligence — Speculative router, Quality tracking, Embeddings, Queuing | ✅ Released |
-| v0.5 | Orchestration — Pre-warming, Model lifecycle, Multi-tenant, Rate limiting | Planned |
+| v0.5 | Orchestration — Pre-warming, Model lifecycle, Multi-tenant, Rate limiting | 🚧 In Progress |
 | v1.0 | Complete Product — Management UI, full web-based control plane | Planned |
 
 See `docs/roadmap.md` for detailed feature specs (F01-F23).
@@ -71,7 +71,9 @@ src/
 │   ├── privacy.rs  # PrivacyReconciler (F13)
 │   ├── budget.rs   # BudgetReconciler (F14)
 │   ├── tier.rs     # TierReconciler (F13)
-│   └── scheduler.rs # SchedulerReconciler (scoring, queue decisions)
+│   ├── scheduler.rs # SchedulerReconciler (scoring, queue decisions)
+│   ├── lifecycle.rs # LifecycleReconciler (F20: filters loading backends)
+│   └── fleet.rs    # FleetReconciler (F19: pattern analysis, recommendations)
 ├── dashboard/    # Embedded web dashboard (rust-embed, WebSocket, real-time updates)
 ├── discovery/    # mDNS auto-discovery via mdns-sd
 ├── health/       # Background health checker with backend-specific endpoints
@@ -91,6 +93,10 @@ src/
 | `POST` | `/v1/chat/completions` | Chat completion (streaming and non-streaming) |
 | `POST` | `/v1/embeddings` | Generate embeddings (OpenAI-compatible) |
 | `GET` | `/v1/models` | List available models from healthy backends (per-backend entries) |
+| `POST` | `/v1/models/load` | Load model on specific backend (F20) |
+| `DELETE` | `/v1/models/{id}` | Unload model from specific backend (F20) |
+| `POST` | `/v1/models/migrate` | Migrate model between backends (F20) |
+| `GET` | `/v1/fleet/recommendations` | Fleet intelligence pre-warming recommendations (F19) |
 | `GET` | `/v1/stats` | JSON stats: uptime, request counts, per-backend metrics |
 | `GET` | `/metrics` | Prometheus metrics (counters, histograms, gauges) |
 | `GET` | `/health` | System health with backend/model counts |

@@ -91,9 +91,9 @@ impl InferenceAgent for OllamaAgent {
             privacy_zone: self.privacy_zone,
             capabilities: AgentCapabilities {
                 embeddings: true,
-                model_lifecycle: false,
+                model_lifecycle: true, // T027: Enable lifecycle support
                 token_counting: false,
-                resource_monitoring: false,
+                resource_monitoring: true, // T027: Enable resource monitoring
             },
             capability_tier: self.capability_tier,
         }
@@ -355,6 +355,145 @@ impl InferenceAgent for OllamaAgent {
 
         Ok(results)
     }
+
+    /// Load a model via Ollama's POST /api/pull endpoint (T025).
+    ///
+    /// Initiates a model pull operation. In v0.5, this is a simple fire-and-forget
+    /// request that returns Ok(()) if the pull starts successfully. Progress streaming
+    /// will be added in a future version.
+    async fn load_model(&self, model_id: &str) -> Result<(), AgentError> {
+        let url = format!("{}/api/pull", self.base_url);
+        let body = serde_json::json!({
+            "name": model_id,
+        });
+
+        let response = self
+            .client
+            .post(&url)
+            .json(&body)
+            .timeout(Duration::from_secs(30))
+            .send()
+            .await
+            .map_err(|e| {
+                if e.is_timeout() {
+                    AgentError::Timeout(30000)
+                } else {
+                    AgentError::Network(e.to_string())
+                }
+            })?;
+
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(AgentError::Upstream {
+                status,
+                message: error_body,
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Unload a model from Ollama's memory via POST /api/generate with keep_alive=0 (T054).
+    ///
+    /// Tells Ollama to immediately unload the model from memory by sending a request
+    /// with keep_alive set to 0. This is the recommended way to unload models in Ollama.
+    async fn unload_model(&self, model_id: &str) -> Result<(), AgentError> {
+        let url = format!("{}/api/generate", self.base_url);
+        let body = serde_json::json!({
+            "model": model_id,
+            "keep_alive": 0,
+        });
+
+        let response = self
+            .client
+            .post(&url)
+            .json(&body)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+            .map_err(|e| {
+                if e.is_timeout() {
+                    AgentError::Timeout(10000)
+                } else {
+                    AgentError::Network(e.to_string())
+                }
+            })?;
+
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(AgentError::Upstream {
+                status,
+                message: error_body,
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Query resource usage via Ollama's GET /api/ps endpoint (T026).
+    ///
+    /// Returns VRAM usage and loaded models from the Ollama process list.
+    /// Ollama doesn't expose total VRAM directly, so vram_total_bytes will be None.
+    async fn resource_usage(&self) -> super::types::ResourceUsage {
+        let url = format!("{}/api/ps", self.base_url);
+
+        let response = match self
+            .client
+            .get(&url)
+            .timeout(Duration::from_secs(5))
+            .send()
+            .await
+        {
+            Ok(resp) => resp,
+            Err(_) => return super::types::ResourceUsage::default(),
+        };
+
+        if !response.status().is_success() {
+            return super::types::ResourceUsage::default();
+        }
+
+        let body: serde_json::Value = match response.json().await {
+            Ok(b) => b,
+            Err(_) => return super::types::ResourceUsage::default(),
+        };
+
+        // Parse /api/ps response
+        let models = match body["models"].as_array() {
+            Some(arr) => arr,
+            None => return super::types::ResourceUsage::default(),
+        };
+
+        let mut vram_used: u64 = 0;
+        let mut loaded_models = Vec::new();
+
+        for model in models {
+            // Sum size_vram for total VRAM usage
+            if let Some(size_vram) = model["size_vram"].as_u64() {
+                vram_used += size_vram;
+            }
+
+            // Collect model names
+            if let Some(name) = model["name"].as_str() {
+                loaded_models.push(name.to_string());
+            }
+        }
+
+        super::types::ResourceUsage {
+            vram_used_bytes: Some(vram_used),
+            vram_total_bytes: None, // Ollama doesn't expose total VRAM
+            pending_requests: None,
+            avg_latency_ms: None,
+            loaded_models,
+        }
+    }
 }
 
 impl OllamaAgent {
@@ -578,7 +717,8 @@ mod tests {
         assert_eq!(profile.backend_type, "ollama");
         assert_eq!(profile.privacy_zone, PrivacyZone::Restricted);
         assert!(profile.capabilities.embeddings);
-        assert!(!profile.capabilities.model_lifecycle);
+        assert!(profile.capabilities.model_lifecycle); // T027: Now true
+        assert!(profile.capabilities.resource_monitoring); // T027: Now true
     }
 
     #[tokio::test]

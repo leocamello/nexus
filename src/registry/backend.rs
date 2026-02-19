@@ -150,6 +150,8 @@ pub struct Backend {
     pub discovery_source: DiscoverySource,
     /// Additional metadata key-value pairs
     pub metadata: HashMap<String, String>,
+    /// Current lifecycle operation (load/unload/migrate) if any
+    pub current_operation: Option<crate::agent::types::LifecycleOperation>,
 }
 
 impl Backend {
@@ -180,6 +182,7 @@ impl Backend {
             avg_latency_ms: AtomicU32::new(0),
             discovery_source,
             metadata,
+            current_operation: None,
         }
     }
 }
@@ -224,6 +227,7 @@ pub struct BackendView {
     pub avg_latency_ms: u32,
     pub discovery_source: DiscoverySource,
     pub metadata: HashMap<String, String>,
+    pub current_operation: Option<crate::agent::types::LifecycleOperation>,
 }
 
 impl From<&Backend> for BackendView {
@@ -249,6 +253,7 @@ impl From<&Backend> for BackendView {
                 .load(std::sync::atomic::Ordering::SeqCst),
             discovery_source: backend.discovery_source,
             metadata: backend.metadata.clone(),
+            current_operation: backend.current_operation.clone(),
         }
     }
 }

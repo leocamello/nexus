@@ -203,6 +203,35 @@ async fn shutdown_signal(cancel_token: CancellationToken) {
     cancel_token.cancel();
 }
 
+/// Fleet intelligence analysis loop (T080).
+///
+/// Periodically runs fleet pattern analysis and updates recommendations.
+/// Respects cancellation token for graceful shutdown.
+async fn fleet_analysis_loop(
+    fleet_tracker: Arc<crate::routing::reconciler::fleet::FleetReconciler>,
+    interval_seconds: u64,
+    cancel_token: CancellationToken,
+) {
+    let interval = tokio::time::Duration::from_secs(interval_seconds);
+    tracing::info!(
+        interval_seconds = interval_seconds,
+        "Fleet analysis loop started"
+    );
+
+    loop {
+        tokio::select! {
+            _ = tokio::time::sleep(interval) => {
+                tracing::debug!("Running fleet intelligence analysis");
+                fleet_tracker.analyze().await;
+            }
+            _ = cancel_token.cancelled() => {
+                tracing::info!("Fleet analysis loop stopped");
+                break;
+            }
+        }
+    }
+}
+
 /// Main serve command handler
 pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>> {
     // 1. Load and merge configuration
@@ -245,6 +274,7 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
     let health_handle = if config.health_check.enabled {
         tracing::info!("Starting health checker");
         let checker = HealthChecker::new(registry.clone(), config.health_check.clone())
+            .with_lifecycle_timeout(config.lifecycle.timeout_ms)
             .with_broadcast(app_state.ws_broadcast.clone());
         Some(checker.start(cancel_token.clone()))
     } else {
@@ -298,6 +328,20 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
         None
     };
 
+    // 4.9. Start fleet intelligence analysis loop (T080)
+    let fleet_handle = if config.fleet.enabled {
+        tracing::info!("Starting fleet intelligence analysis loop");
+        let fleet_tracker = Arc::clone(&app_state.fleet_tracker);
+        let fleet_interval = config.fleet.analysis_interval_seconds;
+        let fleet_cancel = cancel_token.clone();
+        Some(tokio::spawn(async move {
+            fleet_analysis_loop(fleet_tracker, fleet_interval, fleet_cancel).await;
+        }))
+    } else {
+        tracing::debug!("Fleet intelligence disabled");
+        None
+    };
+
     // 6. Bind and serve
     let addr = format!("{}:{}", config.server.host, config.server.port);
     tracing::info!(addr = %addr, "Nexus API server listening");
@@ -329,6 +373,11 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
 
     if let Some(handle) = queue_handle {
         tracing::info!("Waiting for queue drain loop to stop");
+        handle.await?;
+    }
+
+    if let Some(handle) = fleet_handle {
+        tracing::info!("Waiting for fleet analysis loop to stop");
         handle.await?;
     }
 
