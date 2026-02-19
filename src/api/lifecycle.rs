@@ -4,6 +4,7 @@
 //! as well as fleet intelligence recommendations.
 
 use axum::http::StatusCode;
+use axum::response::AppendHeaders;
 use axum::{extract::Path, extract::Query, extract::State, Json};
 use std::sync::Arc;
 use tracing::{error, info, warn};
@@ -11,6 +12,11 @@ use tracing::{error, info, warn};
 use crate::agent::types::{LifecycleOperation, OperationStatus, OperationType};
 use crate::api::types::ApiError;
 use crate::api::AppState;
+
+/// T089a: Header name for lifecycle operation status
+const LIFECYCLE_STATUS_HEADER: &str = "x-nexus-lifecycle-status";
+/// T089a: Header name for lifecycle operation ID
+const LIFECYCLE_OPERATION_HEADER: &str = "x-nexus-lifecycle-operation";
 
 // Request/response types
 #[derive(serde::Deserialize)]
@@ -73,7 +79,14 @@ pub struct MigrateModelResponse {
 pub async fn handle_load(
     State(state): State<Arc<AppState>>,
     Json(request): Json<LoadModelRequest>,
-) -> Result<(StatusCode, Json<LoadModelResponse>), ApiError> {
+) -> Result<
+    (
+        StatusCode,
+        AppendHeaders<[(&'static str, String); 2]>,
+        Json<LoadModelResponse>,
+    ),
+    ApiError,
+> {
     info!(
         model_id = %request.model_id,
         backend_id = %request.backend_id,
@@ -202,9 +215,13 @@ pub async fn handle_load(
         "Model load initiated successfully"
     );
 
-    // 6. Return 202 Accepted
+    // 6. Return 202 Accepted with T089a lifecycle headers
     Ok((
         StatusCode::ACCEPTED,
+        AppendHeaders([
+            (LIFECYCLE_STATUS_HEADER, "loading".to_string()),
+            (LIFECYCLE_OPERATION_HEADER, operation_id.clone()),
+        ]),
         Json(LoadModelResponse {
             operation_id,
             model_id: request.model_id,
@@ -252,7 +269,14 @@ pub async fn handle_load(
 pub async fn handle_migrate(
     State(state): State<Arc<AppState>>,
     Json(request): Json<MigrateModelRequest>,
-) -> Result<(StatusCode, Json<MigrateModelResponse>), ApiError> {
+) -> Result<
+    (
+        StatusCode,
+        AppendHeaders<[(&'static str, String); 2]>,
+        Json<MigrateModelResponse>,
+    ),
+    ApiError,
+> {
     info!(
         model_id = %request.model_id,
         source_backend_id = %request.source_backend_id,
@@ -463,9 +487,13 @@ pub async fn handle_migrate(
         "Model migration initiated successfully"
     );
 
-    // 6. Return 202 Accepted
+    // 6. Return 202 Accepted with T089a lifecycle headers
     Ok((
         StatusCode::ACCEPTED,
+        AppendHeaders([
+            (LIFECYCLE_STATUS_HEADER, "migrating".to_string()),
+            (LIFECYCLE_OPERATION_HEADER, migration_op_id.clone()),
+        ]),
         Json(MigrateModelResponse {
             operation_id: migration_op_id,
             model_id: request.model_id,
@@ -502,7 +530,7 @@ pub async fn handle_unload(
     State(state): State<Arc<AppState>>,
     Path(model_id): Path<String>,
     Query(query): Query<UnloadQuery>,
-) -> Result<Json<serde_json::Value>, ApiError> {
+) -> Result<(AppendHeaders<[(&'static str, String); 2]>, Json<serde_json::Value>), ApiError> {
     use std::sync::atomic::Ordering;
 
     info!(
@@ -635,15 +663,21 @@ pub async fn handle_unload(
         "Model unloaded successfully"
     );
 
-    // Return 200 OK with operation details and VRAM info
-    Ok(Json(serde_json::json!({
-        "operation_id": operation_id,
-        "model_id": model_id,
-        "backend_id": query.backend_id,
-        "status": "completed",
-        "vram_free_bytes": vram_free,
-        "vram_free_gb": vram_free / 1_000_000_000,
-    })))
+    // Return 200 OK with T089a lifecycle headers and VRAM info
+    Ok((
+        AppendHeaders([
+            (LIFECYCLE_STATUS_HEADER, "completed".to_string()),
+            (LIFECYCLE_OPERATION_HEADER, operation_id.clone()),
+        ]),
+        Json(serde_json::json!({
+            "operation_id": operation_id,
+            "model_id": model_id,
+            "backend_id": query.backend_id,
+            "status": "completed",
+            "vram_free_bytes": vram_free,
+            "vram_free_gb": vram_free / 1_000_000_000,
+        })),
+    ))
 }
 
 /// GET /v1/fleet/recommendations

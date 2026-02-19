@@ -194,24 +194,24 @@ description: "Task list for Fleet Intelligence and Model Lifecycle Management"
 
 **Purpose**: Documentation, performance validation, and final integration
 
-- [ ] T081 [P] Update quickstart.md with end-to-end lifecycle examples
-- [ ] T082 [P] Add lifecycle API documentation to docs/ directory
-- [ ] T083 [P] Add operator guide for interpreting recommendations to docs/
-- [ ] T084 Run performance benchmarks to validate <1ms routing latency maintained (constitution requirement)
-- [ ] T085 Measure memory overhead per backend (<10KB target, constitution requirement)
-- [ ] T086 Validate total memory increase <50MB (constitution requirement)
-- [ ] T087 Run all existing test suites to ensure no regressions
-- [ ] T088 [P] Add structured logging for all lifecycle operations (operation_id tracing)
-- [ ] T089 [P] Add metrics exports for lifecycle operations (success rate, duration, VRAM utilization)
-- [ ] T089a Add X-Nexus-Lifecycle-Status response headers to lifecycle API endpoints for OpenAI-compatible status exposure (FR-027)
-- [ ] T089b Implement 503 Service Unavailable with Retry-After header and eta_ms when all backends are in Loading state (FR-028)
-- [ ] T089c Validate SC-002: 100% routing prevention to Loading backends (integration test)
-- [ ] T089d Validate SC-003: 0% request drops during migration (integration test)
-- [ ] T089e Validate SC-006: Pre-warming respects VRAM headroom 100% of the time (integration test)
-- [ ] T089f Validate SC-007: Never recommends unloading hot models (integration test)
-- [ ] T089g Validate SC-011: All lifecycle operations emit diagnostic data with operation IDs (integration test)
-- [ ] T090 Code cleanup and documentation pass across all modified files
-- [ ] T091 Update README.md with Fleet Intelligence feature highlights
+- [X] T081 [P] Update quickstart.md with end-to-end lifecycle examples
+- [X] T082 [P] Add lifecycle API documentation to docs/ directory
+- [X] T083 [P] Add operator guide for interpreting recommendations to docs/
+- [X] T084 Run performance benchmarks to validate <1ms routing latency maintained (constitution requirement)
+- [X] T085 Measure memory overhead per backend (<10KB target, constitution requirement)
+- [X] T086 Validate total memory increase <50MB (constitution requirement)
+- [X] T087 Run all existing test suites to ensure no regressions
+- [X] T088 [P] Add structured logging for all lifecycle operations (operation_id tracing)
+- [X] T089 [P] Add metrics exports for lifecycle operations (success rate, duration, VRAM utilization)
+- [X] T089a Add X-Nexus-Lifecycle-Status response headers to lifecycle API endpoints for OpenAI-compatible status exposure (FR-027)
+- [X] T089b Implement 503 Service Unavailable with Retry-After header and eta_ms when all backends are in Loading state (FR-028)
+- [X] T089c Validate SC-002: 100% routing prevention to Loading backends (integration test)
+- [X] T089d Validate SC-003: 0% request drops during migration (integration test)
+- [X] T089e Validate SC-006: Pre-warming respects VRAM headroom 100% of the time (integration test)
+- [X] T089f Validate SC-007: Never recommends unloading hot models (integration test)
+- [X] T089g Validate SC-011: All lifecycle operations emit diagnostic data with operation IDs (integration test)
+- [X] T090 Code cleanup and documentation pass across all modified files
+- [X] T091 Update README.md with Fleet Intelligence feature highlights
 - [ ] T092 Run quickstart.md validation against real Ollama instance
 
 ---
